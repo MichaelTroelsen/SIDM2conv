@@ -125,6 +125,66 @@ alone on a build pair of unequal completeness would actively mislead; this is ex
 confound improvement #4's windowed analysis exists to sidestep, and re-running this case
 through `--windowed` is the obvious next step.
 
+## Improvements #4 and #5 measured against this case
+
+### #5 (chroma): a correct null
+
+| | dominant pitch classes | L1 distance from original |
+|---|---|---:|
+| original | C 0.22, F 0.13, D# 0.12 | -- |
+| bad | C 0.20, F 0.13, D# 0.12 | 0.0727 |
+| good | C 0.20, F 0.13, D# 0.13 | 0.0774 |
+
+Chroma barely moves and moves *equally* for both builds; separation is -0.005, i.e.
+nothing. That is the right answer. B13 was a percussive/rhythmic defect, not a pitch one,
+so there is no pitch shift to find. **A metric correctly reporting "nothing here" is as
+useful as one firing** -- it is evidence chroma is not manufacturing signal out of two
+renders that merely differ.
+
+### #4 (windowed): a real bug, then a real limitation
+
+Running #4 against real material broke it immediately, in a way its synthetic fixtures
+could not reach: **`score = inf`**, flagging window 0 identically on both builds.
+
+Root cause: `silence_frac` is zero in 7 of Glyptodont's 12 windows, so its median is 0,
+so `_metric_scale()` returned 0 and the relative test divided by it. The metric then won
+every ranking and the four columns anyone cares about were never reached. Its `detail`
+string was false too -- "every other window is exactly zero" when the original has four
+nonzero windows. **Fixed**: sparse metrics fall back to the mean, which is nonzero
+whenever any value is; a genuinely all-zero baseline still takes the infinite branch it
+was written for. Three regression tests use the verbatim Glyptodont silence pattern.
+
+The fixtures missed it because they contain no silence at all: `silence_frac` was
+uniformly zero on both sides, its deltas were all zero, and the `if not dev.any()` guard
+skipped it before the scale was computed.
+
+**After the fix the score is finite (32.0) but the verdict is still degenerate** -- silence
+still wins, still flags both builds at window 0. Excluding `silence_frac`:
+
+| build | worst window | metric | severity |
+|---|---|---|---:|
+| bad | #3 @ **15.0 s** | centroid +145.96 Hz | 7.5 sigma |
+| good | #0 @ 0.0 s | RMS +5.01 dB | 8.3 sigma |
+
+It discriminates cleanly -- the bad build's worst anomaly is **mid-song brightness**,
+the good build's a benign startup transient. So the ranking carries signal; one metric
+swamps it.
+
+Two causes, both **documented rather than fixed** (see the KNOWN LIMITATION block in
+`sidm2/audio_listen.py`):
+
+1. The two scoring branches are not range-comparable. Flat-baseline yields 32.0 where
+   sigma tops out near 2-3, so a flat-baseline metric always wins.
+2. `silence_frac`'s difference is *systematic*, not a defect: a driver render never
+   reproduces the original's startup silence. It is sparse, so median-subtraction cannot
+   remove it -- the offset lives in a few windows, not all.
+
+Neither fix is free. Dropping `silence_frac` forfeits a real signal (a driver going
+silent mid-song is exactly what it would catch); rescaling the branch requires deciding
+what "equivalent to 3 sigma" means for a dimensionless relative test, which no
+measurement here settles. **Working rule until one is chosen: on an original-vs-driver
+comparison, treat a silence-driven verdict as uninformative and re-rank without it.**
+
 ## Regenerating
 
 Audio is not committed. `pyscript/calibration_cases.json` records the commit and build

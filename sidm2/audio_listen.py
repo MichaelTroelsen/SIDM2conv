@@ -487,6 +487,41 @@ WINDOW_OUTLIER_SIGMA = 3.0
 # failure this module could have, so the std fallback is gone.
 WINDOW_RELATIVE_DEVIATION = 0.25
 
+# KNOWN LIMITATION, measured against the B13 calibration case (Glyptodont, see
+# pyscript/calibration_cases.json) -- documented rather than fixed, because both
+# available fixes trade something real away.
+#
+# (1) THE TWO BRANCHES DO NOT PRODUCE COMPARABLE SCORES. WindowOutlier.score is
+#     documented as ">= 1.0 clears the bar, whichever branch produced it", and
+#     that is true of the THRESHOLD but not of the RANGE. A flat-baseline metric
+#     8x its own magnitude scores 8/0.25 = 32.0, while the sigma branch tops out
+#     near 2-3 on real material (a 7.5-sigma spike scores 2.5). So whenever a
+#     flat-baseline metric is present it wins the ranking outright, regardless
+#     of whether anything more serious happened elsewhere.
+#
+# (2) silence_frac IS RELIABLY SUCH A METRIC, and its difference is systematic
+#     rather than a defect. A driver render does not reproduce the original's
+#     startup silence, so silence_frac differs in window 0 of essentially every
+#     original-vs-driver comparison. It is sparse (zero in 7 of Glyptodont's 12
+#     windows), so its median delta is 0 and the median-subtraction that removes
+#     whole-file offsets cannot remove it -- the offset lives in a few windows,
+#     not all of them.
+#
+# MEASURED CONSEQUENCE: on Glyptodont, worst_window() flags window 0 / silence
+# identically for a known-BAD build and a known-GOOD one -- no discrimination at
+# all. Excluding silence_frac from _WINDOW_METRICS, the same comparison
+# separates cleanly: the bad build's worst window is centroid +146 Hz at 15.0s
+# (7.5 sigma, mid-song), the good build's is RMS +5.0 dB at 0.0s (a startup
+# transient). The ranking works; silence_frac swamps it.
+#
+# NOT FIXED because neither option is free. Dropping silence_frac forfeits a
+# real signal -- a driver that goes silent mid-song is exactly the defect it
+# would catch. Rescaling the flat-baseline branch to be range-comparable with
+# the sigma branch requires deciding what "equivalent to 3 sigma" means for a
+# dimensionless relative test, which is a judgement no measurement here
+# settles. Until one is chosen: when comparing an original against a driver
+# build, read a silence-driven verdict as uninformative and re-rank without it.
+
 # With fewer windows than this the spread estimate is itself too unstable to
 # rank against, so the table still prints but the verdict is withheld -- the
 # same "not enough evidence to claim anything" rule the rest of this codebase
@@ -588,10 +623,32 @@ def _metric_scale(orig_vals: np.ndarray, driver_vals: np.ndarray) -> float:
     window does not set the yardstick, larger-of-two so a metric that is ~0 on
     the original but large on the driver is measured against the side that has
     something to measure.
+
+    SPARSE METRICS FALL BACK TO THE MEAN, and that fallback is load-bearing. A
+    median is 0 for any metric that is zero in more than half its windows even
+    when the rest carry real magnitude -- and `silence_frac` is exactly that
+    shape on real music. Measured on Glyptodont, 12 windows: the original's
+    silence fractions were [.091, 0, .024, .014, 0, .002, 0, 0, .006, 0, 0, 0],
+    four of them clearly nonzero, yet median = 0. That drove scale to 0, which
+    the caller's `scale > 0` guard turned into an INFINITE score, so
+    silence_frac won the ranking outright on every real comparison and the four
+    metrics anyone cares about were never reached.
+
+    The mean is nonzero whenever any value is, which is the property needed
+    here. A genuinely all-zero baseline still yields 0 and still routes to the
+    caller's infinite-score branch, which is the case that branch was written
+    for.
     """
-    o = float(np.median(np.abs(np.asarray(orig_vals, dtype=np.float64))))
-    d = float(np.median(np.abs(np.asarray(driver_vals, dtype=np.float64))))
-    return max(o, d)
+    o = np.abs(np.asarray(orig_vals, dtype=np.float64))
+    d = np.abs(np.asarray(driver_vals, dtype=np.float64))
+
+    def typical(v):
+        if v.size == 0:
+            return 0.0
+        med = float(np.median(v))
+        return med if med > 0 else float(np.mean(v))
+
+    return max(typical(o), typical(d))
 
 
 def worst_window(orig_windows: Sequence[Window],
@@ -651,7 +708,8 @@ def worst_window(orig_windows: Sequence[Window],
             detail = (f"{dev[i] / scale:.1f}x the baseline level, and every other "
                       f"window is identical"
                       if scale > 0 else
-                      "nonzero where every other window is exactly zero")
+                      "nonzero where this metric is exactly zero in EVERY window "
+                      "on both sides")
         best = WindowOutlier(index=i, start_s=float(orig_windows[i][0]),
                              metric=label, delta=float(deltas[i]),
                              score=float(scores[i]), basis=basis, detail=detail)

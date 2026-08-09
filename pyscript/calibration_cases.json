@@ -105,6 +105,63 @@
               "separation": 0.022
             }
           }
+        },
+        "windowed": {
+          "description": "Improvement #4 (worst_window) run against this case, 5 s windows. The verdict is DEGENERATE as shipped: silence_frac is sparse and its difference is systematic (a driver render does not reproduce the original's startup silence), and the flat-baseline scoring branch outranges the sigma branch, so silence wins outright and flags both builds identically. Excluding silence_frac, the ranking discriminates cleanly. See the KNOWN LIMITATION block in sidm2/audio_listen.py.",
+          "measured_on": "2026-08-09",
+          "window_s": 5.0,
+          "windows": 12,
+          "as_shipped": {
+            "bad": {
+              "index": 0,
+              "start_s": 0.0,
+              "metric": "silence",
+              "score": 32.0
+            },
+            "good": {
+              "index": 0,
+              "start_s": 0.0,
+              "metric": "silence",
+              "score": 32.0
+            },
+            "discriminates": false
+          },
+          "excluding_silence_frac": {
+            "bad": {
+              "index": 3,
+              "start_s": 15.0,
+              "metric": "centroid",
+              "delta": 145.956,
+              "sigma": 7.5,
+              "score": 2.5
+            },
+            "good": {
+              "index": 0,
+              "start_s": 0.0,
+              "metric": "RMS level",
+              "delta": 5.013,
+              "sigma": 8.3,
+              "score": 2.75
+            },
+            "discriminates": true,
+            "note": "The bad build's worst anomaly is mid-song brightness at 15.0s; the good build's is a startup transient. Different window, different metric -- the ranking carries signal once the confound is removed."
+          }
+        },
+        "chroma": {
+          "description": "Improvement #5 run against this case. B13 was a percussive/rhythmic defect, so chroma SHOULD stay quiet -- confirming a metric correctly reports nothing is as useful as watching one fire.",
+          "measured_on": "2026-08-09",
+          "dominant": {
+            "orig": "C 0.22, F 0.13, D# 0.12",
+            "bad": "C 0.20, F 0.13, D# 0.12",
+            "good": "C 0.20, F 0.13, D# 0.13"
+          },
+          "l1_distance": {
+            "bad": 0.0727,
+            "good": 0.0774
+          },
+          "separation": -0.0047,
+          "correct_null": true,
+          "note": "Both builds shift equally and slightly away from C; the separation is ~0. No pitch defect to find, and none reported."
         }
       },
       "findings": {
@@ -117,7 +174,10 @@
         "feature_summary": "A-weighting (improvement #2) is the clear win: separation 0.294 (raw dBFS) -> 1.585 (dBA), 5.4x better, and interpretable -- the bad build sits 2.07 dBA from the original where the good build sits 0.48 dBA away. Mel spacing (improvement #1) moves 2 of 3 metrics the right way (centroid -18.613 -> -17.408, flatness 0.019 -> 0.022) and worsens rolloff (-75.441 -> -77.106), but every margin is small; ONE tune cannot establish whether that is a real gain or noise, so read it as unproven here rather than as either a win or a failure. Mel is separately proven correct in isolation -- it resolves a 100/200 Hz octave that linear spacing collapses to -0.0 Hz. Centroid and rolloff show NEGATIVE separation, which is a CONFOUND rather than anti-information: the good build carries more content (32 instruments vs 31, 48 bundles vs 47, 26.9 KB vs 20.8 KB), so more of the song plays and the whole-file spectral average shifts. A whole-file mean cannot separate 'wrong' from 'more complete' -- that is what improvement #4's windowed analysis exists to sidestep.",
         "does_not_address_onset_deficit": "Neither #1 nor #2 changes the 20-point onset deficit, and never could: both alter only the feature summary, leaving detect_onsets() on the unchanged linear path by design. onset_match_pct is identical before and after.",
         "mel_metrics_improved": 2,
-        "mel_metrics_total": 3
+        "mel_metrics_total": 3,
+        "windowed_discriminates_as_shipped": false,
+        "windowed_discriminates_without_silence": true,
+        "chroma_correct_null": true
       }
     }
   ]

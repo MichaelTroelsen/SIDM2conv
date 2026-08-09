@@ -18,7 +18,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sidm2.audio_listen import (MIN_WINDOWS_FOR_OUTLIER, WINDOW_OUTLIER_SIGMA, WINDOW_S,
+from sidm2.audio_listen import (AudioFeatures, _metric_scale, MIN_WINDOWS_FOR_OUTLIER, WINDOW_OUTLIER_SIGMA, WINDOW_S,
                                  _robust_spread, extract_features_windowed,
                                  format_windowed_diff_report, worst_window)
 
@@ -269,3 +269,55 @@ class TestReportShape(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestSparseMetricDoesNotWinByInfinity(unittest.TestCase):
+    """A metric that is zero in MOST windows must not score infinitely.
+
+    Found by running improvement #4 against the B13 calibration case rather
+    than against a synthetic fixture. `silence_frac` on real music is zero in
+    most windows and clearly nonzero in a few; its MEDIAN is therefore 0, which
+    drove _metric_scale() to 0 and the score to +inf. silence_frac then won the
+    ranking on EVERY real comparison -- flagging window 0 of both a known-good
+    and a known-bad build identically -- so RMS/centroid/rolloff/flatness were
+    never reached.
+
+    The synthetic fixtures could not catch this: they contain no silence at
+    all, so silence_frac was uniformly 0 on both sides, its deltas were all
+    zero, and the `if not dev.any(): continue` guard skipped it before the
+    scale was ever computed.
+    """
+
+    # Verbatim from Glyptodont, 60 s in 5 s windows (see
+    # pyscript/calibration_cases.json).
+    ORIG_SILENCE = [0.0905, 0.0, 0.0241, 0.0141, 0.0, 0.0020,
+                    0.0, 0.0, 0.0060, 0.0, 0.0, 0.0]
+
+    def _windows(self, silences):
+        return [(i * 5.0, AudioFeatures(
+            duration_s=5.0, rms_db_mean=-20.0, rms_db_max=-10.0,
+            silence_frac=s, centroid_hz_mean=1000.0, centroid_hz_std=10.0,
+            rolloff85_hz_mean=2000.0, zcr_mean=0.1, flatness_mean=0.2))
+            for i, s in enumerate(silences)]
+
+    def test_sparse_baseline_scores_finitely(self):
+        out = worst_window(self._windows(self.ORIG_SILENCE),
+                           self._windows([0.0] * len(self.ORIG_SILENCE)))
+        self.assertIsNotNone(out)
+        self.assertTrue(np.isfinite(out.score),
+                        f"sparse metric scored {out.score} -- it will win every ranking")
+
+    def test_metric_scale_is_nonzero_for_a_sparse_series(self):
+        sparse = np.array(self.ORIG_SILENCE)
+        self.assertEqual(float(np.median(np.abs(sparse))), 0.0)   # the trap
+        self.assertGreater(_metric_scale(sparse, np.zeros_like(sparse)), 0.0)
+
+    def test_genuinely_all_zero_baseline_still_uses_the_infinite_branch(self):
+        # The case the flat-baseline branch was written for must keep working:
+        # every window exactly zero on both sides except one.
+        n = 12
+        driver = [0.0] * n
+        driver[3] = 0.5
+        out = worst_window(self._windows([0.0] * n), self._windows(driver))
+        self.assertIsNotNone(out)
+        self.assertEqual(out.index, 3)
