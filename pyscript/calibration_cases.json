@@ -320,6 +320,154 @@
         "chroma_correct_null": true,
         "replicates_b13_findings": ["orders_correctly", "absolute_gate_usable=false", "best_feature=rms_dba_aweighted", "mel 2-of-3", "centroid/rolloff confound direction", "chroma correct null", "windowed worst-window window indices (3 for bad, 0 for good)"]
       }
+    },
+    {
+      "id": "cybernoid-sbc-carry-vibrato",
+      "tune": "SID/Tel_Jeroen/Cybernoid.sid",
+      "human_verdict": "Cybernoid's lead sounds wrong when vibrating",
+      "verdict_source": "docs/players/MON.md, 'Hard-won lessons' section: 'The siddump SBC carry bug (2026-06-30). Cybernoid's lead sounded wrong \"when vibrating\" although every register was byte-exact'; commit 699c878's message.",
+      "measured_on": "2026-08-09",
+      "note": "THIRD case, a DIFFERENT player family (MoN/Hawkeye engine, not Blackbird) and a DIFFERENT DEFECT CLASS -- a continuous pitch-modulation (vibrato width) bug, not a section-localized timing/envelope bug. Chosen specifically to test whether B13/E3e's findings (A-weighting dominant, chroma a correct null, windowed localizes well) are properties of THIS TOOLING or artifacts of testing only timing/percussive defects on one tune. Isolates the exact causal commit: 'bad' reverts ONLY sidm2/cpu6502_emulator.py's SBC carry fix (699c878, a clean 6-line diff) on top of current HEAD, in a throwaway worktree; 'good' is HEAD unmodified. Both otherwise use identical, current build tooling -- the tightest isolation of the three cases. Compares only the song's first 30s (build_mon_native_song.py's own part-splitting boundary for this file; part 1 is instr=16/bundles=50 on both sides, structurally identical, differing only in ~150 bytes of vibrato-table data) rather than B13/E3e's 60s, and this builder does not report a register-accuracy percentage the way Blackbird's does, so register_overall_pct is omitted rather than invented.",
+      "render": {
+        "renderer": "sidplayfp",
+        "seconds": 30,
+        "power_on_delay": 0,
+        "driver_init": "0x1000",
+        "driver_play": "0x1003"
+      },
+      "builds": {
+        "bad": {
+          "commit": "HEAD with sidm2/cpu6502_emulator.py's 699c878 fix reverted (git apply -R in a throwaway worktree)",
+          "commit_subject": "Reintroduces: SBC carry computed as `temp < 0x100` (always true for temp in [-256,255]), stuck SET, corrupting chained 16-bit SBC (SEC; SBC lo; SBC hi) such as MoN's vibrato table decode.",
+          "build_cmd": "py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Cybernoid.sid 0 30",
+          "artifact": "out/mon/Cybernoid_sub0_part01.sf2",
+          "note": "instr=16 bundles=50 filter=5, 15803 bytes."
+        },
+        "good": {
+          "commit": "HEAD",
+          "build_cmd": "py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Cybernoid.sid 0 30",
+          "artifact": "out/mon/Cybernoid_sub0_part01.sf2",
+          "note": "instr=16 bundles=50 filter=5, 15653 bytes -- same structure as bad, ~150 bytes differ (the vibrato table)."
+        }
+      },
+      "measurements": {
+        "onset_match_pct": {
+          "bad": 75.5,
+          "good": 79.8
+        },
+        "repeatability_floor_pct": {
+          "description": "Original vs a re-render of ITSELF at perturbed power-on delays, measured independently for this case (own script, own tune, 30s span).",
+          "min": 80.4,
+          "max": 100.0,
+          "samples": [
+            100.0,
+            96.4,
+            80.4
+          ]
+        },
+        "feature_separation": {
+          "description": "|delta(orig,bad)| - |delta(orig,good)| per feature, same 30 s sidplayfp delay=0 renders as onset_match_pct.",
+          "measured_on": "2026-08-09",
+          "by_metric": {
+            "rms_db_dbfs": {
+              "delta_bad": 0.313,
+              "delta_good": 0.892,
+              "separation": -0.579
+            },
+            "rms_dba_aweighted": {
+              "delta_bad": 0.719,
+              "delta_good": 0.707,
+              "separation": 0.011
+            },
+            "centroid_hz_linear": {
+              "delta_bad": 4.330,
+              "delta_good": 48.018,
+              "separation": -43.688
+            },
+            "centroid_hz_mel": {
+              "delta_bad": 4.664,
+              "delta_good": 47.718,
+              "separation": -43.054
+            },
+            "rolloff85_hz_linear": {
+              "delta_bad": 32.111,
+              "delta_good": 64.090,
+              "separation": -31.979
+            },
+            "rolloff85_hz_mel": {
+              "delta_bad": 34.461,
+              "delta_good": 66.244,
+              "separation": -31.783
+            },
+            "flatness_linear": {
+              "delta_bad": 0.004,
+              "delta_good": 0.013,
+              "separation": -0.009
+            },
+            "flatness_mel": {
+              "delta_bad": 0.012,
+              "delta_good": 0.012,
+              "separation": 0.000
+            }
+          }
+        },
+        "windowed": {
+          "description": "worst_window(), 5 s windows -- only 6 windows fit a 30s span (vs 12 for the two 60s cases), so this ranking rests on less evidence than the other two.",
+          "measured_on": "2026-08-09",
+          "window_s": 5.0,
+          "windows": 6,
+          "renderer": "sidplayfp, 30s, power_on_delay=0, driver-init 0x1000 driver-play 0x1003",
+          "result": {
+            "bad": {
+              "index": 3,
+              "start_s": 15.0,
+              "metric": "flatness",
+              "delta": -0.044,
+              "score": 1.225
+            },
+            "good": {
+              "index": 4,
+              "start_s": 20.0,
+              "metric": "centroid",
+              "delta": 118.166,
+              "score": 1.117
+            },
+            "silence_score_both_builds": 0.0,
+            "discriminates": true,
+            "note": "Weak signal, unlike B13/E3e's 2.2-3.9 scores: both builds barely clear the 1.0 outlier bar (1.225, 1.117), and by DIFFERENT metrics at DIFFERENT windows rather than the same shape both cases before this one showed. Consistent with the underlying defect being a CONTINUOUS, whole-song vibrato-width issue rather than a section-localized one -- there is no single worst section for a defect present everywhere, so windowing has little to grab onto here. Silence is still fully defanged (0.0 both sides), a third independent confirmation of the A1 fix."
+          }
+        },
+        "chroma": {
+          "description": "Unlike B13/E3e (percussive/timing defects with no pitch component), this defect IS a pitch phenomenon (vibrato width), so chroma is the metric expected a priori to respond.",
+          "measured_on": "2026-08-09",
+          "dominant": {
+            "orig": "D 0.16, A 0.13, D# 0.10",
+            "bad": "D 0.14, A 0.11, F 0.10",
+            "good": "D 0.17, A 0.13, F 0.11"
+          },
+          "l1_distance": {
+            "bad": 0.139,
+            "good": 0.067
+          },
+          "separation": 0.072,
+          "correct_null": false,
+          "note": "Chroma FIRES here, in contrast to being a correct null on both prior cases -- a wider vibrato sweeps notes further from their center pitch, spreading energy into adjacent pitch classes more than the correct-width vibrato does, so the bad build's chroma vector sits further from the original's. This is the complementary result to B13/E3e's 'correct null': three cases now show chroma responds when a defect IS pitch-related and stays quiet when it is not, which is what a working null-vs-signal metric is supposed to do."
+        }
+      },
+      "findings": {
+        "orders_correctly": true,
+        "absolute_gate_usable": false,
+        "summary": "Orders correctly again (75.5 < 79.8) and again has no usable absolute gate (both scores sit below the 80.4-100.0 floor, good only barely at 79.8 vs floor_min 80.4). But this case does NOT replicate B13/E3e's feature-summary story, and that is the point of building it: A-weighting's separation here is 0.011, essentially noise, not the 1.5-1.6x decisive win seen twice before. NONE of the 8 whole-file spectral/level metrics carry a real signal for this defect -- rms_dbfs, centroid, and rolloff are all NEGATIVE (confounded) and even the 'best' one (rms_dba) is indistinguishable from zero. The metric that DOES separate cleanly is chroma (0.072, comparable in scale to B13/E3e's best whole-file separations) -- because this defect, unlike the other two, is a pitch phenomenon. Windowing is also markedly weaker here (both scores barely clear 1.0, vs 2.2-3.9 before) because the defect is continuous across the whole song rather than localized to one section.",
+        "best_feature": "rms_dba_aweighted",
+        "aweighting_improves_separation": true,
+        "mel_improves_separation": true,
+        "feature_summary": "best_feature is technically rms_dba_aweighted (0.011) because it is the only non-negative value among the 8 metrics, but calling this a 'win' the way B13/E3e's 1.5-1.6x separations were would overstate it -- 0.011 dBA is within measurement noise, not a usable signal, and this case's real informative feature (chroma, 0.072) lives outside this metric set entirely. Mel spacing improves all 3 comparable metrics this time (centroid -43.688 -> -43.054, rolloff -31.979 -> -31.783, flatness -0.009 -> 0.000) -- a 3-of-3 pattern, not B13/E3e's 2-of-3, though again with small margins that a single tune cannot separate from noise. Centroid, rolloff, and (linear) flatness are all NEGATIVE, a CONFOUND: unlike the Blackbird cases this is not obviously a 'more recovered content' story (bad and good have the IDENTICAL instrument/bundle count, 16/50 -- only ~150 bytes of vibrato-table data differ), but the good build does recover slightly more onsets (252 vs 237 of 277 original), and a continuously-differing vibrato width plausibly perturbs the whole-file spectral average in ways uncorrelated with which build is 'more correct'.",
+        "mel_metrics_improved": 3,
+        "mel_metrics_total": 3,
+        "windowed_discriminates_as_shipped": true,
+        "chroma_correct_null": false,
+        "diverges_from_prior_cases": ["whole-file spectral features (rms_dbfs/dba/centroid/rolloff/flatness) carry no usable signal for this defect, unlike B13/E3e", "chroma is the informative feature here instead, exactly because this defect is pitch-related and the other two were not", "windowed worst-window scores are much weaker (barely above threshold) because the defect is continuous, not section-localized", "mel improves 3-of-3 metrics here vs 2-of-3 in both prior cases"]
+      }
     }
   ]
 }

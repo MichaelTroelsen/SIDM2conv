@@ -227,6 +227,29 @@ Ran the **audit-docs skill** first (`DOC-AUDIT.md`) rather than trimming on impr
    deliverable-status table below and the corresponding open question are both stale as of this
    correction.
 
+   **THIRD CASE ADDED (2026-08-09, later turn), now that the address bug above is fixed**:
+   `cybernoid-sbc-carry-vibrato`. Deliberately a different player family (MoN/Hawkeye engine, not
+   Blackbird) and a different DEFECT CLASS — a continuous pitch-modulation (vibrato width) bug
+   from the original A2 candidate, not a section-localized timing/envelope bug. Tightest isolation
+   of all three cases: 'bad' = current HEAD with only `sidm2/cpu6502_emulator.py`'s SBC-carry fix
+   (`699c878`) reverted via `git apply -R` in a throwaway worktree; 'good' = HEAD unmodified; both
+   otherwise identical, current tooling. **This case does NOT replicate B13/E3e's story, and that
+   is exactly its value**: orders correctly again (75.5<79.8) and again has no usable absolute gate
+   (floor 80.4-100.0), but A-weighting's separation here is 0.011 — noise, not the 1.5-1.6× decisive
+   win seen twice before. **None of the 8 whole-file spectral/level metrics carry a real signal**
+   for a vibrato-width defect (rms_dbfs/centroid/rolloff are all confounded-negative). The metric
+   that DOES separate cleanly is **chroma** (0.072, comparable in scale to the other cases' best
+   whole-file numbers) — because unlike B13/E3e this defect actually IS a pitch phenomenon, so
+   chroma correctly stops being a null and fires instead. `worst_window()`'s scores are also
+   markedly weaker (barely clear the 1.0 bar) because the defect is continuous across the whole
+   song rather than localized to one section, giving windowing little to grab onto. Silence is
+   still fully defanged (0.0/0.0) — a third independent confirmation the A1 fix generalizes. 14/14
+   manifest consistency checks passed on first write. **Net effect on the tooling's own
+   self-understanding**: "A-weighting is the strongest discriminator" and "chroma is a correct
+   null" were both artifacts of only having tested timing/percussive defects — three cases now
+   show the useful feature is defect-dependent, and chroma's null-vs-signal behavior is a real,
+   working distinction rather than a metric that never fires.
+
 3. **`docs/players/` still duplicates the accuracy figures.** Only CLAUDE.md's copy was compressed.
    `ACCURACY_MATRIX.md` + 21 player docs still both carry them. The duplication root cause is
    reduced, not eliminated.
@@ -369,27 +392,31 @@ review; all fell out of running against real material and checking against an ex
 ### Nothing is in-flight. Commit pending at the time of this edit (about to be made).
 - Previous snapshot: HEAD `fe9846b`, 2,065 passing. **Since then (2026-08-09, this turn)**:
   1. Fixed `worst_window()`'s silence_frac swamping (item A1, commit `11a64ec`).
-  2. Added a second calibration case (item A2, commit pending) — `blackbird-glyptodont-e3e-
+  2. Added a second calibration case (item A2, commit `0f3dae7`) — `blackbird-glyptodont-e3e-
      drums-not-tight`, which independently replicated every finding from the B13 case.
-  Tests now **2,069 passing** (net +4 from A1; A2 added no code, only a JSON manifest entry), 8
-  skipped, 2 xfailed, 0 failures.
-- Working tree kept clean throughout: TWO throwaway `git worktree` builds this turn (Blackbird at
-  `ef3263b`/`12c7da5` for A2, plus one abandoned Cybernoid/MoN attempt at `d946701`-era commit)
-  dirtied tracked generated files (`drivers_src/blackbird/*.inc`, `drivers_src/mon/*.inc`,
-  `drivers_src/romuzak/layout.inc`) — all reverted via `git checkout --`, confirmed via
-  `git status` before each commit. All throwaway worktrees removed after use.
+  3. Retracted the MoN silent-render "gap" (commit `b14fc87`) — it was my own wrong CLI address
+     (`--driver-play 0x1006` instead of `0x1003`), not a project bug.
+  4. Added a third calibration case (commit pending) — `cybernoid-sbc-carry-vibrato`, a different
+     player family AND a different defect class from the first two, which does NOT replicate
+     A-weighting's dominance or chroma's null behavior, and that divergence is itself the finding.
+  Tests now **2,069 passing** (net +4 from A1 only; A2/A3-case/correction added no code, only
+  JSON/docs), 8 skipped, 2 xfailed, 0 failures.
+- Working tree kept clean throughout: FOUR throwaway `git worktree` builds this turn (Blackbird at
+  `ef3263b`/`12c7da5` for the second case; Cybernoid/MoN at HEAD-with-699c878-reverted, built twice
+  — once abandoned on the wrong address, once successfully for the third case) dirtied tracked
+  generated files (`drivers_src/blackbird/*.inc`, `drivers_src/mon/*.inc`,
+  `drivers_src/romuzak/layout.inc`) on three separate occasions — all reverted via
+  `git checkout --`, confirmed via `git status` before each commit. All throwaway worktrees
+  removed after use; none left behind.
 - **Version 3.23.0** consistent across all four canonical places: `sidm2/__init__.py`,
-  `CHANGELOG.md`, `CLAUDE.md` header, `docs/reference/ACCURACY_MATRIX.md`. Not bumped for either
-  A1 or A2 (both are within the already-shipped listening tooling, not new features).
+  `CHANGELOG.md`, `CLAUDE.md` header, `docs/reference/ACCURACY_MATRIX.md`. Not bumped for any of
+  this turn's work (all within the already-shipped listening tooling, not new features).
 - **`tools/clap_venv` does NOT exist** (uninstalled). `clap_validate.py` degrades to a clear
   actionable error; its 19 tests still pass.
 - **`stash@{0}`** (SDI Stage B) is intact and untouched — pre-existing, not mine.
-- **RETRACTED (2026-08-09, later turn): there was no MoN-audio-rendering gap.** The prior finding
-  ("MoN-family SF2s render ~1s then go silent under sidplayfp") was **my own CLI mistake**, not a
-  project bug — see the correction under item A2 above for the root cause
-  (`--driver-play 0x1006`, the wrong script's constant, calls the driver's STOP routine every
-  frame instead of PLAY at `0x1003`). Re-verified with the correct address: full, normal, ~10s of
-  continuous audio, no silence. Nothing to fix, no gap to track.
+- **There is no MoN-audio-rendering gap** (see the correction under item A2 above). MoN-family
+  SF2s render fine via sidplayfp with the correct `--driver-play 0x1003` — proven twice now, once
+  as a standalone sanity check and again by building the full third calibration case on it.
 
 ### Deliverable status
 | Item | Status |
@@ -398,18 +425,20 @@ review; all fell out of running against real material and checking against an ex
 | SID2SID / WAV2WAV | **COMPLETE** — already worked, verified + documented |
 | Per-voice stem export | **COMPLETE**, wired to CLI + pipeline config |
 | Improvements #1–#5 | **COMPLETE**, all committed and tested |
-| Calibration against a human verdict | **COMPLETE, 2 cases**, second REPLICATES the first independently |
+| Calibration against a human verdict | **COMPLETE, 3 cases** — #2 replicates #1, #3 deliberately diverges (different defect class) and that divergence is informative |
 | CLAP | **REJECTED on measurement**, code kept, venv removed |
 | v3.23.0 release (CHANGELOG/STORY/version) | **COMPLETE** |
 | CLAUDE.md compression | **COMPLETE** (−21 %), audit in `DOC-AUDIT.md` |
-| `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against 2 independent cases |
-| MoN/Cybernoid audio-domain rendering | **RETRACTED — no gap, was my CLI mistake** (see above) |
+| `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against 3 independent cases across 2 player families |
+| MoN/Cybernoid audio-domain rendering | **CONFIRMED WORKING** — the earlier "gap" was a false lead, retracted |
 | Accuracy percentages verified | **NOT DONE — out of scope, routed to the falsify agent** |
 
 ### Open questions for the user
 1. Should `ACCURACY_MATRIX.md` or `docs/players/` be the single home for accuracy figures? Two
    copies remain.
-2. Now that MoN-family audio rendering is confirmed to work (`--driver-play 0x1003`), is a THIRD
-   calibration case worth building from the original Cybernoid SBC-carry-bug defect ("Cybernoid's
-   lead sounds wrong when vibrating", commit `699c878`)? Nothing blocks it now.
+2. The calibration set now shows the useful feature is defect-dependent (A-weighting/chroma for
+   B13/E3e, chroma alone for the vibrato case). Is it worth formalizing that into guidance
+   (e.g. "check chroma first for suspected pitch defects") somewhere users of the tool will see it
+   — `docs/guides/AUDIO_TIGHTNESS_GUIDE.md` or the module docstring — rather than leaving it only
+   in the calibration manifest?
 </current_state>
