@@ -340,34 +340,59 @@ reasons unrelated to the conversion. Both validators now drop notes whose window
 does not fit, using a `max(lag, 1)` margin so a `--lag 0` and a `--lag 1` run
 score the **same** note set and stay comparable.
 
-### The 16 that remain — characterised, not explained
+### The 16 that remain — both groups explained
 
-**11 of the 16 are two instruments losing 100% of their notes:**
+**11 of the 16 are two instruments failing completely**, and they fail for two
+different reasons. Both are cases where Driver 11 simply cannot express what
+HardTrack does.
 
-| file | voice | instrument | lost |
-|---|---|---|---|
-| `Ritual_II_tune_2` | 2 | 13 | **6 / 6** |
-| `Walk_to_Soul` | 1 | 3 | **5 / 5** |
+| file | voice | instr | lost | cause |
+|---|---|---|---|---|
+| `Ritual_II_tune_2` | 2 | 13 | 6 / 6 | program returns to base only past the window |
+| `Walk_to_Soul` | 1 | 3 | 5 / 5 | `$62` freezes the wave stepper |
 
-The other 5 are scattered singles (`Altered_States_Tune_2` ×2, `Love_tune_3` ×2,
-`For_Astoria_6` ×1) on instruments that otherwise score fine.
+**`Walk_to_Soul` — the `$62` freeze.** `$62` sets `$16D4`, which makes the player
+**skip the wave stepper from then on**, so the frequency stops being updated and
+holds whatever was last written. Its note 21 is followed by `$62` on the very
+next row, freezing the program before it can ramp away — so the base note,
+written at note-on, survives. Stage A has no freeze, runs the instrument's full
+descending ramp and settles at note+4.
 
-A whole-instrument failure is a specific tell, and the obvious correlate is
-**refuted**: it is *not* simply "the wave program settles on a non-zero arpeggio
-offset". Instruments settling on offsets 3, 5, 6, 7, 8, 9, 10, 24, 64 and 76 lose
-**nothing at all across 250 notes**. Only the two above (settling on +14 and +4)
-fail, and they fail completely.
+Measured exactly: notes immediately followed by `$62` lose **5.49% (5/91)**
+against **0.22% (11/5041)** for everything else — a **25× enrichment**, and the
+5 are precisely `Walk_to_Soul`'s. `$62` alone is not sufficient (86 of the 91 are
+kept) — it costs a note only when the instrument's program would otherwise wander
+far from the base pitch.
 
-**The mechanism is not established.** For `Walk_to_Soul` the original plays the
-bare note and holds it, while Stage A runs the instrument's full descending ramp
-and settles at note+4 — but the player's own `$FE` semantics (stop stepping, hold
-the last value) predict the original should hold note+4 too, which it does not.
-Something resets the frequency to the base note in the original and it is not in
-the wave stepper. Two candidate explanations have already been tested and
-refuted here — cross-pattern gate state, and the `$62` freeze — so this is
-recorded as an **open question** rather than a third guess.
+> **Correction.** An earlier pass reported this explanation as "tested and
+> refuted". That verdict was wrong: it came from a tagger that mapped onsets onto
+> pattern events with a cursor heuristic, which mis-aligned on this very file.
+> Recording the pattern byte-index at note time made the test exact and reversed
+> the result. Noted because the wrong verdict was published in the accuracy
+> matrix for two commits.
 
-11 notes across 2 files is 0.2% of the corpus, so the honest priority is low.
+**`Ritual_II_tune_2` — a long ramp.** Here the decode is provably right: an
+independent search over every cursor in the wave table found that the
+instrument's own field-4 cursor explains the observed output **9 of 9 steps**
+(`[79, 58, 58, 54, 54, 51, 51, 44, 44]`). The program does return to the base
+note — but only at its very end, around +16 frames, outside the 9-frame window.
+The original still scores because it plays the base note at **+0..+2**: HardTrack
+writes the bare note frequency at note-on and the wave program overwrites it from
+the next frame, whereas Driver 11 applies wave row 0 immediately and never has
+that sample.
+
+That note-on write is real, but it is **not on its own a predictor of loss**:
+44% of lost notes had an early (d≤2) original hit against 25% of kept notes — an
+enrichment, not a separation, since 1,281 kept notes also hit early. It is a
+contributing factor, not the mechanism.
+
+The remaining 5 losses are scattered singles (`Altered_States_Tune_2` ×2,
+`Love_tune_3` ×2, `For_Astoria_6` ×1) on instruments that otherwise score fine.
+
+**Neither group is fixable in Stage A.** Driver 11 has no equivalent of `$62`'s
+stepper freeze, and no way to sound the base pitch before the wave program takes
+over. Both are Stage B (native driver) material. 16 notes is 0.31% of the
+parser-resolved corpus.
 
 ### Where the +1 frame comes from — found
 
@@ -451,12 +476,7 @@ Two measurement traps this build walked into, both worth remembering:
 
 ## Next steps
 
-1. **Explain the two whole-instrument failures** (`Ritual_II_tune_2` instr 13,
-   `Walk_to_Soul` instr 3) — 11 of the 16 remaining losses, and the only Stage A
-   gap with a shape. `$62`-freeze and cross-pattern gate state were both tested
-   and refuted; the `$FE` "stop stepping" model does not predict what the
-   original actually plays, so start there.
-2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
+1. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
    not yet *modelled* in `simulate()` — doing so is what would let the fidelity
