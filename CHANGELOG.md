@@ -25,6 +25,87 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.24.0] - 2026-08-09
+
+### HardTrack Composer decoded - and a measurement that had to be split to mean anything
+
+The seventh-largest player family in HVSC's `MUSICIANS/` tree (1,126 tagged files, 45
+composers - a concentrated Polish-scene editor) had no support at all. This cycle adds the
+**RE stage**: a relocation-safe parser for HardTrack Composer (Longhair/Brush, Elysium
+1992), validated against the 38-file `SID/Shogoon/` corpus. There is deliberately **no
+converter yet** - no Stage A, no Stage B, nothing wired into `DriverSelector`.
+
+#### Added
+- `sidm2/hardtrack_parser.py`: module parser + frame-accurate sequencer simulation.
+  - **Orderlist**: pattern / `$80|t` transpose / `$FD n` jump / `$FE` halt / `$FF` restart.
+    Transpose is `(note + t) & $7F`, i.e. signed mod 128 - `$F4` is -12 semitones, not +116.
+  - **Pattern**: a byte *stream*, not a row grid. Note bytes carry a following instrument
+    byte; duration is expressed by a separate `$67 n` rest command. `$60/$61/$62` are
+    tie / gate-off / reset (each still consumes an instrument byte); `$63/$64` are
+    slide / portamento with one argument each.
+  - **Instruments**: 13 parallel 32-byte tables. Field 5 bit 7 means "the wave program
+    drives `$D400/$D401` absolutely"; bit 4 is hard restart; bits 0-1 a mode.
+  - Instrument byte `$00` means *keep the current instrument*, which is why the editor
+    writes `$80` for instrument 0 - a literal `$00` would mean "no change".
+  - 96-entry note frequency tables (entry 0 = C-0), per-subtune orderlist pointer and
+    speed tables, `AND #$07` in init capping subtunes at 8.
+  - Tempo: one self-modified global divider; a song row lands every `speed+1` frames.
+- `pyscript/hardtrack_validate.py`: corpus validator.
+- `pyscript/test_hardtrack_parser.py`: 21 tests (2069 -> 2090 total).
+- `docs/players/HARDTRACK.md`; rows in `docs/reference/ACCURACY_MATRIX.md`,
+  `docs/players/README.md` and CLAUDE.md's Known Limitations.
+- Tracked `SID/Shogoon/` (150 files) and `bin/hardtrack composer/-HARDTRACK 1.PRG`, so the
+  tests run from a fresh clone. The corpus is **mixed-player**: only 38 of its 150 files
+  are HardTrack (78 are GoatTracker, 23 DMC) - `tools/player-id.exe` gives the split.
+
+#### Relocation safety is not optional here
+The player code is fixed-layout but the editor packs song data of varying size and
+**patches the absolute operands**, so one table lives at `$198b` in `Love_tune_2`, `$1a35`
+in `Teekkno` and `$17ab` in `Jazzloor`. Two player variants also ship, differing by 5 bytes
+inside `init` (play at `init+$78` or `init+$7d`), and two corpus files do not load at
+`$1000` at all (`Timsoft_Intro` `$4000`, `Trance` `$a000`). Every address is therefore
+recovered by matching a byte signature against the player's own code. `load + constant`
+is wrong by construction, and would have been wrong silently.
+
+#### The measurement had to be split, not averaged
+Scoring is byte-exact against the frequency register: a modelled note-on counts only when
+the player's *own* frequency-table value reaches `$D400/$D401`. Reported as two columns:
+
+| | notes | match |
+|---|---|---|
+| sequencer-pitch (field 5 bit 7 clear) | 5,846 | **88.39%** |
+| program-driven (bit 7 set) | 1,074 | **2.61%** |
+
+Pooling them would report the unimplemented synth engine as a parser error, and the pooled
+figure would move whenever a tune's drum/melody mix changed. The flag partitions the
+corpus sharply enough to justify the split: 180 (file, instrument) pairs score 99.49% and
+76 score 0.61%, with only 19 anywhere in between. **8 of 33 decodable files are at exactly
+100.0%.**
+
+#### The residual is characterised, not hand-waved
+The remaining 11.6% is flat at 87.1-90.2% across all ten 100-frame buckets, so the
+sequencer walk does not drift over 1,000 frames x 33 files; the weak files are already
+weak in bucket 0. Instrument flag bits 0-1, 4, 5 and 6 were each tested and none of them
+partitions it (mode 0 = 86.96%, mode 2 = 88.67%), so it is not a second override flag. The
+surviving hypothesis - slide/portamento plus wave-program pitch modulation moving the
+register off the exact table value - is written down **as a hypothesis**, untested.
+
+#### Refusing beats guessing
+5 of the 38 corpus files raise `HardTrackError` instead of decoding: 4 contain several
+player instances (`Eternal`, `Fruitmania`, `Miecze_Valdgira_2`, `Zone_of_Darkness`) and
+one has a PSID init that is not the module entry (`Commercial_Fake`, `$2f01` vs `$1000`).
+Before that guard existed the simulator ran away on them and emitted a note on **every
+frame of every voice** - 2,997 phantom onsets scored against the wrong song.
+
+#### Measurement note worth keeping
+Matching siddump's note-**name** column scores this correct model at **0%**. Every
+instrument opens with a one-frame attack transient, so siddump reports `E-6` as the onset
+row for essentially every note regardless of pitch. Comparing the raw frequency register
+instead is what made the result readable at all - the same class of trap as the Matt Gray
+slide measurements.
+
+---
+
 ## [3.23.0] - 2026-08-09
 
 ### A way for the assistant to "listen" - and a calibration that says what it is worth

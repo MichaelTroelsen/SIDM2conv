@@ -1,14 +1,17 @@
 # SIDM2 Conversion Accuracy Matrix
 **Single Source of Truth for Accuracy Data**
 
-**Version**: 3.23.0
+**Version**: 3.24.0
 **Last Updated**: 2026-08-09
-**Figures last re-measured**: v3.22.0 — **unchanged in v3.23.0, and verified rather than assumed.**
-That release altered no conversion path: `git diff 3e42a8c..HEAD -- bin/ drivers_src/ sidm2/ scripts/`
-touched only measurement/rendering code plus two pure additions to `scripts/sid_to_sf2.py` and
-`sidm2/conversion_pipeline.py`, both wholly inside opt-in `--audio-export-voices` /
-`config.export_audio_voices` guards, with no deletions or edits to existing logic. Nothing that
-produces a number below was modified, so no number below moved.
+**Figures last re-measured**: v3.22.0 — unchanged in v3.23.0/v3.24.0 for every pre-existing row, and verified rather than assumed. The **HardTrack Composer** row is newly measured in v3.24.0.
+Neither release altered a conversion path. v3.23.0: `git diff 3e42a8c..0498d05 -- bin/ drivers_src/
+sidm2/ scripts/` touched only measurement/rendering code plus two pure additions to
+`scripts/sid_to_sf2.py` and `sidm2/conversion_pipeline.py`, both wholly inside opt-in
+`--audio-export-voices` / `config.export_audio_voices` guards, with no deletions or edits to
+existing logic. v3.24.0 added `sidm2/hardtrack_parser.py` as a **new file only** — no existing
+module was edited, and HardTrack is not wired into `DriverSelector`, so it cannot reach any
+conversion path at all. Nothing that produces a number below was modified, so no number below
+moved.
 **Status**: ✅ Production Reference — refreshed v3.22.0 (Blackbird/lft added), Matt Gray row
 added 2026-07-30. **15 ported player families** are now listed (the v3.14.0–v3.20.0 arrivals —
 Hubbard, DMC, Sound Monitor, SDI — had been missing since v3.13.0; Matt Gray, RE'd 2026-07-25,
