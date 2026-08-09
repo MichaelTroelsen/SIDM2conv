@@ -54,13 +54,70 @@
           "description": "Original vs a re-render of ITSELF at perturbed power-on delays. The metric's own noise band on this material -- nothing at or above it is evidence.",
           "min": 85.4,
           "max": 91.3,
-          "samples": [91.3, 85.4, 86.8]
+          "samples": [
+            91.3,
+            85.4,
+            86.8
+          ]
+        },
+        "feature_separation": {
+          "description": "|delta(orig,bad)| - |delta(orig,good)| per feature. POSITIVE means the known-bad build deviates from the original more than the known-good one does, i.e. the feature carries signal about the defect. NEGATIVE means it points the wrong way. Measured 2026-08-09 on the same 60 s sidplayfp delay=0 renders as onset_match_pct.",
+          "measured_on": "2026-08-09",
+          "by_metric": {
+            "rms_db_dbfs": {
+              "delta_bad": 1.144,
+              "delta_good": 0.85,
+              "separation": 0.294
+            },
+            "rms_dba_aweighted": {
+              "delta_bad": 2.068,
+              "delta_good": 0.483,
+              "separation": 1.585
+            },
+            "centroid_hz_linear": {
+              "delta_bad": 32.283,
+              "delta_good": 50.896,
+              "separation": -18.613
+            },
+            "centroid_hz_mel": {
+              "delta_bad": 33.218,
+              "delta_good": 50.626,
+              "separation": -17.408
+            },
+            "rolloff85_hz_linear": {
+              "delta_bad": 31.758,
+              "delta_good": 107.199,
+              "separation": -75.441
+            },
+            "rolloff85_hz_mel": {
+              "delta_bad": 31.027,
+              "delta_good": 108.132,
+              "separation": -77.106
+            },
+            "flatness_linear": {
+              "delta_bad": 0.024,
+              "delta_good": 0.005,
+              "separation": 0.019
+            },
+            "flatness_mel": {
+              "delta_bad": 0.037,
+              "delta_good": 0.015,
+              "separation": 0.022
+            }
+          }
         }
       },
       "findings": {
         "orders_correctly": true,
         "absolute_gate_usable": false,
-        "summary": "The metric ranks the known-bad build below the known-good one (56.9 < 64.7), so it has ORDINAL sensitivity. It has no usable ABSOLUTE calibration: a 99.8%-register-exact build with 162/162 note-ons still scores 64.7%, more than 20 points below the 85-91% original-vs-itself floor. Any threshold that flags the known-bad build also flags the known-good one. Further, the 7.8-point gap between builds is comparable to the floor's own 5.9-point spread, so a single A/B run cannot separate them confidently."
+        "summary": "The metric ranks the known-bad build below the known-good one (56.9 < 64.7), so it has ORDINAL sensitivity. It has no usable ABSOLUTE calibration: a 99.8%-register-exact build with 162/162 note-ons still scores 64.7%, more than 20 points below the 85-91% original-vs-itself floor. Any threshold that flags the known-bad build also flags the known-good one. Further, the 7.8-point gap between builds is comparable to the floor's own 5.9-point spread, so a single A/B run cannot separate them confidently.",
+        "best_feature": "rms_dba_aweighted",
+        "aweighting_improves_separation": true,
+        "mel_improves_separation": true,
+        "feature_summary": "A-weighting (improvement #2) is the clear win: separation 0.294 (raw dBFS) -> 1.585 (dBA), 5.4x better, and interpretable -- the bad build sits 2.07 dBA from the original where the good build sits 0.48 dBA away. Mel spacing (improvement #1) moves 2 of 3 metrics the right way (centroid -18.613 -> -17.408, flatness 0.019 -> 0.022) and worsens rolloff (-75.441 -> -77.106), but every margin is small; ONE tune cannot establish whether that is a real gain or noise, so read it as unproven here rather than as either a win or a failure. Mel is separately proven correct in isolation -- it resolves a 100/200 Hz octave that linear spacing collapses to -0.0 Hz. Centroid and rolloff show NEGATIVE separation, which is a CONFOUND rather than anti-information: the good build carries more content (32 instruments vs 31, 48 bundles vs 47, 26.9 KB vs 20.8 KB), so more of the song plays and the whole-file spectral average shifts. A whole-file mean cannot separate 'wrong' from 'more complete' -- that is what improvement #4's windowed analysis exists to sidestep.",
+        "does_not_address_onset_deficit": "Neither #1 nor #2 changes the 20-point onset deficit, and never could: both alter only the feature summary, leaving detect_onsets() on the unchanged linear path by design. onset_match_pct is identical before and after.",
+        "mel_metrics_improved": 2,
+        "mel_metrics_total": 3
       }
     }
   ]

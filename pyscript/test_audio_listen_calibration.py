@@ -123,6 +123,77 @@ class TestRecordedFindingsAreInternallyConsistent(unittest.TestCase):
                                 f"the recorded finding no longer holds, re-check the doc")
 
 
+class TestFeatureSeparationFindings(unittest.TestCase):
+    """The per-feature findings must follow from the recorded separations.
+
+    Same guard as the onset findings: a re-measure that changes the numbers
+    without revisiting the conclusions has to fail here rather than leave a
+    stale claim in the manifest.
+    """
+
+    def setUp(self):
+        self.data = load_manifest()
+
+    def _sep(self, case):
+        return {k: v['separation']
+                for k, v in case['measurements']['feature_separation']['by_metric'].items()}
+
+    def test_separation_matches_its_own_deltas(self):
+        for case in self.data['cases']:
+            for name, m in case['measurements']['feature_separation']['by_metric'].items():
+                # places=2, not 3: the deltas are stored rounded to 3 dp, so
+                # their difference carries up to 0.002 of rounding error against
+                # a separation computed at full precision. Demanding 3 dp here
+                # fails on arithmetic rather than on a wrong claim.
+                self.assertAlmostEqual(
+                    m['separation'], m['delta_bad'] - m['delta_good'], places=2,
+                    msg=f"{case['id']}/{name}: separation is not delta_bad - delta_good")
+
+    def test_best_feature_really_is_the_best(self):
+        for case in self.data['cases']:
+            sep = self._sep(case)
+            claimed = case['findings']['best_feature']
+            self.assertEqual(claimed, max(sep, key=sep.get),
+                             f"{case['id']}: best_feature={claimed} is not the highest separation")
+
+    def test_aweighting_claim_matches_the_numbers(self):
+        for case in self.data['cases']:
+            sep = self._sep(case)
+            claimed = case['findings']['aweighting_improves_separation']
+            self.assertEqual(claimed, sep['rms_dba_aweighted'] > sep['rms_db_dbfs'],
+                             f"{case['id']}: aweighting claim disagrees with the separations")
+
+    def test_mel_improvement_count_is_accurate(self):
+        # The recorded COUNT is the claim under test, not a yes/no verdict.
+        # Mel wins 2 of 3 here, all by small margins -- a binary "improves"
+        # field would have to round that into a story the numbers do not
+        # support either way, which is how the first version of this manifest
+        # got it wrong (recorded false, arithmetic said majority-true).
+        bases = ('centroid_hz', 'rolloff85_hz', 'flatness')
+        for case in self.data['cases']:
+            sep = self._sep(case)
+            better = sum(1 for b in bases if sep[f'{b}_mel'] > sep[f'{b}_linear'])
+            self.assertEqual(case['findings']['mel_metrics_improved'], better,
+                             f"{case['id']}: mel_metrics_improved disagrees with the numbers")
+            self.assertEqual(case['findings']['mel_metrics_total'], len(bases))
+            self.assertEqual(case['findings']['mel_improves_separation'],
+                             better > len(bases) / 2,
+                             f"{case['id']}: mel_improves_separation disagrees with the count")
+
+    def test_confounded_metrics_are_called_out(self):
+        # Any metric with negative separation is actively misleading if quoted
+        # alone, so the summary must say something about it rather than list it
+        # silently beside the useful ones.
+        for case in self.data['cases']:
+            sep = self._sep(case)
+            negative = [k for k, v in sep.items() if v < 0]
+            if negative:
+                summary = case['findings']['feature_summary'].lower()
+                self.assertIn('confound', summary,
+                              f"{case['id']}: {negative} have negative separation but the "
+                              f"summary does not explain it")
+
+
 @unittest.skipUnless(os.environ.get(AUDIO_ENV),
                      f"set {AUDIO_ENV}=1 (and build the artifacts) to re-measure")
 class TestReMeasureFromAudio(unittest.TestCase):

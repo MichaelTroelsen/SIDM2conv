@@ -79,13 +79,51 @@ number, and which way -- not a verdict on whether a build sounds right.
    this case shows the whole-mix number needs it just as much.
 2. **The floor must be measured per tune.** 85-91% here is not a constant; it depends on
    note density and material.
-3. **Improvements #1 (mel-scale) and #2 (A-weighting) have a target now.** If either
-   narrows the 20-point systematic deficit between a near-perfect build and the original,
-   that is measurable progress against a real case rather than a plausible-sounding
-   change. This manifest is how that gets checked.
-4. **One case is not a calibration set.** The manifest is append-only by design and needs
+3. **One case is not a calibration set.** The manifest is append-only by design and needs
    no new test code per case; the next time a human's verdict disagrees with a metric,
    it belongs in there.
+
+## Improvements #1 and #2 measured against this case
+
+An earlier version of this document said #1 (mel-scale) and #2 (A-weighting) "have a
+target now: narrow the 20-point systematic deficit." **That was wrong and is retracted.**
+Neither can narrow it, by construction: both change only the feature summary, and
+`detect_onsets()` stays on the unchanged linear path deliberately. The onset numbers
+above are identical before and after. What the two CAN be judged on is whether their
+features separate the known-bad build from the known-good one better than the old ones.
+
+Separation = `|delta(orig,bad)| - |delta(orig,good)|`. Positive means the bad build
+deviates more, i.e. the feature carries signal about the defect.
+
+| feature | \|Δ bad\| | \|Δ good\| | separation |
+|---|---:|---:|---:|
+| raw dBFS level | 1.144 | 0.850 | +0.294 |
+| **A-weighted dBA level** | 2.068 | 0.483 | **+1.585** |
+| flatness (linear) | 0.024 | 0.005 | +0.019 |
+| flatness (mel) | 0.037 | 0.015 | +0.022 |
+| centroid (linear) | 32.283 | 50.896 | -18.613 |
+| centroid (mel) | 33.218 | 50.626 | -17.408 |
+| rolloff85 (linear) | 31.758 | 107.199 | -75.441 |
+| rolloff85 (mel) | 31.027 | 108.132 | -77.106 |
+
+**#2 (A-weighting) is a clear win.** 0.294 -> 1.585, 5.4x better separation, and the
+values are interpretable: the bad build sits 2.07 dBA from the original where the good
+build sits 0.48 dBA away. This is the strongest single discriminator measured on this
+case, and it was validated against a human verdict rather than a synthetic tone.
+
+**#1 (mel-scale) is unproven here.** It moves 2 of 3 metrics the right way (centroid,
+flatness) and worsens rolloff, all by small margins. One tune cannot separate that from
+noise, so it is neither a win nor a failure on this evidence. Mel remains separately
+proven correct in isolation -- it resolves a 100/200 Hz octave that linear spacing
+collapses to `-0.0 Hz` -- which is a different claim from "it helps on this case."
+
+**Centroid and rolloff have NEGATIVE separation, and that is a confound, not
+anti-information.** The good build carries more content (32 instruments vs 31, 48 bundles
+vs 47, 26.9 KB vs 20.8 KB), so more of the song plays and the whole-file spectral average
+shifts. A whole-file mean cannot tell "wrong" from "more complete." Quoting either metric
+alone on a build pair of unequal completeness would actively mislead; this is exactly the
+confound improvement #4's windowed analysis exists to sidestep, and re-running this case
+through `--windowed` is the obvious next step.
 
 ## Regenerating
 
