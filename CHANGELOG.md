@@ -23,6 +23,108 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+### HardTrack Composer Stage B - a native build that replays the synth engine instead of modelling it
+
+Stage A transpiles to stock Driver 11 and retains 99.69% of the notes the parser
+resolves. Everything it loses is a thing Driver 11 cannot express, and the list was
+already written down: `$62`'s wave-stepper freeze, the note-on base-frequency write,
+the pulse sweep, `$63`/`$64` slide/portamento, the global filter sweep, and the whole
+program-driven column (instrument field 5 bit 7) which Stage A scores 2.64% on **by
+construction**. Stage B dissolves that list at once by not modelling any of it: the
+per-frame wave / pulse / FM / filter programs are CAPTURED from the original's own
+siddump output, so whatever the synth engine did is what the driver replays.
+
+#### Added
+- `bin/build_hardtrack_native_song.py`: Stage B builder. **No new driver** - a
+  MON-compatible shim feeds `build_mon_native_song.build_native_song`, the same
+  trace-driven engine behind Hawkeye / Hubbard / DMC / Sound Monitor / SDI / Future
+  Composer. Second reuse of that pipeline for a new player, which is what it is for.
+- `sidm2/hardtrack_parser.voice_events()` + `Event`: the per-voice sequencer event
+  walk the shim is built on. It is a HOOK INTO `simulate()`, not a second state
+  machine - a duplicated sequencer walk is what mis-attributed the Stage A losses
+  once already.
+- `pyscript/hardtrack_native_sweep.py`: corpus sweep, self-contained (it invokes the
+  builder itself and parses that same call's output), so the numbers reproduce from
+  a fresh clone.
+- `pyscript/test_hardtrack_native.py` (22 tests): the event-walk invariants and the
+  shim protocol, none of which need a trace, an assembler or SF2II.
+
+#### Fixed / changed (shared engine)
+- `build_mon_native_song` gained `_fm_scale_ok(m)` and the shim flag `no_fm_scale`.
+  The driver marks a SCALED (pitch-proportional vibrato) FM entry by a `$40`-`$43`
+  offset HIGH byte, so a song whose real Hz deltas reach that range cannot have the
+  marker on. Hubbard's drum dives hit it first, which is why `hard_restart` implied
+  it - but HardTrack needs the opt-out WITHOUT Hubbard's kill-ADSR engine, so the two
+  are now separate flags. Symptom: a `$4300` drum delta in Love_tune_2's voice 2 was
+  read as a vibrato leg and dropped, freezing the note at the wrong absolute frequency
+  for its whole tail **while its waveform stayed byte-exact** - a defect no waveform
+  metric can see. Shims that do not set the flag are byte-unaffected.
+
+#### Three sequencer facts, each found by measuring
+- **Event timelines must tile from tick 0.** `build_native_song` places event *k* at
+  tick `sum(dur[:k])`, so a voice whose pattern opens with a `$67` rest and whose list
+  therefore starts at tick 4 gets slid 4 ticks earlier for the entire song. Measured
+  before the fix: Love_tune_2 voices 1 and 2 ran 10 and 20 frames early from bar one.
+- **`$61` gate-off is folded into the preceding note, not emitted as a rest.**
+  HardTrack keeps stepping the wave program after the gate clears, so a voice goes on
+  ARPEGGIATING through its release (Love_tune_2 voice 1: 150 frames per phrase at
+  `wf $40`, gate off). A rest idled the driver and threw the tail away; inside the
+  preceding note's capture the gate bit is just another `$D404` byte and it replays
+  verbatim. Voice-1 raw freq 53.7% -> 77.9% on that change alone.
+- **The note-on is a 2-frame pipeline.** A row dispatched on frame G leaves the
+  PREVIOUS note's frequency in `$D400` on G and G+1; the gate rises on G+2. For a
+  re-triggered note `snap_gate` finds that rise by itself, so the offset is a no-op -
+  but a note the part window re-enters mid-flight has no gate rise to snap to and
+  replays its capture two frames early for its whole length. Swept, not assumed:
+  `HT_PIPE=2` beats 0 and 3 on fidelity AND drops the part count 8 -> 6, which a
+  fitted parameter would not do.
+
+#### `$6F` legato needed no mechanism at all
+Stage A had to invent a duplicate instrument slot for it. Stage B treats it as an
+ordinary note-on: the driver does restart a wave program, but the program it restarts
+is that note's OWN capture, which already begins wherever the original's program had
+got to. The feature disappears into the method.
+
+#### Fidelity, and the one frame that can never match
+Per-frame frequency (nearest semitone) vs the original, `Love_tune_2`, full 117 s,
+6 parts: raw 92.8 / 92.9 / 95.1%, audible (original's gate on) 88.2 / 77.3 / 91.5%.
+**Read the attribution column first**: 419 of voice 0's 421 misses, 400 of 400 on
+voice 1 and 265 of 285 on voice 2 are the driver's own note-on frame, where it holds
+the note's base pitch while HardTrack still has the previous note's frequency. That
+frame cannot match and is not a conversion error - and the builder counts how many
+carry the SID **TEST** bit, which resets the oscillator and makes the frame silent:
+essentially all of them (418/419, 400/400, 265/265). Net of it, Love_tune_2 loses
+**2 / 12 / 20 frames of 5,841 per voice** = 99.97 / 99.79 / 99.66%.
+
+The count is reported, never excluded. Dropping frames selected by a rule that
+correlates with mismatch is how a metric launders itself, so both percentages are
+printed side by side and the sweep prints the net figure with its own denominator.
+
+#### Corpus: all 33 decodable files build (60 s window, 195 parts)
+raw **91.04%** (n=277,392), audible **88.25%** (n=157,356). Of 24,840 misses, **15,575
+are the driver's note-on frame** (15,203 under the TEST bit); net of it, **9,265 of
+277,392 frames = 3.34%**, i.e. **96.66%**. Three files at exactly zero net misses
+(`Muza_Do_Dema`, `Something_to_Eat`, `Teekkno`), **15 of 33 below 0.5%, 22 below 2%**.
+The tail is real and unexplained: `Fun_Factory` 27.96%, `Tribute_to_Laxity` 16.40%
+(the odd third player variant, whose instrument stride is `instrument_count_verified
+== False`), `Griffin_Score` 15.95%. Three of the worst five are also the highest part
+counts, which is a lead, not a finding.
+
+**Refusals are 6, not 5** — the signature scan also finds `Dune_Cover` (PSID init
+`$4000` != module entry `$0900`) and declines it; `player-id` calls that file
+Comer/Digi, so the "38 HardTrack files" corpus count is unchanged. And the sweep's
+first run reported **"117 refused"**, because a non-HardTrack file raises the same
+exception type as a genuine refusal and `SID/Shogoon/` is mixed-player: 112
+GoatTracker/DMC files were being counted as HardTrack failures. A refusal count is
+only meaningful against the right denominator.
+
+#### Not done, deliberately
+Stage B output is **not editable in the Stage A sense** (captured programs are
+unrolled per note); it **windows** into parts, and part count is a density measure,
+not an accuracy one; **no SF2II play-test or listening pass** has been run - PLAYBOOK
+Sec.4 rungs 3 and 4 are open, and headless metrics have overstated before; and
+`DriverSelector` is untouched, exactly as for Stage A.
+
 ---
 
 ## [3.24.0] - 2026-08-09

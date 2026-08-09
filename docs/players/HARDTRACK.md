@@ -1,9 +1,11 @@
 # HardTrack Composer — SID → SF2 support
 
-**Status: RE + Stage A.** The module format is decoded, relocation-safe, and
-validated against siddump; a **Stage A transpile to an editable Driver 11 SF2**
-now exists (`bin/hardtrack_to_sf2.py`). No Stage B (native driver), and nothing
-is wired into `DriverSelector` — Stage A is a `bin/` tool, not a default path.
+**Status: RE + Stage A + Stage B.** The module format is decoded,
+relocation-safe, and validated against siddump; a **Stage A transpile to an
+editable Driver 11 SF2** exists (`bin/hardtrack_to_sf2.py`), and a **Stage B
+native build** (`bin/build_hardtrack_native_song.py`) replays the synth engine
+from a per-frame capture instead of modelling it. Nothing is wired into
+`DriverSelector` — both are `bin/` tools, not a default path.
 
 **Format:** HardTrack Composer, a native C64 music editor released **1992** under
 Elysium by the Polish sceners **Longhair (Miłosz Ignatowski)** — replay routine —
@@ -23,11 +25,14 @@ give you table addresses.
 split with `tools/player-id.exe "SID/Shogoon/*.sid"`; do not assume the directory
 is single-player.
 
-**Code:** parser `sidm2/hardtrack_parser.py` · Stage A `bin/hardtrack_to_sf2.py`
-· validators `pyscript/hardtrack_validate.py` (parser) and
+**Code:** parser `sidm2/hardtrack_parser.py` · synth engine
+`sidm2/hardtrack_synth.py` · Stage A `bin/hardtrack_to_sf2.py`
+· validators `pyscript/hardtrack_validate.py` (parser, onset),
+`pyscript/hardtrack_synth_validate.py` (registers, per-frame) and
 `pyscript/hardtrack_stagea_validate.py` (Stage A) · loss attribution
 `pyscript/hardtrack_attribute.py` · tests
-`pyscript/test_hardtrack_parser.py` (28) + `pyscript/test_hardtrack_to_sf2.py` (12).
+`pyscript/test_hardtrack_parser.py` (28) + `pyscript/test_hardtrack_to_sf2.py` (12)
++ `pyscript/test_hardtrack_synth.py` (22).
 
 ---
 
@@ -145,12 +150,20 @@ is flagged via `instrument_count_verified == False` rather than silently trusted
 | 3 | **pulse-sweep** program start cursor |
 | 4 | **waveform/arpeggio** program start cursor |
 | 5 | **flags** — bit 7 = program drives frequency absolutely, bit 4 = hard restart, bits 0–1 = mode |
-| 8 | low nibble + high nibble ×2 → two synth counters |
-| 9 | copied to the per-voice parameter block |
-| 10, 11 | synth-program parameters |
+| 6 | filter program start cursor (self-modified into `$158f`) |
+| 7 | filter resonance/mode base (self-modified into `$15b2`) |
+| 8 | **vibrato**: low nibble = frames per direction, high nibble ×2 = onset delay |
+| 9 | **vibrato depth** (added to / subtracted from the frequency low byte) |
+| 10 | vibrato depth **increment** per half-cycle |
+| 11 | vibrato depth **limit** — once reached, the depth stops growing |
+| 12 | filter routing/enable nibbles → `$D417` |
 
-Fields 6, 7 and 12 are **not yet identified** and are deliberately left unnamed in
-`Instrument.raw` rather than guessed at.
+Fields 6, 7 and 12 were unidentified for the whole of the decode arc and are now
+read off their consumers at `$13b3`, `$13b9` and `$138f`: all three are the
+**filter**, which is why nothing that measured `$D400`–`$D404` could see them.
+Fields 8–11 are the vibrato engine (`$14df`–`$1530`), not generic "synth
+parameters" — the depth *ramps* toward field 11 in steps of field 10, which is
+what gives HardTrack's vibrato its delayed swell.
 
 Fields 3 and 4 were **swapped** in the first cut. Note the test that found it: a
 plausibility check ("do these bytes look like SID control values?") scored *both*
@@ -162,15 +175,27 @@ stepping the waveform table.
 
 Two `$FF`-terminated step lists per instrument, both with a `$FF <index>` jump:
 
-- **Waveform/arpeggio** — a pair of parallel tables walked by one cursor. The
-  first supplies the `$D404` control byte; the second is an arpeggio offset added
-  to the current note, *or* the absolute frequency high byte when the
-  instrument's bit 7 is set. This is the mechanism behind the "program-driven"
-  column in the fidelity table.
+- **Waveform/arpeggio** — a pair of parallel tables walked by one cursor, one
+  step per frame. The first supplies the `$D404` control byte; `$FF` jumps (the
+  target is in the second column) and **`$FE` stops the stepper**. The second
+  column has three readings and the branch order at `$1474`–`$1497` decides
+  which: with the instrument's bit 7 set it is written **straight into `$D401`**
+  with `$D400` cleared (the "program-driven" column); otherwise `$80+` is an
+  **absolute note index** (`& $7F`) and anything below is a **relative semitone**
+  added to the sounding note. Masking that column with `$7F` destroys the
+  absolute encoding.
 - **Pulse sweep** — `[value][frames]` pairs where `value & $FE` is the step
   magnitude and **bit 0 is the direction** (0 = up, 1 = down), applied to
   `$D402/$D403` each frame. A decoder that ignores bit 0 sweeps every instrument
   upward.
+
+⚠️ **A running waveform program suppresses vibrato and slides entirely.** The
+stepper at `$1454` ends in `JMP $1553` — straight to the register write, jumping
+over the slide/vibrato block at `$14a5`. So `$63`/`$64` and the field-8–11
+vibrato only reach the frequency once the wave program has stopped itself with
+`$FE` or been frozen by the pattern's `$62`. This is a property of the player,
+and it is why the wave program's arpeggio offset — not the sequencer note — is
+what the frequency register actually shows for most of a note's life.
 
 The **global filter sweep** is a third, song-level program (`[cutoff][delay]`
 with a `$80 <index>` jump) writing `$D416`. Its cursor lives in self-modified
@@ -234,6 +259,87 @@ mode 2 = 88.67%), so it is **not** a second override flag. The leading remaining
 candidate is the slide/portamento commands `$63`/`$64` plus wave-program pitch
 modulation moving the register off the exact table value; that is untested and
 stated here as a hypothesis, not a finding.
+
+→ **That hypothesis is now confirmed** — see the next section. Modelling the
+wave program removes essentially the whole residual, and the mechanism is the
+one guessed at here: the arpeggio column, not the sequencer note, is what the
+frequency register holds for most of a note's life.
+
+---
+
+## Register-level fidelity — the synth engine modelled
+
+`py -3 pyscript/hardtrack_synth_validate.py "SID/Shogoon/*.sid" -t 20`
+
+The onset measurement above asks "did the sequencer's note reach `$D400/$D401`
+within 8 frames". `sidm2/hardtrack_synth.py` asks the question one level down:
+**predict the SID register file every frame and compare it byte for byte**. That
+removes both weaknesses at once — there is no settle window to quote, and the
+program-driven instruments are scored on what they actually write instead of on
+a sequencer pitch that never gets there.
+
+`simulate_registers()` is a transcription of the play routine, not a model of
+it: the three-frame note-on pipeline, the waveform/arpeggio stepper, the
+pulse-width sweep, the vibrato engine, `$63`/`$64` and the `$62` freeze. Every
+branch is annotated with the address it came from so it can be diffed against a
+disassembly. The filter is **not** modelled (it writes no register measured here).
+
+**20 s, all 33 decodable files, 97,806 voice-frames:**
+
+| | frames | byte-exact |
+|---|---|---|
+| **frequency** `$D400/$D401` — layout-seeded files (18) | 53,569 | **99.98%** |
+| &nbsp;&nbsp;• sequencer-pitch instruments | 47,440 | **99.97%** |
+| &nbsp;&nbsp;• **program-driven** instruments (bit 7) | 6,129 | **100.00%** |
+| **waveform** `$D404` — seeded | 53,569 | **100.00%** |
+| **pulse width** `$D402/$D403` — seeded | 53,569 | **100.00%** |
+| frequency — unseeded files (15, second player build) | 44,237 | 99.15% |
+| waveform — unseeded | 44,237 | **100.00%** |
+
+**16 of the 18 seeded files are exactly 100.0% on all three registers.** The
+program-driven column moved from **2.64% to 100.00%** — it was never a fidelity
+figure, it was the score for predicting the wrong thing.
+
+### Why the two populations are never pooled
+
+The player's per-voice variables live **inside the loaded module image**, so
+their power-on values are the bytes the editor saved there — the player's live
+state at export — not zero. Assuming zero makes the first note of every voice
+take the wrong branch at `$11bf`/`$12e2`, which spends one extra vibrato tick and
+leaves that voice a frame out of phase **until the next note-on resyncs it**.
+That single frame was the whole of the startup residual.
+
+`ram_layout_base()` recovers the block by signature and **verifies it against
+three independent anchors** (the abs-flag store's destination plus both stepper
+cursors) before seeding anything. It succeeds on 18 files. The other 15 are the
+second shipped player build, whose variable allocation genuinely differs —
+everything past the abs-flag sits 3 bytes lower and `vib_depth`/`pending_note`
+swap between the voice block and the module header, so it is a different
+allocation, not an offset. Those run unseeded, are correct from their first
+note-on onward, and are reported as a **separate line** rather than averaged in.
+
+### What is left
+
+12 frames on `Teekkno` and 1 on `Domagareflexow` — 0.02% of the seeded set, in
+four 3-frame clusters where the frequency *high* byte is wrong and the low byte
+is right. Unexplained; recorded rather than rationalised.
+
+### Alignment was measured, not fitted
+
+Offset 0 against siddump is a sharp peak, not a plateau: frequency scores
+**100.0%** at offset 0 and 50.1% / 51.7% at ∓1 frame. `test_siddump_frame_
+alignment_is_zero_not_fitted` pins that, so the alignment can never be quietly
+tuned to flatter a future change.
+
+### A parser bug this found
+
+`pulse_table` was read from signature **+6** — the `lda ABS,y` *opcode* byte, not
+its operand. It pointed outside the module on every file in the corpus, so
+`pulse_program()` returned a full-length series of zeroes, which reads exactly
+like a valid program that holds the pulse width still. Nothing caught it because
+nothing scored `$D402/$D403` until now; with `+7` the pulse register goes from
+**8.7% to 100.0%** on `Zakplus`. `test_pulse_table_lands_inside_the_module`
+now asserts the table is in range for every decodable file.
 
 ---
 
@@ -492,15 +598,197 @@ Two measurement traps this build walked into, both worth remembering:
 
 ---
 
+## Stage B — native driver (trace-driven)
+
+```
+py -3 bin/build_hardtrack_native_song.py SID/Shogoon/Love_tune_2.sid   # -> out/hardtrack_native/
+py -3 pyscript/hardtrack_native_sweep.py -t 60                         # corpus sweep
+```
+
+Stage B adds **no new driver**. A MON-compatible shim (`HardTrackShim`) feeds
+`bin/build_mon_native_song.build_native_song` — the same trace-driven engine
+behind Hawkeye / Hubbard / DMC / Sound Monitor / SDI / Future Composer — and
+`emit_one` assembles MoN's driver. This is the cheapest shape of Stage B in the
+project and the second time it has been reused for a new player (FC was the
+first), which is the point: the expensive part of Stage B is meant to be
+written once.
+
+**Only the sequencer crosses the shim boundary**: notes, tick durations,
+instrument indices, all from `hardtrack_parser.voice_events()`. Every timbre
+decision — waveform steps, pulse width, pitch modulation, filter cutoff — comes
+from a **per-note capture of the original's own siddump output**. Nothing here
+re-implements HardTrack's synth engine; it replays it. That is what dissolves
+the entire Stage A loss list at once: `$62`'s stepper freeze, the note-on base
+frequency, the pulse sweep, `$63`/`$64` slide/portamento, the global filter
+sweep and the program-driven (field-5 bit 7) column are all just frames in the
+capture.
+
+> This is **captured, not modelled** — the PLAYBOOK distinction. It is exact for
+> the window it was captured over and it is *not* a compact re-encoding of the
+> player's tables, which is why a dense tune windows into many parts. Now that
+> `hardtrack_synth.simulate_registers()` predicts those registers, a Stage C
+> structural build that emits HardTrack's own looping programs instead of
+> unrolled captures is a real option; Stage B does not attempt it.
+
+### The three sequencer facts the shim depends on
+
+1. **A row lands every `speed+1` frames, and rows tile the timeline.** Each
+   voice's event list must be contiguous from tick 0 — `voice_events` inserts a
+   leading rest for a voice whose pattern opens with `$67`, and gives the last
+   event the rest of the window. `build_native_song` places event *k* at tick
+   `sum(dur[:k])`, so a gap slides everything after it earlier for the whole
+   song. Measured before the fix: Love_tune_2's voices 1 and 2 played 10 and 20
+   frames early from the first bar.
+2. **`$61` gate-off is folded into the preceding note, not emitted as a rest.**
+   HardTrack keeps stepping the wave program after the gate clears, so a voice
+   goes on **arpeggiating through its release** (Love_tune_2 voice 1: 150 frames
+   per phrase at `wf $40`, gate off). A rest idles the driver's voice and throws
+   that tail away; leaving it inside the preceding note's capture window replays
+   it verbatim, because the gate bit is just another `$D404` byte there. Only a
+   gate-off with nothing before it is a real rest.
+3. **The note-on is a 2-frame pipeline.** A row dispatched on frame *G* leaves
+   the previous note's frequency in `$D400` on *G* and *G+1*; the gate rises on
+   *G+2*. For a re-triggered note `snap_gate` finds that rise by itself, so the
+   offset is a no-op — but a note the part window **re-enters mid-flight** has
+   no gate rise to snap to, and without the offset it replays its capture two
+   frames early for its entire length (again Love_tune_2 voice 1: a 200-frame
+   arpeggio wrong on every frame, while its waveform stayed byte-exact). The
+   offset was swept, not assumed: `HT_PIPE=2` beats 0 and 3 on fidelity **and**
+   drops the part count 8 → 6, which a fitted parameter would not do.
+
+### `$6F` legato needs no mechanism here
+
+Stage A had to invent a duplicate instrument slot for it (Driver 11 restarts a
+wave program on every note and cannot express a tie at all). Stage B treats a
+`$6F` note as an ordinary note-on: the driver does restart a wave program, but
+the program it restarts is *this note's own capture*, which already begins
+wherever the original's program had got to. The feature disappears into the
+method.
+
+### One shared-engine change
+
+`build_mon_native_song` gained `_fm_scale_ok(m)` and the shim flag
+`no_fm_scale`. The driver marks a SCALED (pitch-proportional vibrato) FM entry
+by a `$40`–`$43` offset **high byte**, so a song whose real Hz deltas reach that
+range cannot have the marker enabled. Hubbard's drum dives hit this first, which
+is why `hard_restart` implied it — but HardTrack needs the opt-out *without*
+Hubbard's kill-ADSR engine, so the two are now separate flags. Symptom worth
+recognising: Love_tune_2's voice-2 drum has a `$4300` delta, and with the marker
+on that one entry was dropped, freezing the note at the wrong absolute frequency
+for its whole tail **while its waveform stayed byte-exact** — a defect no
+waveform metric can see. Every other shim leaves `no_fm_scale` unset and is
+byte-unaffected (MoN/arp/filter/wave-struct tests: 20 passed).
+
+### Fidelity
+
+Per-frame frequency (nearest semitone) against the original, over every part,
+with the builder's own best-delay alignment. `Love_tune_2`, the full 117 s song,
+6 parts:
+
+| voice | raw (n) | audible, gate-on (n) | misses on the driver's note-on frame |
+|---|---|---|---|
+| 0 | 92.8% (5841) | 88.2% (3546) | 419 of 421 — **418 under the SID TEST bit** |
+| 1 | 92.9% (5841) | 77.3% (1765) | 400 of 400 — 400 under the TEST bit |
+| 2 | 95.1% (5841) | 91.5% (3117) | 265 of 285 — 265 under the TEST bit |
+
+**Read the third column before the first two.** The driver holds the note's base
+pitch on its trigger frame; HardTrack still has the *previous* note's frequency
+there (fact 3 above). That frame can never match, and it is not a conversion
+error — it is one frame per note, and the builder counts how many of them carry
+the SID **TEST** bit, which resets the oscillator and makes the frame silent.
+Essentially all of them do. Net of that structural frame, Love_tune_2 loses
+**2 / 12 / 20 frames out of 5,841 per voice** — 99.97 / 99.79 / 99.66%.
+
+The count is **reported, never excluded**: dropping frames chosen by a rule that
+correlates with mismatch is how a metric launders itself. Both numbers are
+printed side by side for exactly that reason, and the sweep prints a third
+(`net`) with its own denominator.
+
+### Corpus sweep
+
+`py -3 pyscript/hardtrack_native_sweep.py -t 60` — **all 33 decodable files
+build**, 195 parts in total, 60 s window each (quote the window; a 60 s slice of
+a 117 s song is not the song).
+
+| | |
+|---|---|
+| raw (all frames with a frequency either side) | **91.04%** (n = 277,392) |
+| audible (original's gate on) | **88.25%** (n = 157,356) |
+| misses | 24,840 — of which **15,575 are the driver's note-on frame** (15,203 of those under the SID TEST bit) |
+| net of that structural frame | **9,265 of 277,392 = 3.34%**, i.e. **96.66%** |
+
+Per file, by net-miss rate: **3 at exactly zero** (`Muza_Do_Dema`,
+`Something_to_Eat`, `Teekkno`), **15 of 33 below 0.5%**, **22 of 33 below 2%**.
+
+The tail is real and is **not** explained yet:
+
+| file | net miss | note |
+|---|---|---|
+| `Fun_Factory` | 27.96% | 12 parts — the worst in the corpus |
+| `Tribute_to_Laxity` | 16.40% | the odd third player variant; `instrument_count_verified == False`, so its instrument stride is not confirmed |
+| `Griffin_Score` | 15.95% | 20 parts, by far the densest capture |
+| `Illmatic_end` | 8.42% | |
+| `What_Can_I_Say_Crap` | 6.81% | |
+
+Three of the five are also the highest part counts, which is the obvious lead —
+a dense capture is exactly where a canonical-program substitution has the most
+chances to be accepted wrongly — but that is a **hypothesis, not a finding**,
+and it has not been tested.
+
+**Refusals: 6, not 5.** `HardTrackModule` refuses `Eternal`, `Fruitmania`,
+`Miecze_Valdgira_2`, `Zone_of_Darkness` (multi-instance), `Commercial_Fake`
+(PSID init `$2f01` ≠ entry `$1000`) and — newly visible because the sweep
+enumerates by signature rather than by player-id — **`Dune_Cover`** (init
+`$4000` ≠ entry `$0900`). `player-id` calls that file `Comer/Digi`, so the
+"38 HardTrack files" count above is unchanged; the signature scan simply finds
+one extra candidate and then correctly declines it.
+
+⚠️ The sweep first reported **"117 refused"** because non-HardTrack files raise
+the same exception type ("no init signature found") as a genuine refusal. The
+directory is mixed-player, so that counted 112 GoatTracker/DMC files as
+HardTrack failures. A refusal count is only meaningful against the right
+denominator — fixed by distinguishing "not this player" from "this player,
+refused".
+
+
+### What Stage B does not do
+
+- **It is not editable in the Stage A sense.** The captured programs are
+  unrolled per note, so the SF2 opens and plays but its wave/pulse tables are a
+  transcription, not the composer's tables. Stage A remains the editable route.
+- **It windows.** Song length is bounded by the SF2II caps (`sidm2/sf2_caps.py`),
+  and a dense tune becomes many parts; part count is a **density** measure, not
+  an accuracy one.
+- **No SF2II play-test yet.** Every part is checked by the emitter's own parse
+  (`parse=OK`) and measured headless. Rungs 3 and 4 of the PLAYBOOK §4 ladder —
+  an instrumented SF2II capture and a listening pass — have not been run.
+- **`DriverSelector` is untouched**, deliberately, exactly as for Stage A.
+
+---
+
 ## Next steps
 
-1. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
-   confirm (or refute) the hypothesis above before quoting a higher number.
-3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
-   not yet *modelled* in `simulate()` — doing so is what would let the fidelity
-   score cover the program-driven column at all.
-4. **Identify instrument fields 6, 7, 12**, and confirm the global filter
-   sweep's un-reset cursor on hardware.
+1. ~~**Resolve the parser residual**~~ — done: the wave program's arpeggio column
+   owns the frequency register, and modelling it removes the residual.
+   See *Register-level fidelity*.
+3. ~~**Model the wave/pulse programs**~~ — done: `sidm2/hardtrack_synth.py`.
+   The program-driven column went 2.64% → 100.00%.
+4. ~~**Identify instrument fields 6, 7, 12**~~ — done: all three are the filter
+   (program cursor / resonance base / routing nibbles). Fields 8–11 are the
+   vibrato engine. The global filter sweep's un-reset cursor is still unconfirmed
+   on hardware, and **the filter itself is still unmodelled** — that is the one
+   register group `simulate_registers()` does not predict.
+4b. **Map the second player build's variable block** so the other 15 files can
+   be seeded too. Their allocation genuinely differs (not an offset), so it needs
+   its own `_RAM` table; until then they carry a startup transient.
 5. **The editor is the strongest lever left** — run `-HARDTRACK 1.PRG` under
    RetroDebugger, build a one-note tune, and diff memory. That resolves the
    remaining fields far faster than more static disassembly.
+6. **Stage C: emit HardTrack's own programs instead of unrolled captures.**
+   Stage B's part count is pure capture density, and `hardtrack_synth`'s
+   register model now predicts what those captures contain. Emitting the
+   player's looping wave/pulse programs directly is the lossless way to collapse
+   parts — the same "structural, not trace" step MoN's Supremacy work names.
+7. **Climb the last two rungs on Stage B** (PLAYBOOK §4): an instrumented SF2II
+   capture and a listening pass. Headless metrics have overstated before
+   (Galway's "37 faithful" became 30/40 under the objective metric).

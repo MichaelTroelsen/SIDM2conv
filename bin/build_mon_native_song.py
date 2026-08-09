@@ -70,6 +70,23 @@ BUNDLE_TOL = int(os.environ.get("BUNDLE_TOL", "0"))  # 0 = OFF (lossless split).
 # song -> fewer SF2 parts. See docs/analysis/PART_REDUCTION_PLAN.md (Phase 1).
 
 
+def _fm_scale_ok(m):
+    """May this song use SCALED (pitch-proportional vibrato) FM entries?
+
+    The driver marks them by a $40-$43 offset HI byte, so a song whose real Hz
+    deltas reach that range cannot have the marker enabled — the entry would be
+    read as a vibrato leg and the delta silently lost. Hubbard's drum dives hit
+    it first (which is why `hard_restart` implies it), and HardTrack's
+    percussion hits it too: a $4300 delta in Love_tune_2's voice-2 drum froze
+    the note at the wrong absolute frequency for its whole tail while the
+    WAVEFORM stayed byte-exact — a defect no waveform metric could see.
+
+    A shim opts out with `no_fm_scale = 1`; every existing shim leaves it unset
+    and is unaffected.
+    """
+    return not (getattr(m, 'hard_restart', 0) or getattr(m, 'no_fm_scale', 0))
+
+
 def fm_program_for(frames, v, onset, dur_f, base, allow_loop=False):
     """Per-note FM program (B2): reproduce the original's exact per-frame freq for
     this note. offset[k] = (trace_freq[onset+k] - base) & $FFFF; the driver's FM
@@ -1567,8 +1584,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # scaled-vibrato entries need FMSCALE_ON in the driver —
                     # disabled for hard_restart (Hubbard) builds, so skip the
                     # vibrato substitution there (canon_fm below is enough)
-                    if (ARP_STRUCT and not _is_struct_fm(fmp)
-                            and not getattr(m, 'hard_restart', 0)):
+                    if ARP_STRUCT and not _is_struct_fm(fmp) and _fm_scale_ok(m):
                         # pitch-proportional VIBRATO -> one looping SCALED program
                         # for every pitch/duration (exact-guarded via unroll)
                         step = m.note_freq((note_c + 1) & 0x7F) - base
@@ -1866,8 +1882,9 @@ def emit_one(m, br, out_path, label):
     # tail split (only meaningful when the shim provides per-instrument
     # 'release_wf'; mutually exclusive with HP_ENGINE/TEMPO_SCHED, see the asm)
     B.RELEASE_WF = 1 if getattr(m, "release_wf", 0) else 0
-    # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum dives)
-    B.FM_SCALED = 0 if getattr(m, "hard_restart", 0) else 1
+    # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum
+    # dives, HardTrack percussion) — see _fm_scale_ok
+    B.FM_SCALED = 1 if _fm_scale_ok(m) else 0
     B.HP_ENGINE = 1 if getattr(m, "hp_engine", 0) else 0
     # Hubbard v2 fractional tempo (the swallow counter): the shim sets
     # swallow = (period, frames-until-first-skip) per part window

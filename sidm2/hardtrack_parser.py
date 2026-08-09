@@ -39,7 +39,7 @@ __all__ = [
     'ORDER_END', 'ORDER_HOLD', 'ORDER_JUMP',
     'CMD_TIE', 'CMD_GATE_OFF', 'CMD_RESET', 'CMD_SLIDE', 'CMD_PORTA',
     'CMD_REST', 'PATTERN_END', 'INSTR_HOLD', 'INSTR_LEGATO',
-    'Onset', 'next_pattern_event', 'simulate',
+    'Onset', 'next_pattern_event', 'simulate', 'Event', 'voice_events',
 ]
 
 # --- orderlist bytes -------------------------------------------------------
@@ -481,16 +481,82 @@ def next_pattern_event(module: HardTrackModule, pattern: int, byte_index: int):
     return None
 
 
-def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
+@dataclass
+class Event:
+    """One sequencer event a voice actually SOUNDS: a note-on or a gate-off.
+
+    `dur` is in ticks and is filled in by `voice_events` once the following
+    event is known, so it absorbs the ticks spent on events that do not
+    interrupt the sounding note ($67 rests, $60 tie, $62 reset, $63/$64
+    slide/porta). A HardTrack note length is exactly that: the note's own tick
+    plus the `$67 n` rest that follows it.
+    """
+    tick: int                  # row index; frame == onset_delay + tick*(speed+1)
+    frame: int                 # the frame the player dispatched it on
+    kind: str                  # 'note' | 'gate_off'
+    note: int = 0              # transposed + masked exactly as the player does
+    instr: int = 0
+    raw: int = 0               # the pattern's instrument byte ($00 hold, $6F legato)
+    dur: int = 1               # ticks until the next event on this voice
+    pattern: int | None = None
+    transpose: int = 0
+
+    @property
+    def legato(self) -> bool:
+        """$6F: the pitch changes but the instrument's programs do NOT restart."""
+        return self.raw == INSTR_LEGATO
+
+
+def voice_events(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
+    """Per-voice `Event` lists plus each voice's first orderlist-loop frame.
+
+    Returns `(events, loop_frames)` — `events[v]` in play order with durations
+    resolved, `loop_frames[v]` the frame at which that voice first restarted or
+    jumped in its orderlist (None if it never did within `frames`).
+
+    This runs the SAME state machine as `simulate()` rather than a second copy
+    of it: a duplicated sequencer walk is exactly what mis-attributed the Stage A
+    losses once already.
+
+    Each voice's list is made CONTIGUOUS from tick 0 -- a voice whose pattern
+    opens with a rest gets a leading `gate_off` covering it, and the last event
+    runs to the end of the scanned window. A consumer that walks the list
+    accumulating durations (which is what every native builder does) would
+    otherwise slide a late-entering voice forward to tick 0: on Love_tune_2 that
+    is voices 1 and 2 starting 10 and 20 frames early, for the whole song.
+    """
+    log: list[list[Event]] = [[], [], []]
+    loops: list[int | None] = [None, None, None]
+    simulate(module, subtune, frames, _log=log, _loops=loops)
+    fpt = module.speed(subtune) + 1
+    # init leaves the divider at 2, so rows are dispatched on frames 1, 1+fpt,
+    # 1+2*fpt ... -- that is how many rows fit in the scanned window.
+    total = max(0, -(-(frames - 1) // fpt))
+    for evs in log:
+        for i, e in enumerate(evs):
+            nxt = evs[i + 1].tick if i + 1 < len(evs) else max(total, e.tick + 1)
+            e.dur = max(1, nxt - e.tick)
+        if evs and evs[0].tick > 0:
+            evs.insert(0, Event(0, evs[0].frame - evs[0].tick * fpt, 'gate_off',
+                                dur=evs[0].tick, pattern=evs[0].pattern))
+    return log, loops
+
+
+def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000,
+             _log=None, _loops=None):
     """Run the sequencer state machine.
 
     Returns frames[f][voice] = an `Onset` on a note-on, else None. `Onset`
     unpacks as `(note, instrument)`; `note` is already transposed and masked
     exactly as the player does it.
+
+    `_log` / `_loops` are the `voice_events` hooks — call that, not these.
     """
     voices = [_Voice(module.order_pointer(v, subtune)) for v in range(3)]
     speed = module.speed(subtune)
     ctr = 2  # init leaves the tempo divider at 2
+    tick = -1
+    f = 0
 
     def next_pattern(v: _Voice) -> bool:
         for _ in range(512):
@@ -500,12 +566,16 @@ def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
                 pass
             elif a == ORDER_END:
                 v.order_idx = 0
+                if _loops is not None and _loops[voices.index(v)] is None:
+                    _loops[voices.index(v)] = f
                 continue
             elif a == ORDER_HOLD:
                 v.halted = True
                 return False
             elif a == ORDER_JUMP:
                 v.order_idx = module.byte(v.order_ptr + v.order_idx)
+                if _loops is not None and _loops[voices.index(v)] is None:
+                    _loops[voices.index(v)] = f
                 continue
             else:
                 v.transpose = a & 0x7F
@@ -520,12 +590,14 @@ def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
         return False
 
     out = []
-    for _ in range(frames):
+    for f in range(frames):
         ctr -= 1
         if ctr < 0:
             ctr = speed
+        if ctr == 0:
+            tick += 1
         row = []
-        for v in voices:
+        for vi, v in enumerate(voices):
             on = None
             if v.halted:
                 row.append(None)
@@ -558,6 +630,14 @@ def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
                                raw=a, pattern=v.pattern, transpose=v.transpose,
                                pat_index=v.pat_idx)
                     v.trigger = False
+                    if _log is not None:
+                        _log[vi].append(Event(
+                            tick, f, 'note', note=on.note, instr=v.instr,
+                            raw=a, pattern=v.pattern, transpose=v.transpose))
+                elif c == CMD_GATE_OFF and _log is not None:
+                    _log[vi].append(Event(tick, f, 'gate_off', instr=v.instr,
+                                          raw=a, pattern=v.pattern,
+                                          transpose=v.transpose))
             elif ctr == 1:
                 v.dur -= 1
                 if v.dur == 0:
