@@ -487,40 +487,37 @@ WINDOW_OUTLIER_SIGMA = 3.0
 # failure this module could have, so the std fallback is gone.
 WINDOW_RELATIVE_DEVIATION = 0.25
 
-# KNOWN LIMITATION, measured against the B13 calibration case (Glyptodont, see
-# pyscript/calibration_cases.json) -- documented rather than fixed, because both
-# available fixes trade something real away.
+# FIXED, against the B13 calibration case (Glyptodont, see
+# pyscript/calibration_cases.json). Was a KNOWN LIMITATION: silence_frac swamped
+# every other metric in the ranking (see git history for the original writeup).
+# The root cause turned out to be one-directional, which made a targeted fix
+# possible without giving up the signal.
 #
-# (1) THE TWO BRANCHES DO NOT PRODUCE COMPARABLE SCORES. WindowOutlier.score is
-#     documented as ">= 1.0 clears the bar, whichever branch produced it", and
-#     that is true of the THRESHOLD but not of the RANGE. A flat-baseline metric
-#     8x its own magnitude scores 8/0.25 = 32.0, while the sigma branch tops out
-#     near 2-3 on real material (a 7.5-sigma spike scores 2.5). So whenever a
-#     flat-baseline metric is present it wins the ranking outright, regardless
-#     of whether anything more serious happened elsewhere.
+# silence_frac's raw delta (driver - orig) is dominated by a systematic,
+# NON-defect pattern: a driver render essentially never reproduces the
+# original's startup/quiet-section silence, so delta is negative in nearly
+# every window regardless of build quality. That confound only ever pushes
+# delta ONE way. The defect this metric SHOULD catch -- the driver going silent
+# where the original was not -- pushes the OTHER way: driver MORE silent than
+# original, delta > 0. `_only_more_silent` clips the confound's direction to 0
+# before ranking, leaving the real signal untouched.
 #
-# (2) silence_frac IS RELIABLY SUCH A METRIC, and its difference is systematic
-#     rather than a defect. A driver render does not reproduce the original's
-#     startup silence, so silence_frac differs in window 0 of essentially every
-#     original-vs-driver comparison. It is sparse (zero in 7 of Glyptodont's 12
-#     windows), so its median delta is 0 and the median-subtraction that removes
-#     whole-file offsets cannot remove it -- the offset lives in a few windows,
-#     not all of them.
+# MEASURED CONSEQUENCE (before this fix): on Glyptodont, worst_window() flagged
+# window 0 / silence identically for a known-BAD build and a known-GOOD one --
+# no discrimination at all (both driven by the same startup-silence confound,
+# in the same direction). After clipping, that shared false signal drops out
+# entirely (uniform zero deviation, same as any other whole-render offset) and
+# the ranking separates cleanly: the bad build's worst window is centroid
+# +146 Hz at 15.0s (7.5 sigma, mid-song), the good build's is RMS +5.0 dB at
+# 0.0s (a startup transient) -- the same result the old writeup got by
+# excluding silence_frac outright, but silence_frac now stays in the ranking
+# and can still fire on the direction that matters.
 #
-# MEASURED CONSEQUENCE: on Glyptodont, worst_window() flags window 0 / silence
-# identically for a known-BAD build and a known-GOOD one -- no discrimination at
-# all. Excluding silence_frac from _WINDOW_METRICS, the same comparison
-# separates cleanly: the bad build's worst window is centroid +146 Hz at 15.0s
-# (7.5 sigma, mid-song), the good build's is RMS +5.0 dB at 0.0s (a startup
-# transient). The ranking works; silence_frac swamps it.
-#
-# NOT FIXED because neither option is free. Dropping silence_frac forfeits a
-# real signal -- a driver that goes silent mid-song is exactly the defect it
-# would catch. Rescaling the flat-baseline branch to be range-comparable with
-# the sigma branch requires deciding what "equivalent to 3 sigma" means for a
-# dimensionless relative test, which is a judgement no measurement here
-# settles. Until one is chosen: when comparing an original against a driver
-# build, read a silence-driven verdict as uninformative and re-rank without it.
+# RESIDUAL, UNMEASURED: the two branches (sigma vs flat-baseline) still do not
+# produce range-comparable scores in general -- see WindowOutlier.score's
+# docstring. That was never demonstrated as a problem for any metric OTHER
+# than silence_frac's confound, which is now handled at the source; rescaling
+# the branches generically is not attempted without a measured case that needs it.
 
 # With fewer windows than this the spread estimate is itself too unstable to
 # rank against, so the table still prints but the verdict is withheld -- the
@@ -528,15 +525,31 @@ WINDOW_RELATIVE_DEVIATION = 0.25
 # follows (see fidelity_common.score_pct, audio_tightness_tool's repeat floor).
 MIN_WINDOWS_FOR_OUTLIER = 4
 
-# (attribute, label, unit, format) for the metrics the outlier search ranks.
+def _only_more_silent(deltas: np.ndarray) -> np.ndarray:
+    """Zero out silence_frac deltas where the driver is LESS silent than orig.
+
+    See the comment above _WINDOW_METRICS: driver renders essentially never
+    reproduce the original's startup/quiet-section silence, so delta (driver -
+    orig) is negative in nearly every window regardless of build quality. That
+    confound is one-directional, so clipping it to 0 removes it without
+    touching the opposite direction -- driver MORE silent than original -- which
+    is the actual defect (going silent where it should not) this metric exists
+    to catch.
+    """
+    return np.maximum(deltas, 0.0)
+
+
+# (attribute, label, unit, format, delta_transform) for the metrics the outlier
+# search ranks. delta_transform is applied to (driver - orig) before ranking
+# only -- the per-window table always shows the raw, untransformed delta.
 # chroma is deliberately absent: it is a 12-vector, not a scalar, so it has no
 # single delta to normalize -- chroma_shift_description() reports it instead.
 _WINDOW_METRICS = (
-    ('rms_db_mean', 'RMS level', ' dB', '{:+.1f}'),
-    ('centroid_hz_mean', 'centroid', ' Hz', '{:+.0f}'),
-    ('rolloff85_hz_mean', 'rolloff', ' Hz', '{:+.0f}'),
-    ('flatness_mean', 'flatness', '', '{:+.3f}'),
-    ('silence_frac', 'silence', '', '{:+.3f}'),
+    ('rms_db_mean', 'RMS level', ' dB', '{:+.1f}', None),
+    ('centroid_hz_mean', 'centroid', ' Hz', '{:+.0f}', None),
+    ('rolloff85_hz_mean', 'rolloff', ' Hz', '{:+.0f}', None),
+    ('flatness_mean', 'flatness', '', '{:+.3f}', None),
+    ('silence_frac', 'silence', '', '{:+.3f}', _only_more_silent),
 )
 
 Window = Tuple[float, AudioFeatures]
@@ -678,10 +691,12 @@ def worst_window(orig_windows: Sequence[Window],
         return None
 
     best: Optional[WindowOutlier] = None
-    for attr, label, _unit, _fmt in _WINDOW_METRICS:
+    for attr, label, _unit, _fmt, transform in _WINDOW_METRICS:
         orig_vals = np.array([getattr(orig_windows[i][1], attr) for i in range(n)], dtype=np.float64)
         driver_vals = np.array([getattr(driver_windows[i][1], attr) for i in range(n)], dtype=np.float64)
         deltas = driver_vals - orig_vals
+        if transform is not None:
+            deltas = transform(deltas)
         dev = np.abs(deltas - np.median(deltas))
         if not dev.any():
             continue          # uniform across windows: an offset, not a localized defect
@@ -762,7 +777,7 @@ def format_windowed_diff_report(orig_windows: Sequence[Window],
 
     lines.append("")
     header = f"  {'start':>7s}"
-    for _attr, label, _unit, _fmt in _WINDOW_METRICS:
+    for _attr, label, _unit, _fmt, _transform in _WINDOW_METRICS:
         header += f" {label:>11s}"
     lines.append(header)
 
@@ -770,7 +785,7 @@ def format_windowed_diff_report(orig_windows: Sequence[Window],
         o, d = orig_windows[i][1], driver_windows[i][1]
         marker = '>' if (flagged and outlier.index == i) else ' '
         row = f"{marker} {orig_windows[i][0]:6.1f}s"
-        for attr, _label, _unit, fmt in _WINDOW_METRICS:
+        for attr, _label, _unit, fmt, _transform in _WINDOW_METRICS:
             row += f" {fmt.format(getattr(d, attr) - getattr(o, attr)):>11s}"
         lines.append(row)
 

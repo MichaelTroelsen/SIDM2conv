@@ -1,776 +1,373 @@
 <original_task>
-Continuation session picking up from the prior handoff (`69c806f`, "whats-next:
-session handoff (sidplayfp, the fidelity harness, R17, $D418)"). No new feature
-was requested; the ask was open-ended — "what next" — and the session worked
-through that prior handoff's ranked `<work_remaining>` list item by item, in
-the order the assistant proposed and the user confirmed at each step:
+"Please continue the SID2SID and WAV2WAV comparison tools. We need to find a way for you to
+listen."
 
-  1. Cybernoid_II's "register-exact yet only 71-85% onset-matched" finding
-     (originally read as a synthesis divergence, the most interesting open
-     thread in the prior handoff).
-  2. Supremacy `adsr` 2.3%/4.5% on osc2/osc3.
-  3. Pulse scored as per-frame equality (h2g's measured finding).
-  4. (new, raised mid-session) The shared native-driver engine carrying the
-     same `$D418` bug just fixed in MoN's own copy.
-  5. (new, raised mid-session) Two scorer judgement calls flagged for the user.
-  6. (new, raised mid-session) Re-reading existing per-voice audio claims
-     against the new repeatability floor.
-  7. (new, raised mid-session) Hygiene: a suspected masking-order bug in
-     `mon_parser.py`, plus this handoff doc's own staleness.
+Scope as clarified by the user in the first turn (via AskUserQuestion):
 
-At the very end of the session the user said "go on" with no further
-specifics; the assistant used that latitude to (a) regenerate this handoff
-doc via the `taches-cc-resources:whats-next` skill (this document) and
-(b) had begun scoping — but not yet executing — the next unblocked item
-(wiring per-tune `MAIN_VOL` into ROMUZAK/Galway's own builders). See
-`<work_remaining>` #1.
+1. **Tool scope**: extend `pyscript/audio_tightness_tool.py` to accept `.sid` or `.wav` inputs
+   interchangeably — NOT two new separate scripts.
+2. **"A way for you to listen"**: BOTH numeric features as text AND spectrograms as a backup for
+   ambiguous cases.
+
+Everything after that (the five improvement items, CLAP, the calibration, the CLAUDE.md
+compression, the version bump) grew out of this and was individually requested by the user.
 </original_task>
 
 <work_completed>
 
-## 1. Cybernoid_II "synthesis divergence" — investigated, then FALSIFIED, then the tool itself was fixed
+## Final state: 16 commits this session, all pushed. HEAD = `fe9846b`, `origin/master` in sync
+(0 ahead / 0 behind), working tree clean. Tests: ~1,900 → **2,075 collected / 2,065 passing**.
+Version bumped 3.22.0 → **3.23.0** (2026-08-09).
 
-**Sub-session A** (forked subagent "yes, start with Cybernoid_II"): reproduced
-the prior handoff's finding (registers 100/100/100, audio 71-85%, tool printed
-SYNTHESIS on all three voices), then falsified it. Full siddump diff over 350
-frames showed only 6 differing lines, all in frames 0-2, all one root cause
-(see item 2 below). Perturbing `sidplayfp --delay` on the ORIGINAL ALONE (note
-data untouched) reproduced the same 71-85% band purely from free-running SID
-phase. Concluded (at the time) that phase alone explained it.
+### Commits (oldest → newest), all on `master`, all pushed
+| SHA | Subject |
+|---|---|
+| `acf5faf` | feat: whole-file audio feature report + spectrogram in audio_tightness_tool |
+| `10c74ef` | docs: VSID vs sidplayfp renderer comparison, parameter audit, pipeline assessment |
+| `de21355` | feat: per-voice WAV stem export via sidplayfp |
+| `8475807` | feat: CLAP audio-embedding bridge, isolated from the project's numpy |
+| `558d15f` | docs: CLAP fails its validation gate on SID material; listening-tool assessment |
+| `63563c3` | fix: pin VSID's sample rate to 44100 Hz to match sidplayfp |
+| `9e80b9f` | feat: pitch-class chroma and section-aware windowed features |
+| `5e2f836` | feat: calibrate the listening metrics against the one recorded human verdict |
+| `ebc8983` | feat: opt-in mel-scale band spacing for the audio feature summary |
+| `b754a0c` | feat: A-weighted loudness alongside raw dBFS in the feature summary |
+| `b2eb6c3` | calibration: measure improvements #1 and #2 against the B13 case |
+| `13319da` | fix: sparse metrics scored infinitely in the windowed outlier search |
+| `e10ecc9` | release: v3.23.0 — audio-domain listening tooling, calibrated |
+| `e6cceba` | docs: correct the audio-tightness guide's framing, index the listening tooling |
+| `c09fd9c` | docs: compress CLAUDE.md's Known Limitations, audit-gated |
+| `fe9846b` | docs: re-stamp ACCURACY_MATRIX.md to v3.23.0, and stop the stamp duplicating |
 
-**The assistant's own follow-up investigation went one level deeper** and
-found the sub-agent's causal story was still incomplete. Directly measured:
+The push `69c806f..fe9846b` carried 32 commits — 16 from this session plus 16 pre-existing local
+commits (the Hubbard/MoN `$D418` arc) that had never been pushed.
 
-- Three `sidplayfp --delay=0` renders of ONE file are the same signal to
-  within `r = 1.0000`, `rms(diff)/rms ~ 0.001` (verified via cross-correlation
-  in a scratch script, not assumed).
-- On the FULL MIX the onset detector is unmoved by that dither: 38/38 onsets,
-  100% match across all six pairings of three renders.
-- On a VOICE-ISOLATED render (`-u1 -u2` etc.) the SAME inaudible dither moves
-  the onset count 101/88/98 and the pairwise match rate across **84.2-96.9%**
-  — muting two voices leaves a large population of onsets sitting on the
-  detector's threshold edge. This is METRIC NOISE, not phase, and it was
-  previously unmeasured by anything in the repo.
+---
 
-**Shipped in commit `72fb2ae`** ("fidelity: the cross-tab called SYNTHESIS on
-noise it had never measured"): `pyscript/audio_tightness_tool.py` gained:
-- `REPEAT_FLOOR_SAMPLES = 9` (raised from an initial, too-weak default of 3 —
-  the false-positive rate of "worse than every self-sample" is a rank-test
-  `1/(N+1)`; 3 gives 25%, 9 gives 10%).
-- `repeat_floor_delays(n)` — deterministic delays, the FIRST always 0 (a plain
-  replicate, isolating metric noise), the rest even divisions of one PAL frame
-  (`PAL_CYCLES_PER_FRAME = PAL_CYCLES_PER_SEC // 50`), so runs are reproducible.
-- `measure_repeatability_floor()` — renders the ORIGINAL N extra times per
-  voice and runs the same onset comparison the driver rows use.
-- `floor_of(samples)` / `effective_floor(samples)` — the floor is a MINIMUM
-  over noisy point estimates, so it is widened by the measured replicate
-  shortfall (`1 - min(replicate)`) before being compared against. This was
-  added after observing the verdict FLIP between two consecutive identical
-  runs (voice 3: 85% vs a 77% floor on run 1, 70% vs a 71% floor on run 2) —
-  the margin can only ever decline to claim a defect, never invent one
-  (pinned by `test_widening_only_ever_declines_to_claim_a_defect`).
-- `diagnose()` gained a fourth CLI-visible outcome, `INCONCLUSIVE`, for the
-  case `reg_ok and audio inside the widened floor`.
-- New CLI flag `--repeat-floor N` (default 9; `0` disables and reverts to the
-  old unconditional SYNTHESIS text, which now says explicitly that it is
-  uncalibrated).
-- New test file `pyscript/test_audio_tightness_repeat_floor.py` (27 tests,
-  all verified to FAIL against the pre-fix `diagnose()` loaded standalone via
-  `git show HEAD:...`).
-- `docs/players/PATTERNS.md` gained entry **F5b**: "`f(x, x)` is necessary
-  but NOT sufficient — re-render, then compare." Comparing a WAV against the
-  SAME WAV (the usual F5 check) is exact by construction and proves nothing
-  about the pipeline; the real test is `f(x, x')` where `x'` is RE-rendered.
-- `docs/players/MON.md` gained a "Cybernoid_II synthesis divergence —
-  FALSIFIED" section with the full numeric story.
-- `CLAUDE.md`'s MoN row updated with the falsification + the fix pointer.
+## 1. The original ask — "a way to listen"
 
-Full suite after this commit: 1887 passed, 7 skipped, 2 xfailed.
+**FINDING FIRST**: SID2SID and WAV2WAV **already worked**. `audio_tightness_tool.py`'s
+`resolve_input()` already accepted `.sid`/`.sf2`/`.wav` on either side. No code change was needed
+there; this was verified, documented, and NOT re-implemented.
 
-**Re-running the sweep after this fix** (`audio-tightness.bat
-SID/Tel_Jeroen/Cybernoid_II.sid out/mon/Cybernoid_II_sub0_part01.sf2
---driver-init 0x1000 --driver-play 0x1003 --voice all --seconds 12 --no-html`)
-now returns INCONCLUSIVE on all three voices, reproducibly across repeated
-runs (unlike the pre-floor tool, which flipped its own verdict run to run).
+**NEW: `sidm2/audio_listen.py`** (43,639 bytes at HEAD). numpy + Pillow only — deliberately no
+matplotlib/librosa/scipy, matching `audio_tightness.py`'s style and this project's installed set.
+Contents:
+- `extract_features()` → `AudioFeatures` (duration, rms_db_mean/max, silence_frac,
+  centroid_hz_mean/std, rolloff85_hz_mean, zcr_mean, flatness_mean, **rms_dba_mean/max**,
+  **chroma** 12-vector, band_scale)
+- `format_feature_report()` — side-by-side orig/driver + deltas, as text for Claude
+- `render_comparison_spectrogram()` — 3-panel PNG (original / driver / dB-diff), hand-rolled
+  inferno + diverging colormaps, viewable with the Read tool
+- `chroma_vector()`, `chroma_shift_description()`, `dominant_pitch_classes()` (#5)
+- `extract_features_windowed()`, `worst_window()`, `format_windowed_diff_report()`,
+  `WindowOutlier`, `_robust_spread()`, `_metric_scale()` (#4)
+- `a_weight_db()`, `a_weighting_correction_db()` (#2)
+- `hz_to_mel`/`mel_to_hz`/`band_edges`/`band_centers`/`undersampled_bands` live in
+  `sidm2/audio_tightness.py` (#1); `band_energies(scale=)`, `_logmel(scale=)`
 
-## 2. The one real defect the falsification surfaced: MoN's `$D418` one-frame lag
+**CLI flags added** to `pyscript/audio_tightness_tool.py`: `--spectrogram [PATH]`, `--no-listen`,
+`--windowed [SECONDS]`, `--band-scale {linear,mel}`.
 
-While diagnosing Cybernoid_II, the 6 differing siddump lines (frames 0-2) were
-traced to a single root cause: `do_play` in
-`drivers_src/mon/romuzak_driver.asm` wrote the `$D418` volume/mode byte at the
-TOP of the frame, before `filt_prog_step` (called later, after `do_row`) had
-produced that frame's `F_MODE`. So every `$D418` write carried the PREVIOUS
-frame's passband. The cutoff (`$D415/$D416`) never had this bug because
-`fp_apply` (inside `filt_prog_step`) stores those registers itself — which is
-exactly why the lag only ever showed up on `$D418`. Cybernoid_II's original
-opens `$1F, $3F, $3F...` (vol 15 + low-pass, then +bandpass); the pre-fix
-driver emitted `$0F, $1F, $3F...`.
+## 2. Per-voice WAV stem export (`de21355`)
+- `AudioExportIntegration.export_voice_stems()` + `VOICE_MUTE_MAP` in
+  `sidm2/audio_export_wrapper.py` — writes `<name>_voice1/2/3.wav` beside the mix.
+- Forces sidplayfp (VSID has **no** per-voice mute at all), pins `power_on_delay=0` for
+  reproducibility, warns that muting is not clean isolation (digi-bleed worst case 58.7%).
+- Wired to `--audio-export-voices` (`scripts/sid_to_sf2.py`) and `config.export_audio_voices`
+  (`sidm2/conversion_pipeline.py`).
+- `pyscript/test_audio_export_wrapper.py` — 11 tests, sidplayfp mocked (no binary needed).
 
-**Shipped in commit `7bb89d7`** ("fix: MoN's $D418 published the PREVIOUS
-frame's passband"): moved the `SID_VOL` write (and the `DIGI_SPIKE`-guarded
-block around it) from the top of `do_play` to just after the multispeed loop,
-after `filt_prog_step`/`pulse_step`/`wave_step`/`fm_step` have all run — the
-same ordering rationale the code already documented at `dp_vib` for why
-`filt_prog_step` runs after `do_row` ("else the cutoff/pulse sweep lags one
-frame"). `digi_stream` still runs last, so digi keeps the final word on
-`$D418`; `DIGI_SPIKE` is off for every MoN build regardless.
+## 3. VSID/sidplayfp comparison + sample-rate fix
+- `docs/VSID_VS_SIDPLAYFP_COMPARISON.md`: 6 songs × 2 renderers, run at **20 s and 60 s**.
+- **Finding 2 was self-corrected**: a "-10.0 ms offset, zero scatter" at 20 s read **0.0 ms** at
+  60 s. Both are adjacent bins of the detector's 10 ms hop; the true offset is sub-resolution.
+  The doc retracts the original explanation.
+- `63563c3` pins VSID to `-soundrate 44100`; `VSIDIntegration.export_to_wav()`'s `frequency`
+  param was **accepted and silently ignored** — now actually passed.
 
-Verified by full rebuild + re-measurement, not by inspection:
-| tune | before | after |
-|---|---|---|
-| Cybernoid_II `$D418` | 99.7% | **0 of 350 differing frames** |
-| Hawkeye sub0/sub2/sub3 | — | unchanged (100/100/100, cutoff 100) |
-| Cybernoid sub0 | — | unchanged (osc3 freq 95.0% — see below) |
-| Supremacy sub0 | — | unchanged |
+## 4. CLAP audio embeddings — BUILT, VALIDATED, REJECTED, UNINSTALLED
+- `sidm2/audio_embed.py` (8,867 b) — subprocess bridge, numpy-only, never imports torch.
+- `pyscript/clap_worker.py` — venv-side; **duplicates real fd 1 and points fd 1 at stderr** before
+  loading anything (the checkpoint loader prints hundreds of lines from native code that would
+  desync the JSON protocol). This was load-bearing, not defensive — verified in practice.
+- `pyscript/install_clap.py`, `pyscript/clap_validate.py`, `pyscript/test_audio_embed.py` (19
+  tests, worker faked — run without torch).
+- **Validation result (the reason it was rejected)**: separation = `min(same-tune) − max(cross-tune)`
+  - 4 tunes / 20 s → **−0.053** FAIL
+  - 4 tunes / 60 s → **+0.006** PASS (meaningless margin)
+  - **9 tunes / 60 s → −0.413 FAIL, decisively**
+  Different compositions score up to **0.947** while a same-tune pair falls to **0.534**.
+- Recorded in `docs/CLAP_EMBEDDING_NEGATIVE_RESULT.md`.
+- **`tools/clap_venv` UNINSTALLED at the user's request** (3.2 GB reclaimed). The bridge code and
+  docs are kept; `pyscript/install_clap.py --uninstall` / re-run reinstalls.
 
-Two things double-checked rather than assumed:
-- **Cybernoid osc3 freq 95.0% is PRE-EXISTING**, not caused by this change —
-  confirmed by rebuilding Cybernoid against HEAD's (pre-fix) driver and
-  re-measuring: identical 95.0%.
-- **Hawkeye sub3 first read 75.5% cutoff** because it was measured over a
-  16-second window when the part is only ~2 seconds long — the exact
-  "phantom tail past the loop point" trap `mon_part_fidelity.py`'s own
-  comments warn about. Re-measured at the correct 2-second window: 100/100/100,
-  cutoff 100.
+## 5. The five improvements (all from `docs/AUDIO_LISTENING_IMPROVEMENT_PLANS.md`)
+| # | Item | Commit | Tests | Verdict vs the B13 case |
+|---|---|---|---|---|
+| 1 | Mel-scale bands (opt-in) | `ebc8983` | 42 | **Unproven** — 2 of 3 metrics improve, margins too small for n=1 |
+| 2 | A-weighting | `b754a0c` | 22 | **Clear win** — separation 0.294 → 1.585 (5.4×) |
+| 3 | Calibration manifest | `5e2f836`,`b2eb6c3` | 14 | *is* the evidence |
+| 4 | Windowed features | `9e80b9f` | 31 | Works **only with `silence_frac` excluded** |
+| 5 | Chroma | `9e80b9f` | 23 | **Correct null** — percussive defect, no pitch shift, none reported |
 
-**Also fixed docs**: `mon_part_fidelity.py` now reports Cybernoid_II's
-`$D418` as `n/a` (constant + identical) rather than `100%`, because its
-measurement window excludes the opening frames where the (now-fixed) defect
-lived — worth remembering: this register was wrong exactly where the harness
-does not look, which is why it only ever showed up as "0.3%" via the
-different, wider-windowed `--voice all` sweep.
+## 6. The calibration (`5e2f836`, `b2eb6c3`) — the most important deliverable
+Rebuilt the **exact B13 artifacts** via a throwaway `git worktree` at commit **`d946701`**
+("Blackbird Stage B12+B13"), the build a human listened to and called *"something with the perc or
+drums"*. Built Glyptodont there and at HEAD.
 
-Full suite after this commit: 1887 passed, 7 skipped, 2 xfailed.
-Build-regenerated `.inc` files (`drivers_src/mon/freqtable.inc`,
-`drivers_src/mon/layout.inc`, `drivers_src/romuzak/layout.inc`) were reverted
-BY NAME after every rebuild in this session, never via a tree-wide checkout
-(a prior-session incident, recorded in the prior handoff, destroyed a real
-source change that way).
+| comparison | onset match |
+|---|---:|
+| original vs **itself**, phase-perturbed — the floor | **85.4–91.3 %** |
+| original vs HEAD build (99.8 % register, 162/162 note-ons) | **64.7 %** |
+| original vs B13 build (the one that sounded wrong) | **56.9 %** |
 
-## 3. Myth build failure — investigated, found to be user/invocation error, not a defect
+**Conclusion: ordinal sensitivity, NO usable absolute gate.** A near-perfect build scores 20+
+points below what the original scores against itself, so any threshold flagging B13 condemns the
+good build too. The deficit is systematic (SID render vs native-driver SF2 render), not a defect.
 
-Running the generic `bin/build_mon_native_song.py SID/Tel_Jeroen/Myth.sid 0
-auto` refused with "implausible speed byte 255... Refusing to build." Traced
-to: Myth is a RELOCATING COMPILATION (init copies a per-subtune sub-player to
-`$9000/$A400` and runs it there behind a `play=$0000` self-IRQ wrapper), so it
-requires `bin/build_myth_native_song.py` (py65 relocate + init + per-frame
-extraction), NOT the generic MoN builder — `docs/players/MON.md:55` already
-documented this, but `CLAUDE.md`'s accuracy table did not, which is where the
-wrong command got picked.
+Feature separations (`|Δbad| − |Δgood|`, positive = informative):
+`rms_dba +1.585`, `rms_dbfs +0.294`, `flatness_mel +0.022`, `flatness_linear +0.019`,
+`centroid_mel −17.408`, `centroid_linear −18.613`, `rolloff_mel −77.106`, `rolloff_linear −75.441`.
+Negative centroid/rolloff = **confound**, not anti-information: the good build has more content
+(32 instruments vs 31, 26.9 KB vs 20.8 KB), so more song plays and the whole-file average shifts.
 
-Confirmed NOT a regression: the pre-`0ef5fab` parser refuses the generic
-build identically. Rebuilt through the correct builder
-(`py -3 bin/build_myth_native_song.py 0 auto`) on the current (post-`7bb89d7`)
-driver: 8 adaptive parts as previously documented, part01 measures
-**100/100/100 on all three voices, cutoff 100.0% (n=673)**.
+Artifacts: `pyscript/calibration_cases.json` (9,384 b, append-only, findings self-tested),
+`pyscript/test_audio_listen_calibration.py`, `docs/AUDIO_LISTENING_CALIBRATION.md`.
 
-**Shipped in commit `de82511`** ("docs: name Myth's builder where the wrong
-one gets reached for"): `CLAUDE.md`'s MoN accuracy-table row now names the
-correct builder explicitly.
+## 7. Bugs found and fixed (all by running against real material, none by review)
+1. **`worst_window()` returned `inf`** (`13319da`) — `silence_frac` is 0 in 7/12 windows → median 0
+   → `_metric_scale()` returned 0 → divide-by-zero. It won every ranking and flagged good and bad
+   builds identically. Fixed: sparse metrics fall back to the mean.
+2. **`UnicodeDecodeError` in BOTH render wrappers** (`5e2f836`) — strict cp1252 decoding of
+   subprocess output raised inside subprocess's **reader thread**, uncatchable by the surrounding
+   try/except. Fixed with `errors='replace'`.
+3. **VSID sample rate** (`63563c3`), see §3.
+4. **pyflakes regression I introduced** in `acf5faf` — `-> "Image.Image"` annotations with `Image`
+   imported only inside function bodies. Fixed with a `TYPE_CHECKING` import. I had run only the
+   audio subset instead of the full suite; the project rule exists for exactly this.
 
-## 4. Four items dispatched to parallel forks ("do 1" / "do 2" / "do 3" / "do 4"), then a working-tree collision reconciled
+## 8. Documentation
+New: `docs/AUDIO_LISTENING_CALIBRATION.md`, `docs/AUDIO_LISTENING_CAPABILITY_ASSESSMENT.md`,
+`docs/AUDIO_LISTENING_IMPROVEMENT_PLANS.md`, `docs/CLAP_EMBEDDING_NEGATIVE_RESULT.md`,
+`docs/VSID_VS_SIDPLAYFP_COMPARISON.md`, `DOC-AUDIT.md`.
+Updated: `CHANGELOG.md` (3.23.0), `STORY.md`, `sidm2/__init__.py`, `CLAUDE.md`,
+`docs/guides/AUDIO_TIGHTNESS_GUIDE.md`, `docs/reference/ACCURACY_MATRIX.md`, `audio-tightness.bat`.
 
-The user forked four subtasks to run concurrently against the SAME working
-directory (`/subtask do 1..4`). All four completed correctly on their own
-terms, but one fork's `git add -A` swept up the OTHER THREE forks'
-still-uncommitted, in-progress edits into its own commit (`5a3ee7e`), whose
-message described only its own (docs) change. A second commit
-(`badacb7`, a regression test) also landed separately, split from its own
-source-file fix which had already been swept into `5a3ee7e`.
-
-**Fork "do 1" — extend the `$D418` fix to the shared engine.**
-`drivers_src/common/sf2_native_driver.asm` (the engine shared by ROMUZAK and
-Galway, per `drivers_src/romuzak/romuzak_driver.asm`'s and
-`drivers_src/galway/galway_driver.asm`'s own header comments — both are thin
-feature-selection stubs over this one file) had the IDENTICAL bug: `sta
-SID_VOL` before `jsr filt_prog_step`. Applied the same reordering. Validated:
-Galway (`Wizball`) rebuilds clean, `SONG AUDIO OK`, unchanged. ROMUZAK
-(`Delirious_9_tune_1`, `Road_of_Excess_end`) both still read `AUDIO MISMATCH`
-— confirmed PRE-EXISTING via `git stash` A/B against the prior driver
-(identical mismatch before this change; root cause not investigated, out of
-scope for this fork). Also noted: the engine still hardcodes `ora #$0f` where
-MoN's own copy (already) takes `MAIN_VOL` — NOT fixed by this fork, flagged as
-separate, larger plumbing work. **See `<work_remaining>` #1 — the assistant
-began scoping this at the very end of the session (see `<critical_context>`
-for what was found).**
-
-**Fork "do 2" — the best-lag readout (one of two scorer decisions flagged
-after `65e85ac`).** Added a DIAGNOSTIC-ONLY best-lag search (±8 frames,
-`_lag_pct`) to `bin/mon_part_fidelity.py`, printed beside the existing
-shape-agreement line only when it beats the strict score by >5 percentage
-points. Deliberately never touches `ok`/`tot`/`pct` — no published corpus
-number moves. Verified against the motivating case: Hubbard `5_Title_Tunes`
-osc3 now prints `pul best lag: -3 frames beyond vdly -> 90.5%` beside its
-unchanged strict `4.5%`. Confirmed silent (no new output) on
-Hawkeye/Cybernoid_II/Myth's byte-exact parts. The SECOND scorer decision from
-that pair — realigning `vdly` itself independently per-register rather than
-just reading out a diagnostic — was explicitly declined by this fork: it
-would move every published freq/wf/pul percentage in the corpus and needs the
-user's sign-off first. **Still undecided — see `<work_remaining>` #2.**
-
-**Fork "do 3" — re-read existing per-voice audio claims against the new
-repeatability floor.** Found and fixed the only stale claim:
-`docs/guides/AUDIO_TIGHTNESS_GUIDE.md` §3 carried the PRE-floor Cybernoid_II
-cross-tab example verbatim (85/71/75% audio, unconditional "SYNTHESIS" on all
-three voices, no repeat/floor columns — didn't even match the current tool's
-output format). Confirmed via `git log -S "voice all"` on tracked docs that
-this is the ONLY doc that ever used this tool's `--voice all` sweep output —
-Deenen/DMC/etc. per-voice claims go through their own bespoke validators
-(`bin/deenen_sf2_validate.py` and siblings), unaffected. Regenerated the
-example against the current build + current tool: all three voices now read
-INCONCLUSIVE. Rewrote the surrounding partition-outcome table to add
-INCONCLUSIVE and the `--repeat-floor 0` escape hatch.
-
-**Fork "do 4" — the masking-order hygiene item + `whats-next.md` staleness.**
-Left `whats-next.md` alone (correctly — concurrent forks were rewriting the
-exact ground it covers; editing it mid-flight would have gone stale
-immediately. This regeneration, right now, is the deferred follow-through).
-Disassembled BOTH suspected sites in `sidm2/mon_parser.py` before touching
-anything (per project rule: verify against source, not inference) and found
-the earlier claim (from a PRIOR session's `do 3` fork, notified mid-session
-here) was HALF WRONG:
-- **Line 855** (Hawkeye's general `$Cx` dispatch): disassembled Hawkeye at
-  `$7CBA-$7CCA` — `AND #$1F` then `ADC`, no final mask. Already correct.
-  Left unchanged.
-- **Line 939/947** (`_pattern_supremacy`, Supremacy's OWN pattern processor,
-  not shared code): disassembled Supremacy at `$1263-$126D` — `CMP #$C0/BCC`,
-  then `CLC/ADC $100D,X/AND #$1F` — the mask is AFTER the add. The parser had
-  it backwards. Fixed.
-Rebuilt Supremacy sub0 before/after: byte-identical fidelity numbers,
-confirming this is unexercised by the current corpus (max instrument+base
-stays under 31 there) — correctness for future/other files, not a fix to any
-shipped output. New test drives the real `_pattern_supremacy` dispatcher
-through a synthetic byte stream (not just the arithmetic in isolation),
-verified to fail against the pre-fix code.
-
-**Reconciling the working-tree collision.** All four forks reported clean
-completion with a clean working tree (`git status --short` empty). Verified
-via `git show --stat 5a3ee7e` that it touched 4 unrelated files
-(`bin/mon_part_fidelity.py`, `docs/guides/AUDIO_TIGHTNESS_GUIDE.md`,
-`drivers_src/common/sf2_native_driver.asm`, `sidm2/mon_parser.py`) under a
-docs-only message, and `badacb7` held only the split-off test file. Recorded
-SHA-256 hashes of all 5 affected files BEFORE touching history, ran
-`git reset --mixed de82511` (moves HEAD + index back to the commit before
-`5a3ee7e`, leaves the WORKING TREE untouched — purely a bookkeeping
-operation, no content at risk), re-verified all 5 file hashes were BYTE-
-IDENTICAL after the reset, then re-committed in four properly-scoped, properly
--attributed commits:
-- `7b1006a` — shared-engine `$D418` fix (do 1's content)
-- `b3a67ea` — best-lag diagnostic readout (do 2's content)
-- `3eb8ce2` — Supremacy masking fix + its own test, combined (do 4's content,
-  merging what had been split across `5a3ee7e` and `badacb7`)
-- `f705c4a` — the audio-tightness guide update (do 3's content)
-Final verification: all 5 file hashes re-checked byte-identical to the
-pre-split state, and the FULL SUITE re-run once more on the final assembled
-tree: **1888 passed** (up one — the new masking-order test — from the 1887
-seen after `72fb2ae`/`7bb89d7`), 7 skipped, 2 xfailed.
-
-## Summary of commits this session (chronological, all present at HEAD)
-```
-0ef5fab  fix: Supremacy's orderlist instrument-base byte was skipped as an inert modifier
-65e85ac  fidelity: a swept register's pulse% was measuring phase, not the engine
-72fb2ae  fidelity: the cross-tab called SYNTHESIS on noise it had never measured
-7bb89d7  fix: MoN's $D418 published the PREVIOUS frame's passband
-de82511  docs: name Myth's builder where the wrong one gets reached for
-7b1006a  fix: extend the $D418 frame-lag fix to the shared native driver engine
-b3a67ea  diag: best-lag readout for mon_part_fidelity's pulse column
-3eb8ce2  fix: Supremacy's pattern processor masked before adding the instrument base
-f705c4a  docs: the audio-tightness guide's worked example still said SYNTHESIS
-```
-`HEAD` = `f705c4a6da3425a6be3db0bdbdb98b9af750a9ef`. Working tree clean.
-No pushes to origin performed or requested this session.
-
-Note: `0ef5fab` (the Supremacy orderlist fix) landed via a fork BEFORE the
-narrative above starts, concurrently with the assistant's own Cybernoid_II
-investigation — the assistant verified it independently (instruction
-sequences at `$11EB`/`$1267` confirmed against the binary, residual arithmetic
-cross-checked: 18/796 + 36/796 frames = exactly the previously-reported
-2.26%/4.52%) rather than duplicating it. Two caveats from that verification
-carried forward and NOT yet acted on: (a) the resulting "adsr 100%" is thin —
-one constant envelope value per voice, not release/gate-off/second-instrument
-coverage; (b) a LATENT (currently unexercised) masking-order bug was
-suspected at the time in `mon_parser.py:855`/`:939` — this is exactly what
-"do 4" above investigated and found to be real only at line 939, not 855.
+## 9. CLAUDE.md compression, audit-gated (`c09fd9c`, `fe9846b`)
+Ran the **audit-docs skill** first (`DOC-AUDIT.md`) rather than trimming on impression.
+- **P1**: Known Limitations is a THIRD copy — **15/15 players** appear in both CLAUDE.md and
+  `ACCURACY_MATRIX.md` (which CLAUDE.md itself calls "accuracy source of truth"), and each has a
+  `docs/players/` doc. The copies **had drifted** (matrix v3.22.0 vs shipped 3.23.0).
+- All 3 named caveats verified to **survive in the player docs in stronger form** (MON.md has a
+  dedicated `$D418` heading; DMC.md has "ELIGIBLE IS NOT AN ACCURACY FIGURE" and "EVERY DMC
+  PERCENTAGE IS WINDOW-DEPENDENT" as bolded standalone statements).
+- Compressed rows 12,546 → 5,973 b (**−52 %**); **17/17 caveats verified present after the edit**.
+- CLAUDE.md overall **31,842 → 25,201 b (−21 %, ~1,660 tokens/session)**.
+- Version-bump checklist now names `ACCURACY_MATRIX.md` (fixing the cause, not the symptom).
+- Footer now states bytes/tokens, not lines — the file drifted to 32 KB *while inside* its ~215-line
+  budget because prose migrated into table cells.
+- `fe9846b` re-stamped the matrix to 3.23.0 **after verifying no conversion path changed**, and
+  **removed** the duplicate version from CLAUDE.md's pointer rather than updating it.
 </work_completed>
 
 <work_remaining>
 
-## ~~1. MAIN_VOL plumbing for ROMUZAK/Galway~~ — INVESTIGATED, CLOSED as not needed (2026-08-08)
+### A. Open items
 
-Flagged by "do 1" as separate, larger work; the assistant began investigating
-this at the very end of the session (last action before invoking the
-`whats-next` skill) and found the following, which should save the next
-session re-discovery time:
+1. **`worst_window()`'s silence_frac swamping — FIXED 2026-08-09.** Root cause: the confound
+   (driver never reproduces the original's startup silence) is **one-directional** — delta
+   (driver − orig) is negative in nearly every window regardless of build quality. Fix:
+   `_only_more_silent()` in `sidm2/audio_listen.py` clips that direction to 0 before ranking,
+   rather than dropping the metric outright, so a driver that genuinely goes silent mid-song (the
+   *opposite* direction) is still caught. Verified **live**, not just synthetically: rebuilt the
+   real B13 bad SF2 in a throwaway `git worktree` at `d946701` and re-ran against HEAD's good
+   build, both vs the real 60s sidplayfp render of `SID/LFT/Glyptodont.sid`. Silence's score is now
+   **0.0 for both builds** (fully defanged); the ranking separates cleanly — bad = centroid
+   +150.0 Hz @15.0s (score 2.58), good = RMS +4.35 dB @0.0s (score 2.22) — matching the shape the
+   prior "excluding silence_frac" workaround predicted. `pyscript/calibration_cases.json`'s
+   `windowed` block and `sidm2/audio_listen.py`'s comment above `_WINDOW_METRICS` updated with the
+   live numbers. 5 new tests in `pyscript/test_audio_listen_windowed.py`
+   (`TestSilenceFracOnlyFlagsGoingMoreSilent`), full suite 2065→**2069 passing**, zero regressions.
+   **Residual, unmeasured**: the two scoring branches (sigma vs flat-baseline) still are not
+   range-comparable in general — that was never shown to matter for any metric other than
+   silence_frac's confound, which is now handled at the source, so it was not chased further.
 
-- The shared write-layout function (`bin/build_romuzak_native_song.py`
-  around line 260-300) ALREADY emits `MAIN_VOL = {getattr(B, 'MAIN_VOL',
-  0x0f)}` into whatever `layout.inc` it writes — this capability is generic
-  and already exists, added as part of the earlier MoN master-volume fix
-  (`c067b23`, from the PRIOR session).
-- `bin/build_mon_native_song.py:1888` sets `B.MAIN_VOL =
-  getattr(m, "main_vol", 0x0F) & 0x0F` (computed per-tune via
-  `master_volume(sid, sub)`, defined at `bin/build_mon_native_song.py:414`)
-  BEFORE the shared writer runs — this is how MoN gets a correct per-tune
-  value. `B` there is an imported alias for the ROMUZAK builder module,
-  confirmed by the fact that MoN's builder then does
-  `shutil.copyfile(ROM_DIR/layout.inc, MON_DIR/layout.inc)` at line 1899 —
-  i.e. it runs the ROMUZAK writer with MoN's own volume value patched in,
-  then copies the RESULT into MoN's own directory. This is WHY building a
-  MoN tune leaves `drivers_src/romuzak/layout.inc` dirty as a side effect
-  (see the recurring "revert build-generated .inc files by name" note above)
-  — it gets clobbered with MoN-flavored content and must be reverted.
-- **The committed baseline `drivers_src/romuzak/layout.inc` and
-  `drivers_src/galway/layout.inc` have NO `MAIN_VOL` line at all** (verified
-  by `cat`, both files, this session) — meaning ROMUZAK's and Galway's OWN
-  builders (`bin/build_romuzak_native_song.py` run directly to build an
-  actual ROMUZAK tune; `bin/build_galway_native_song.py`) have never been
-  re-run since that MAIN_VOL capability was added, so the committed files
-  are STALE, not fundamentally incapable.
-- Critically: **`bin/build_romuzak_native_song.py` never sets `B.MAIN_VOL`
-  itself** when building a ROMUZAK tune directly (no equivalent of
-  `master_volume()` was found for the ROMUZAK/Galway SID formats in this
-  session's search) — so even a fresh rebuild would fall through to the
-  hardcoded `0x0f` default every time, UNLESS a per-tune volume-extraction
-  function is written for those formats first.
-- **This is genuinely unscoped RE work, not a mechanical wire-up**: it
-  requires understanding whether ROMUZAK's and Galway's native SID formats
-  even encode a variable master-volume nibble the way MoN's Tel-engine does
-  (unconfirmed either way this session), and if so, where/how to read it —
-  analogous to how `master_volume()` reads MoN's. This should NOT be
-  attempted under a vague "continue" instruction without either (a) explicit
-  user sign-off to spend RE effort on it, or (b) first doing a bounded
-  investigation (does either engine's disassembly show a `$D418`-nibble
-  write driven by tune data, the way Supremacy's did?) and reporting back
-  before writing any code.
-- Galway's existing Wizball test already passes (`SONG AUDIO OK`) at the
-  hardcoded `$0f` — some evidence this may not be a live bug for at least
-  that file, though it says nothing about the rest of either corpus.
+2. **The calibration set has exactly ONE case.** `pyscript/calibration_cases.json` is append-only
+   and needs no new test code per case. The A-weighting win (5.4×) rests on a single tune. Add a
+   second case the next time a human verdict disagrees with a metric.
 
-**Investigated via siddump trace (not disassembly -- faster and sufficient):**
-traced `$D418` across the full window in 2 ROMUZAK originals
-(`Delirious_9_tune_1`, `Road_of_Excess_end`, 600 frames each) and 4 Galway
-originals (`Wizball`, `Arkanoid`, `Comic_Bakery`, `Athena`, 600 frames each).
-**The register is never written at all in any of the six files** -- frame 0's
-displayed `F` is siddump's synthetic pre-init bus value (documented in
-`fidelity_common.py`'s `siddump_frames_full` docstring), not a genuine write;
-every subsequent frame reads `.` (never written), for the entire trace.
+3. **`docs/players/` still duplicates the accuracy figures.** Only CLAUDE.md's copy was compressed.
+   `ACCURACY_MATRIX.md` + 21 player docs still both carry them. The duplication root cause is
+   reduced, not eliminated.
 
-**Conclusion: there is no per-tune master volume to extract for either
-engine, because neither original ever touches `$D418`.** This is a different
-situation from MoN's (which genuinely varied volume per-tune and had it
-wrong) -- the shared engine's hardcoded `ora #$0f` is INERT, not incorrect,
-for every file checked. Consistent with `do 1`'s finding that Galway's
-existing `Wizball` test already passes unchanged at the hardcoded value.
+4. **Python Tools section of CLAUDE.md deliberately NOT trimmed** (~7.2 KB). I reversed my own
+   recommendation after reading it: it is anti-footgun operational guidance ("do not write a new
+   one", "check the exit code, don't just parse stderr", "a too-short window looks identical to a
+   broken trace", "vsid exits 1 on normal termination"), not duplicated narrative. **Do not trim
+   it without reading it first.**
 
-**Closed as not needed.** Documented as a negative result in
-`docs/players/ROMUZAK.md` and `docs/players/GALWAY.md` (new sections, both
-dated 2026-08-08) and in `CLAUDE.md`'s MoN row, specifically so this isn't
-re-investigated from scratch later. Should NOT be revisited unless a
-SPECIFIC file is found whose original genuinely writes a non-default
-`$D418` value -- none has been found in the 6 files sampled here (2 of 2
-ROMUZAK test files, 4 of 40 Galway corpus files).
+### B. Never verified (would need the project's own agent)
+5. **Every accuracy percentage in CLAUDE.md / ACCURACY_MATRIX.md is UNVERIFIED by this session.**
+   The audit routed them to `.claude/agents/sidm2-fidelity-falsify.md` per the workflow's step 3b.
+   They are neither confirmed nor disconfirmed. If they matter, run that agent.
 
-## ~~2. Realign `vdly` independently per-register~~ — SCOPED, DECLINED, redirected (2026-08-08)
+6. **Sensitivity to a synthesis defect was never directly measured.** The CLAP rejection and the
+   calibration both tested cross-tune discrimination and same-tune-different-phase. Nobody measured
+   whether the tooling detects a subtle envelope/synthesis error within one tune. The inference is
+   *a fortiori* (if it can't separate Commando from Angular it can't catch a subtle defect), which
+   is reasoning, not measurement. The docs say so.
 
-Swept 85 first-parts (78 Hubbard + 7 MoN-family) through the shipped best-lag
-diagnostic (`b3a67ea`) to get real numbers before deciding. 255 voice-rows
-total; 65 (25%) read strict pulse% < 99.5%. Of those, only 21 improve when
-best-lag-searched (not 19 — the first pass under-counted by using `re.search`
-instead of `re.finditer`, missing extra best-lag lines on files with more
-than one bad voice), and of THOSE only ~5 land near 100% — the realignment's
-real win is roughly 5 of 255 rows (2%), with another ~16 improving partially
-but still showing real residual afterward. **User declined the realignment**
-given that shape: not worth moving every published freq/wf/pul% in the
-corpus for a ~2% win. `vdly` stays per-voice; the best-lag readout stays
-diagnostic-only. Do not re-litigate this without new data.
-
-**Redirected to the bigger population instead**: the 44 non-lag-explained
-voice-rows (three-quarters of the residual). Investigated ~18 distinct files
-by rebuilding each FRESH and re-measuring against the original sweep number:
-- **5 were STALE artifacts**, not real bugs — `Commando_song16` (the on-disk
-  part was a mis-decode; a fresh rebuild now REFUSES outright, "span 1134s
-  exceeds 900s"), `Last_V8_song11`, `Deep_Strike_song0`,
-  `Auf_Wiedersehen_Monty_song0` (marginal), `Saboteur_II_song0` (74.7%/34.1%
-  → 99.6%/99.6%). A/B-verified this session's own `7bb89d7` was NOT the
-  cause of the Saboteur_II change (rebuilt against the PRE-fix driver too,
-  got the same 99.6%) — this is ordinary corpus staleness, `out/` being
-  `.gitignore`d means nothing enforces it staying in sync with the builder.
-- **13 reproduced their exact original numbers** — real, open pulse-engine
-  content divergences, not measurement artifacts: `5_Title_Tunes_song1`,
-  `Chimera_song0`/`song1`, `Commando_song2`, `Gremlins_song0`/`2`/`3`/`4`/`6`,
-  `Star_Paws_song0`, `Action_Biker_song0`, `Delta_song0`,
-  `Geoff_Capes_Strongman_Challenge_song3`, `One_Man_and_his_Droid_song0`,
-  `Zoids_song2`.
-Recorded in `docs/players/HUBBARD.md`'s "Fidelity gotchas" section (new
-bullet, 2026-08-08) with the full file list, so the staleness class doesn't
-get re-investigated from scratch and the real-bug list is available for
-whoever picks this up. **Did not attempt to fix any of the 13** — that is
-open-ended, per-tune RE work (matches HUBBARD.md's own documented open
-classes: V1 modelled/V2 captured-not-modelled pulse gaps, spin/swallow/
-format-laggard classes), not a bounded continuation. `Commando_song2` is
-flagged as the cleanest lead if this is picked back up: all three voices
-read EXACTLY 14.3% pulse — a suspiciously uniform number across independent
-voices, more consistent with one systematic cause than three separate
-per-voice bugs.
-
-## 3. `whats-next.md` staleness — RESOLVED by this very document
-
-Was flagged repeatedly through the session (by the assistant's own status
-updates and independently by "do 4") as increasingly stale. This regenerated
-document supersedes it. No further action needed on this item specifically.
-
-## 5. HP_ENGINE fast-PWM rate deficit — ROOT-CAUSED, one fix attempt built + reverted (2026-08-08/09)
-
-Picked `Commando_song2` (the cleanest lead from item 2 above) as a concrete
-next step. Disassembled the exact ROM routine the driver's own comment cites
-(`$5230` in `SID/Hubbard_Rob/Commando.sid`) and found the mechanism: the
-driver's HP_ENGINE fast-PWM mode (`pulse_step` in `drivers_src/mon/
-romuzak_driver.asm`) models the ROM's per-note pulse-speed byte as a flat
-per-frame add — which IS what the ROM code at `$5237-$5240` literally does
-in isolation. But the real register stream over a sustained fast-PWM note
-doesn't step at that flat rate: measured 6-of-8 frames at the modelled step,
-2-of-8 at DOUBLE it, for a genuine 1.25x rate deficit (confirmed the
-instrument's pulse-speed byte itself is constant across the window, ruling
-out "the step value changes" as an alternative explanation).
-
-**Checked whether this falsifies the documented "pulse 100%" claim before
-concluding anything**: re-tested `Monty_on_the_Run_song0` over its full ~56s
-part (2802 frames) and `Zoids_song0` over its full loop (386 frames) — **both
-hold, 99.9-100% on every voice.** The claim survives on a much longer window
-than it was likely first tested at. **But the defect IS real on other
-subtunes of the same files** — `Zoids_song2` (same instrument bank as the
-clean `song0`) reads 96.5/96.5/96.6%, the identical "song0 clean / song2
-drifts" pattern seen in Commando (severity varies: mild there, severe —
-14.3% — in Commando_song2).
-
-**Disassembled the ROM's IRQ/timer setup (2026-08-09) — there isn't one.**
-`init` is a 4-line subtune dispatcher touching no `$FFFE`/CIA/VIC timer.
-Everything traces to ONE per-frame call (`play` → a single shared tick
-counter that branches note-fetch vs. pulsework). The real mechanism,
-confirmed by instruction-level PC/register trace rather than static reading:
-all 3 of Commando_song2's voices share ONE instrument (10) for the whole
-drift window (a 3-way chord), and the ROM's `ADC $5507` (the fast-PWM add)
-has NO `CLC` before it — it inherits whatever carry that SAME voice's own
-preceding freq-slide computation left set, immediately before, no
-intervening flag-clearing instruction. `HPReplay.state_at()` (existing py65
-ground-truth machinery in the builder, previously sampled only once per part
-to seed the modelled engine) reproduces this exactly when sampled per-frame.
-
-**Built the fix, verified it does nothing, reverted it.** Moved the fast-PWM
-add out of `pulse_step` into `fm_step`'s own per-voice loop, immediately
-after its own frequency ADC, with no `CLC` — true per-voice interleaving
-matching the ROM's instruction adjacency (a naive top-level JSR swap of the
-two subroutines was checked first and shown NOT to work: each subroutine
-loops all 3 voices internally, so carry would still belong to the wrong
-voice). Assembled cleanly after trimming code size under a real
-`DRIVER STATE-REGION OVERLAP` the growth first tripped ($16CC-$1702, SF2II's
-live state region — confirmed via direct 64tass assembly + a byte-region
-check, not guessed). Then PC-traced the new code executing at runtime
-(hits every frame, all 3 voices, exactly as designed) and found it computes
-the IDENTICAL result as before the change — verified byte-for-byte, not
-assumed. Root cause of the no-op: the MODELLED driver's frequency engine
-(`fm_write`, a data-driven `vfreq + FM_ACC` reproduction from parsed
-FM-offset tables) is a **different algorithm** from the ROM's raw slide
-loop — both converge on the same frequency VALUE, but the modelled engine's
-own arithmetic never overflows the way the ROM's does, so the carry it
-leaves is always 0. Reverted via `git checkout` (confirmed zero diff, full
-suite re-run 1888/7/2 unchanged) rather than leave non-functional complexity
-in a driver shared by MoN/ROMUZAK/Galway.
-
-**Also re-checked the existing `HUBBARD_PULSE_ENGINE=0` fallback** (disables
-HP_ENGINE, falls back to captured/canonical pulse bundles) as a possible
-simpler fix: moved Commando_song2 14.3% → 74% (proving the flat model is the
-dominant error) but not further — byte-exact through frame 191, then
-diverges exactly at frame 192 and 288, the note-repeat boundaries. The
-canonical-bundle emitter reuses one captured sequence per {instrument,
-pattern}, correct for note-resetting instruments but wrong here: instrument
-10's PW is a continuously-accumulating global that never resets, so a bundle
-captured at the first repeat is stale by the second. Confirmed safe for
-`song0` under the same flag (99.7-100%, unchanged) — the fallback itself
-isn't harmful, just the wrong architecture for a non-resetting accumulator.
-
-Recorded all of this (disassembly, both fix attempts, the exact reasons each
-one falls short) in `docs/players/HUBBARD.md`'s "Fidelity gotchas" section.
-**Still not fixed. The correct next step**: derive the true per-frame "pv or
-pv+1 this frame" schedule from `HPReplay` at build time (it already has
-verified-exact ground truth) and bake it as a per-frame bitmap the driver
-reads and adds explicitly — the SAME pattern this driver already uses for
-`TEMPO_SCHED`/`SCHEDTAB` (an empirically-derived stretch bitmap for
-irregular tempo). Live accumulation stays the mechanism (per the captured-
-bundle failure above); only the missing piece is an explicit EXTRA-STEP
-schedule instead of an implicit (and, as shown, non-functional) carry.
-
-**Scoped whether this fix is worth building at all (2026-08-09)** — before
-committing to real implementation work, checked how much of the corpus it
-would plausibly help. Surveyed all 14 "real, reproducible" residual files
-(`decode_song`'s own voice/instrument timeline, not inference) for the
-mechanism's two ingredients: does the tune use a fast-PWM instrument, and do
-multiple voices share one.
-- **1 of 14 (`Action_Biker_song0`) uses NO fast-PWM instrument at all** — a
-  different, unrelated bug; this fix would not touch it.
-- **13 of 14 DO use fast-PWM instruments.** Of those, only **3 show explicit
-  multi-voice sharing** (`Gremlins_song2`, `Gremlins_song6`,
-  `One_Man_and_his_Droid_song0`) — the Commando-shaped case.
-- **Voice-sharing is NOT a precondition for the bug, only for its
-  severity** — the root cause (missing `CLC`, carry inherited from that
-  SAME voice's own frequency slide) needs only one voice's own vibrato to
-  overflow a byte boundary, no sharing required. So the other 10
-  fast-PWM-using files are PLAUSIBLE single-voice cases, not individually
-  confirmed the way Commando_song2 was (byte-for-byte against `HPReplay`).
-- **Correction: `Delta_song0` doesn't belong on this list.** It's V2-class
-  (`swallow_period=5`), which forces `hp_engine=0` by default — its build
-  never touches `HP_ENGINE`'s fast-PWM branch regardless of what its
-  instrument table's fx bits say. The fx-bit3 scan checks the parsed
-  INSTRUMENT DATA, not whether the file's V1/V2 CLASS even routes through
-  that engine. **Corrected net: 11 of 13** (excluding `Action_Biker_song0`,
-  no fast-PWM instrument, and `Delta_song0`, `HP_ENGINE` forced off).
-- **Tried a second data point (`Chimera_song0`) to check whether Commando's
-  periodicity generalizes — inconclusive, real friction, not pursued
-  further tonight.** Confirmed Chimera's own fast-PWM ADC exists (`$c40f`,
-  disassembly-verified, same missing-`CLC` pattern, plus an `ORA #$40`
-  Commando's revision lacks). But PC-tracing that exact address AND the
-  broader dispatch point immediately before it gave ZERO hits across
-  200-500 frames — the code is in the binary but isn't reached through the
-  entry point / instrument index this check assumed. Getting a real second
-  data point needs the SAME per-file disassembly effort Commando took, not
-  a quick reuse of its addresses — instrument indexing (`VINST`/`HPMAP`) is
-  not guaranteed 1:1 across files. **This is a real, demonstrated cost per
-  file**, and the periodicity/compressibility question stays open beyond
-  Commando_song2. Stopped here rather than keep guessing at addresses.
-
-**Net position going into the next session**: the baked-schedule fix is
-architecturally sound (proven twice over — the reverted carry-inheritance
-attempt AND this scoping both point the same direction) and would help at
-least Commando_song2 for certain, plausibly several of the other 10
-fast-PWM files, but EVERY file needs its own disassembly pass before the
-fix can be built generally — there is no shortcut through Commando's
-addresses or instrument indices. Full detail in `docs/players/HUBBARD.md`.
-
-## 4. Nothing else outstanding from the pre-session backlog
-
-Every other item from the PRIOR session's handoff (`69c806f`) — the
-single-channel comparison + digi guard, the Supremacy adsr gap, the pulse
-per-frame-equality metric issue, the sweep-across-13-bespoke-scripts item,
-and the smaller/opportunistic items list — was either already resolved before
-this session started, or resolved during it (see `<work_completed>`). The
-13-bespoke-scripts item (`bin/_verify_f4_*.py` etc., "porting a second caller
-onto the harness") remains theoretically open but was explicitly deprioritized
-in the prior handoff's own ranking and was not touched this session; not
-re-flagged as urgent.
+### C. Suggested next steps, in order
+1. ~~Decide the `silence_frac` question (A1)~~ — **DONE 2026-08-09**, see item A1 above.
+2. Add a second calibration case (A2).
+3. Consider whether `docs/players/` or `ACCURACY_MATRIX.md` should be the single home (A3).
 </work_remaining>
 
 <attempted_approaches>
 
-## Failed / corrected during THIS session — do not repeat
+### Failed / rejected, with reasons — DO NOT REPEAT
+1. **CLAP audio embeddings.** Fully built, then rejected on measurement. Failure mode: longer
+   renders made discrimination **worse** (cross-tune median 0.616 → 0.767) — a general-audio model
+   collapsing toward a genre centroid. All C64 SID sounds like "C64 SID" to it. **The user's
+   intuition that "simple songs should be easy" is inverted**: simple + homogeneous means *less*
+   between-class variance, so discrimination is harder, not easier. Re-testing needs a
+   domain-specific or fine-tuned checkpoint, and `clap_validate.py` already generates the training
+   signal (same-tune = positive, cross-tune = negative).
+2. **A 4-tune/60 s CLAP PASS at +0.006 was a small-sample artifact** — widening to 9 tunes inverted
+   it to −0.413. **Any future re-test must vary the CORPUS, not just the render length.**
+3. **`numpy<2.0` in the main environment** — never attempted; laion-clap pins it against this
+   project's 2.5.1 and would force a project-wide downgrade.
+4. **Python 3.14 for the CLAP venv** — FAILED. numpy 1.x has no wheels above **cp312**; pip built
+   from source and it died on import in numpy's own `getlimits` ("cannot convert longdouble
+   infinity to integer"). The installer now auto-detects ≤3.12 and refuses newer with that reason.
+5. **`venv.EnvBuilder`** — wrong tool: it clones the *running* interpreter (3.14). The installer
+   shells out to `<base_python> -m venv` instead.
+6. **Three laion-clap packaging bugs**: `torch`, `torchvision`, `torchaudio` are all imported at
+   module scope and **none are declared** as dependencies. Each surfaced one at a time. `timm` and
+   `open_clip` are also imported but sit behind guarded try-blocks (not needed).
+7. **Exact-substring matching to test caveat survival** — FAILED, produced false "missing" verdicts
+   on caveats I had already read in the player docs. The docs paraphrase. Semantic survival cannot
+   be checked mechanically; this is why the compression **kept all caveats inline** instead.
+8. **Naive path-existence check on CLAUDE.md** — FAILED, reported 18 dead references; all 15 real
+   files resolved repo-wide. The check assumed root-relative paths; docs cite bare basenames.
+9. **`rg` via Python `subprocess`** — `FileNotFoundError` in this environment. Use the Grep tool or
+   in-process Python search.
+10. **Piping an installer through `| tail`** — masked the real exit code (`tail`'s 0), making a
+    failed install look successful. Cost one wasted round trip.
 
-- **First floor implementation used too few samples.** `PHASE_FLOOR_SAMPLES =
-  3` (the initial constant name/value) made "worse than every self-sample" a
-  rank test with a 25% false-positive rate — caught by literally observing a
-  clean voice (Cybernoid_II voice 3) get called SYNTHESIS on one run at 3
-  samples. Raised to 9 (10% false-positive rate) and the constant renamed
-  `REPEAT_FLOOR_SAMPLES` once the naming below was also corrected.
-- **First floor implementation conflated phase with metric noise and was
-  mis-named `phase_floor` throughout.** Calibrating with ONLY phase-perturbed
-  delays (no delay=0 replicate) mislabeled the actual dominant cause on
-  isolated-voice renders, which is largely dither-triggered detector-
-  threshold noise, not phase. Caught by directly measuring three delay=0
-  renders of the SAME file pairwise and finding an 84-97% match band with NO
-  phase perturbation involved at all. Renamed every symbol (`phase_floor_*` →
-  `repeat_floor_*`, `measure_phase_floor` → `measure_repeatability_floor`,
-  `phase_samples` → `floor_samples`, the CLI flag `--phase-floor` →
-  `--repeat-floor`) and restructured the return shape from a flat list to
-  `{'replicate': [...], 'phase': [...]}` so the two causes stay
-  distinguishable in the diagnosis text.
-- **A raw floor (unwidened minimum) let the verdict flip between two
-  consecutive, IDENTICAL runs of the same command** — voice 3 read 85%
-  against a 77% floor on one run, then 70% against a 71% floor on the next.
-  Caught by literally running the same command twice in a row and diffing the
-  output, not by reasoning about it in the abstract. Fixed by
-  `effective_floor()`, which widens the floor by the measured replicate
-  shortfall (`1 - min(replicate)`) — pinned by a test asserting this widening
-  can only ever DECLINE to call something SYNTHESIS, never manufacture a
-  positive.
-- **`git add -A` inside a fork sharing a working directory with three other
-  concurrently-running forks swept up their uncommitted edits.** This is a
-  structural hazard of the `/subtask` fork mechanism when multiple forks
-  target the same repo checkout simultaneously, not a mistake specific to any
-  one fork's logic — every fork that noticed it (do 1, do 2, do 4) correctly
-  declined to unwind it themselves ("out of scope and risky on a branch other
-  forks are actively working in") and left it for the parent conversation to
-  reconcile once all forks had reported. The parent reconciled it via
-  `git reset --mixed` (not `--hard`) specifically because that command
-  provably cannot lose working-tree content — verified with SHA-256 hashes
-  before and after. **If running multiple `/subtask` forks against the same
-  repo again, prefer `git add <specific files>` over `git add -A` inside any
-  fork that commits, or expect this exact collision.**
-- **The masking-order "bug" flagged by a prior fork ("do 3", from a session
-  before this transcript) was partially wrong** — it claimed BOTH
-  `mon_parser.py:855` and `:939` needed the same fix. Disassembly (this
-  session, "do 4") showed line 855 was already correct; only line 939 (a
-  DIFFERENT, tune-specific code path, not shared with 855) actually had the
-  bug. Lesson reaffirmed: a claim inferred from naming-pattern similarity
-  between two call sites is not the same as verifying each site against its
-  own disassembly — the project's own stated rule ("verify against source,
-  not inference") caught this before it caused a wrong fix.
-- **Investigating the Myth build failure by assuming it was a regression**
-  would have been the wrong instinct — it was in fact investigated properly
-  (A/B against the pre-`0ef5fab` parser, confirmed identical refusal) before
-  concluding it was pre-existing, and ONLY THEN was the real cause (wrong
-  builder invoked) found. Worth noting as a pattern: an unexpected build
-  failure right after a same-session fix is NOT automatically caused by that
-  fix — check both directions before assuming either.
-
-## Approaches considered but not pursued
-
-- Attempting to fix the ROMUZAK/Galway `MAIN_VOL` hardcode blind (without
-  first confirming whether either engine's original ever varies its master
-  volume) was considered and explicitly rejected — see `<work_remaining>` #1.
-  Writing plumbing for a value that never varies in practice would be
-  unearned complexity.
-- Rewriting `5a3ee7e`/`badacb7` via `git rebase -i` or `commit --amend` was
-  considered and rejected in favor of `git reset --mixed` + fresh commits —
-  simpler, provably non-destructive (leaves the working tree untouched, only
-  moves the HEAD/index pointer), and avoids the interactive-rebase tooling
-  this environment cannot use anyway (Claude Code's git safety rules
-  prohibit `-i` flags).
+### Considered but not pursued
+- **Pretrained alternatives to CLAP**: `panns-inference` (drags in librosa/matplotlib — the exact
+  deps `audio_listen.py` avoids), `torchvggish` (PyPI last released 2022, undeclared deps),
+  `openl3` (needs TensorFlow *in addition to* torch).
+- **A human-in-the-loop calibration workflow** — offered as the cheapest option; user chose CLAP
+  first, then the calibration was built anyway as improvement #3.
 </attempted_approaches>
 
 <critical_context>
 
-## Environment / invocation notes carried over from the prior session, reconfirmed still true
+### The single most important finding
+**The tooling does NOT replace human listening, and this is now measured rather than asserted.**
+Ordinal sensitivity, no absolute gate. Quote any onset number **against a baseline build or the
+repeatability floor, never alone**, and **measure the floor per tune** (85–91 % is Glyptodont's, not
+a constant). `docs/guides/AUDIO_TIGHTNESS_GUIDE.md` previously implied the tool caught the B13
+defect class; that is corrected at the top of the section making the claim.
 
-- `py -3 bin/build_mon_native_song.py <sid> <sub> [auto|N|absent]` — the
-  generic MoN native-driver builder. `auto` = adaptive max-size windows
-  (fewest files, no clustering loss); a bare number = fixed N-second windows;
-  absent = whole song in one file (usually too big).
-- `py -3 bin/build_myth_native_song.py [sub] [seconds|auto]` — Myth's OWN
-  builder (py65 emulation extraction), REQUIRED for Myth specifically. Do not
-  use the generic builder on Myth; see `<work_completed>` item 3.
-- `py -3 bin/mon_part_fidelity.py <part.sf2> <sub> <window_seconds>
-  [start_second]` — per-part fidelity scorer. **The window_seconds argument
-  matters**: a part only covers its own span before the driver LOOPS it from
-  the start; measuring past that boundary compares the replayed beginning
-  against later song content and fabricates a phantom residual (this bit the
-  session directly on Hawkeye sub3: 75.5% at a wrong 16s window vs 100% at
-  the correct 2s window).
-- `audio-tightness.bat orig.sid conv.sf2 --driver-init 0x1000 --driver-play
-  0x1003 --voice all --seconds N --no-html` — the per-voice sweep +
-  repeatability floor + registers×audio cross-tab, now with the
-  `--repeat-floor N` flag (default 9) documented above.
-- Build-regenerated files (`drivers_src/mon/freqtable.inc`,
-  `drivers_src/mon/layout.inc`, `drivers_src/romuzak/layout.inc`) get dirtied
-  as a SIDE EFFECT of building ANY MoN tune (see `<work_remaining>` #1 for
-  why `romuzak/layout.inc` specifically gets touched). Revert these BY NAME
-  after every rebuild-for-measurement — `git checkout -- drivers_src/` (the
-  whole tree) destroyed a real source change in a PRIOR session and must
-  never be used.
-- `sha256sum <file>` (Git Bash, available in this environment) is the
-  reliable way to verify file content is unchanged across a git history
-  operation — used twice this session to validate the `git reset --mixed`
-  reconciliation was lossless.
+### The recurring pattern — the most transferable lesson
+**Four of the five planned improvements would have shipped a *confidently wrong* number that their
+own unit test passed:**
+| # | Plan's approach | Would have shipped |
+|---|---|---|
+| 1 | linear band spacing | 100 Hz vs 200 Hz (a full octave) both peak in band 0; CLI prints **−0.0 Hz** for a doubling |
+| 2 | band-centre A-weight lookup | **+12.8 dB** error at 55 Hz — and the plan's own 60 Hz test still passed |
+| 4 | std-based z-score | one outlier among n identical values caps z at n/√(n−1) = **2.5** vs a 3.0 threshold → "no section stands out" |
+| 5 | 40 ms chroma window | 55 Hz bass classified **G instead of A**, +0.385 margin |
+Plus the `inf` bug (#4) and CLAP's 4-tune false PASS. **Every one is a confident null or a
+confident wrong answer, not a noisy one** — the shape that gets believed. None were caught by
+review; all fell out of running against real material and checking against an external reference
+(published IEC table, a known pitch, the z-score's arithmetic ceiling, a wider corpus).
+**Corollary: a check returning "nothing here" deserves the same scrutiny as a surprising finding.**
 
-## Design rules established or reinforced this session
+### Environment / setup gotchas
+- **Python 3.14.6** is the project interpreter; **3.12 also installed** (`py -3.12`) and is what the
+  CLAP venv needs.
+- **Windows console is cp1252** — printing `→`/`✅` from Python raises `UnicodeEncodeError`. Use
+  `PYTHONIOENCODING=utf-8`.
+- **`rg` is not directly invocable** via subprocess; the Grep tool works.
+- **`git stash` is unsafe here** — a fork ran `git stash push` on a path with no changes (so no
+  stash was created), then `git stash pop` took a **pre-existing unrelated stash** (SDI Stage B),
+  applying 4 foreign files. Recovered; verified intact. **Always check `git stash list` first.**
+- **`stash@{0}` = "SDI Stage B: leading rest for late-entering voices"** — PRE-EXISTING, predates
+  this session, deliberately untouched. Do not pop it blindly.
+- **Blackbird native driver**: `--driver-init 0x1000 --driver-play 0x1003` (from
+  `bin/build_blackbird_driver_full.py`'s `DRV_INIT`/`DRV_PLAY`). Required — the SF2 has no Block 2
+  header and the Driver-11 default guess is wrong.
+- **Building a player writes `drivers_src/<player>/*.inc`** — per-song generated artifacts that are
+  tracked. My Glyptodont build dirtied `drivers_src/blackbird/*.inc`; I reverted them. **Check
+  `git status` after any build.**
+- **sidplayfp's `--delay` defaults to RANDOM**; this project pins `power_on_delay=0` for
+  reproducibility. VSID has **no** equivalent knob.
+- **CLAP wants 48 kHz**; the filelist API loads/resamples itself, so 44.1 kHz renders are fine.
 
-- **A comparison tool owes you `f(x, x')`, not just `f(x, x)`.** Comparing a
-  rendered file against itself is exact by construction and proves nothing
-  about the render pipeline. The real test re-renders and compares — see
-  PATTERNS.md F5b, shipped this session.
-- **A floor built from a small sample count needs its false-positive rate
-  stated, not just its raw value.** "Worse than every self-sample" is a rank
-  test; N=3 is not a serious claim, N=9 (10%) is the floor used here, higher
-  is better for anything meant to be published.
-- **A floor is a minimum over noisy estimates and must be widened by the
-  measured noise, not trusted as a hard threshold** — otherwise the same
-  command run twice can disagree with itself.
-- **When multiple forks share one working directory, `git add -A` inside any
-  committing fork is a hazard**, not a convenience — it will capture any
-  other fork's in-progress, unrelated edits. Prefer explicit file lists.
-- **Splitting a mis-attributed commit is a `git reset --mixed` + selective
-  `git add` + fresh commits operation, not a rebase.** This preserves
-  working-tree content provably (hash-verifiable) and needs no interactive
-  tooling.
-- **A build failure immediately following a same-session change is not
-  automatically that change's fault** — check both directions (does the
-  PRE-change code fail identically?) before concluding either way.
+### Measurement discipline this codebase enforces (and why)
+- `sidm2/fidelity_common.py` — **do not write a new scorer**. `score_pct` returns `None` (never
+  100.0/0.0) when `tot == 0`; `exercised()` catches the case where siddump force-displays every
+  register on its first row, so a never-filtered tune scores a confident 100 %. Five separate
+  copies of the same scheme existed, each independently broken; one scored **two identical captures
+  at 50 %**.
+- The **repeatability floor** pattern (`measure_repeatability_floor`) is the template used for both
+  the CLAP gate and the calibration: *a metric is evidence only when it beats what the same input
+  scores against itself.*
+- `.claude/agents/sidm2-fidelity-falsify.md` exists and **owns accuracy claims**. Don't adjudicate
+  them with weaker tools.
 
-## Assumptions made that may need validation in a future session
-
-- That ROMUZAK's and Galway's original engines either DO or DO NOT encode a
-  variable master volume analogous to MoN's — genuinely unconfirmed, see
-  `<work_remaining>` #1. Do not assume either answer; investigate first.
-- That the `--repeat-floor` default of 9 (10% false-positive rate) is an
-  acceptable tradeoff for routine use vs. a higher N for anything meant to be
-  quoted in a fidelity claim intended for publication — this was the
-  assistant's judgement call, not something the user was asked to confirm
-  explicitly. If a Cybernoid_II-class number is ever going to be cited as a
-  headline fidelity figure, consider re-running with a higher `--repeat-floor`
-  first.
-- That no other doc besides `AUDIO_TIGHTNESS_GUIDE.md` carries a stale
-  `--voice all` example — checked via `git log -S "voice all"` on TRACKED
-  docs only this session; an untracked or newly-added doc since could still
-  carry one.
-
-## References
-
-- `docs/players/PATTERNS.md` — entries F5 (pre-existing) and F5b (new this
-  session) are directly relevant to any future fidelity-tool work.
-- `docs/players/MON.md` — the Cybernoid_II section (new this session) and
-  the Myth builder note (`line 55`, pre-existing, now cross-referenced from
-  `CLAUDE.md`).
-- `docs/guides/AUDIO_TIGHTNESS_GUIDE.md` — regenerated worked example, §3.
-- `CLAUDE.md`'s MoN row in the Known Limitations table — updated twice this
-  session (the `$D418` fix, the Myth builder note); this is the first place
-  to check before assuming a claim about MoN fidelity is current.
+### Decisions and trade-offs
+- **CLAP bridge kept, venv uninstalled** — inert when unused, 19 torch-free tests, so a future
+  re-test is just `install_clap.py` + `clap_validate.py`.
+- **Known Limitations compressed, Python Tools not** — the first is duplicated narrative, the second
+  is anti-footgun guidance whose value depends on being read inline.
+- **CLAUDE.md's version pointer to the matrix was DELETED, not updated** — updating it would have
+  recreated the duplication that caused the drift.
+- **Chroma's floor is C1 (32.7 Hz), not the planned C2** — SID bass runs to 55 Hz and a C2 floor
+  would discard the register the 200 ms window exists to resolve.
+- **`rms_dba_*` deliberately excluded from `_WINDOW_METRICS`** — dBA and dBFS are near-duplicates
+  there and would give level two chances to win the max-normalized ranking.
 </critical_context>
 
 <current_state>
 
-## Complete and committed
+### Everything is committed and pushed. Nothing is in-flight.
+- Previous snapshot: HEAD `fe9846b`, 2,065 passing. **Since then (2026-08-09, this turn)**: fixed
+  the `worst_window()` silence_frac swamping (item A1) — see below. Pending commit at the time of
+  this edit; tests now **2,069 passing** (5 new, 1 removed net +4), 8 skipped, 2 xfailed, 0
+  failures. Working tree otherwise clean (the Glyptodont rebuild used for live verification
+  dirtied `drivers_src/blackbird/*.inc`; reverted, confirmed via `git status`).
+- **Version 3.23.0** consistent across all four canonical places: `sidm2/__init__.py`,
+  `CHANGELOG.md`, `CLAUDE.md` header, `docs/reference/ACCURACY_MATRIX.md`. Not bumped for this fix
+  (a bugfix within the already-shipped listening tooling, not a new feature).
+- **`tools/clap_venv` does NOT exist** (uninstalled). `clap_validate.py` degrades to a clear
+  actionable error; its 19 tests still pass.
+- **`stash@{0}`** (SDI Stage B) is intact and untouched — pre-existing, not mine.
+- The throwaway `git worktree` used to rebuild the B13 bad SF2 for live verification of A1 was
+  removed after use (`git worktree remove --force`). Nothing left behind.
 
-`HEAD` = `f705c4a6da3425a6be3db0bdbdb98b9af750a9ef`. Working tree clean, no
-uncommitted changes, nothing staged. Nine commits landed this session (see
-the chronological list in `<work_completed>`), all local — nothing pushed to
-`origin` this session, and nothing was requested to be pushed.
+### Deliverable status
+| Item | Status |
+|---|---|
+| "A way to listen" (features + spectrograms + chroma + windows) | **COMPLETE, shipped** |
+| SID2SID / WAV2WAV | **COMPLETE** — already worked, verified + documented |
+| Per-voice stem export | **COMPLETE**, wired to CLI + pipeline config |
+| Improvements #1–#5 | **COMPLETE**, all committed and tested |
+| Calibration against a human verdict | **COMPLETE**, 1 case |
+| CLAP | **REJECTED on measurement**, code kept, venv removed |
+| v3.23.0 release (CHANGELOG/STORY/version) | **COMPLETE** |
+| CLAUDE.md compression | **COMPLETE** (−21 %), audit in `DOC-AUDIT.md` |
+| `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against the real B13 case |
+| Second calibration case | **NOT STARTED** |
+| Accuracy percentages verified | **NOT DONE — out of scope, routed to the falsify agent** |
 
-Full test suite as of the final commit: **1888 passed, 7 skipped, 2 xfailed**
-(`py -3 -m pytest pyscript/ -q`).
-
-## In progress / not started
-
-- `<work_remaining>` #1 (ROMUZAK/Galway `MAIN_VOL` plumbing): investigation
-  begun (the mechanism was traced and understood, see
-  `<critical_context>`/`<work_remaining>` #1 in detail) but ZERO code written
-  for this item. This was the very last thing the assistant was doing before
-  this handoff document was generated, in response to the user's unscoped
-  "go on" — a deliberate stop-and-scope-first decision rather than writing
-  speculative RE code under a vague instruction.
-- `<work_remaining>` #2 (per-register `vdly` realignment): explicitly
-  blocked on a user decision, not started, not scoped further than what two
-  independent forks already reported.
-
-## Temporary / not in the repo
-
-- Various scratch scripts and file copies used for A/B verification this
-  session (e.g. a copy of the pre-`0ef5fab` parser for the Myth regression
-  check, a copy of the driver source for the Cybernoid rebuild A/B, raw WAV
-  renders used for the metric-noise cross-correlation measurement) were
-  written under the session scratchpad directory
-  (`C:\Users\mit\AppData\Local\Temp\claude\...\scratchpad`) and/or `out/`.
-  None are required to continue; they were reproducibility aids, not
-  deliverables.
-- `out/mon/*.sf2` build artifacts for Hawkeye, Cybernoid, Cybernoid_II, Myth,
-  Supremacy exist from this session's verification rebuilds, all built
-  against the current (post-`7bb89d7`) driver — these are current, not stale,
-  as of `HEAD`.
-
-## Open questions (for the user, not for a future session to guess at)
-
-1. Is the ROMUZAK/Galway `$D418` master-volume hardcode ( `<work_remaining>`
-   #1) worth a bounded RE investigation, or should it stay as-is until/unless
-   a specific file is found to need it?
-2. Should `mon_part_fidelity.py`'s per-voice delay refinement (`vdly`) be
-   made per-register (`<work_remaining>` #2)? This moves published corpus
-   numbers project-wide and needs an explicit yes.
-3. Is `--repeat-floor 9` (10% false-positive rate) an acceptable default, or
-   should headline fidelity claims re-run at a higher N before being quoted?
+### Open questions for the user
+1. Should `ACCURACY_MATRIX.md` or `docs/players/` be the single home for accuracy figures? Two
+   copies remain.
+2. Is a second calibration case worth building, and from which known defect?
 </current_state>

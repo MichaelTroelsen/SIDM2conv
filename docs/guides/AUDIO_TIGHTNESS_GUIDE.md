@@ -298,13 +298,13 @@ Two calibrated caveats, both measured against the B13 case:
 
 - **A-weighting is the strongest single discriminator found** — it separates the
   known-bad build from the known-good one 5.4x better than raw dBFS.
-- **`--windowed`'s verdict is degenerate as shipped** when comparing an original
-  against a driver build: `silence_frac` differs systematically (a driver never
-  reproduces the original's startup silence) and the flat-baseline scoring
-  branch outranges the sigma branch, so silence wins outright and flags both a
-  good and a bad build identically. Excluding it, the ranking separates cleanly.
-  **Treat a silence-driven worst-window verdict as uninformative.** See the
-  KNOWN LIMITATION block in `sidm2/audio_listen.py`.
+- **`--windowed`'s `silence_frac` confound is fixed**: a driver render never
+  reproduces the original's startup silence, which used to swamp the ranking
+  (both a known-good and known-bad build flagged identically at window 0). That
+  offset is one-directional (driver *less* silent than orig), so it's now
+  clipped out at the metric level, leaving the opposite direction — driver
+  going silent where the original was not — as the live signal. See
+  `_only_more_silent` in `sidm2/audio_listen.py`.
 
 Both `orig` and `driver` accept `.sid`, `.sf2`, or `.wav` directly — `.wav`
 is used as-is, `.sid` is rendered, `.sf2` is converted to `.sid` first (via

@@ -18,7 +18,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sidm2.audio_listen import (AudioFeatures, _metric_scale, MIN_WINDOWS_FOR_OUTLIER, WINDOW_OUTLIER_SIGMA, WINDOW_S,
+from sidm2.audio_listen import (AudioFeatures, _metric_scale, _only_more_silent, MIN_WINDOWS_FOR_OUTLIER,
+                                 WINDOW_OUTLIER_SIGMA, WINDOW_S,
                                  _robust_spread, extract_features_windowed,
                                  format_windowed_diff_report, worst_window)
 
@@ -300,13 +301,6 @@ class TestSparseMetricDoesNotWinByInfinity(unittest.TestCase):
             rolloff85_hz_mean=2000.0, zcr_mean=0.1, flatness_mean=0.2))
             for i, s in enumerate(silences)]
 
-    def test_sparse_baseline_scores_finitely(self):
-        out = worst_window(self._windows(self.ORIG_SILENCE),
-                           self._windows([0.0] * len(self.ORIG_SILENCE)))
-        self.assertIsNotNone(out)
-        self.assertTrue(np.isfinite(out.score),
-                        f"sparse metric scored {out.score} -- it will win every ranking")
-
     def test_metric_scale_is_nonzero_for_a_sparse_series(self):
         sparse = np.array(self.ORIG_SILENCE)
         self.assertEqual(float(np.median(np.abs(sparse))), 0.0)   # the trap
@@ -314,10 +308,91 @@ class TestSparseMetricDoesNotWinByInfinity(unittest.TestCase):
 
     def test_genuinely_all_zero_baseline_still_uses_the_infinite_branch(self):
         # The case the flat-baseline branch was written for must keep working:
-        # every window exactly zero on both sides except one.
+        # every window exactly zero on both sides except one, and that one is
+        # in the direction _only_more_silent keeps (driver MORE silent).
         n = 12
         driver = [0.0] * n
         driver[3] = 0.5
         out = worst_window(self._windows([0.0] * n), self._windows(driver))
         self.assertIsNotNone(out)
         self.assertEqual(out.index, 3)
+
+
+class TestSilenceFracOnlyFlagsGoingMoreSilent(unittest.TestCase):
+    """The fix for the swamping bug above: clip the confound's direction.
+
+    silence_frac's raw delta is dominated by a systematic, NON-defect pattern
+    -- a driver render essentially never reproduces the original's
+    startup/quiet-section silence, so delta (driver - orig) is negative in
+    nearly every window regardless of build quality. `_only_more_silent` clips
+    that direction to 0, leaving only driver-MORE-silent-than-orig (the actual
+    defect this metric exists to catch) live.
+    """
+
+    ORIG_SILENCE = TestSparseMetricDoesNotWinByInfinity.ORIG_SILENCE
+    _windows = TestSparseMetricDoesNotWinByInfinity._windows
+
+    def test_transform_clips_negative_deltas_to_zero(self):
+        d = _only_more_silent(np.array([-0.09, 0.0, 0.02, -0.5]))
+        np.testing.assert_array_equal(d, [0.0, 0.0, 0.02, 0.0])
+
+    def test_transform_leaves_positive_deltas_untouched(self):
+        d = _only_more_silent(np.array([0.09, 0.0, 0.3]))
+        np.testing.assert_array_equal(d, [0.09, 0.0, 0.3])
+
+    def test_startup_silence_confound_no_longer_wins_the_ranking(self):
+        # Exactly the Glyptodont pattern that used to flag both a known-good
+        # and a known-bad build identically: driver has no silence anywhere,
+        # original has the usual quiet passages. Nothing else varies, so the
+        # confound clipping to 0 everywhere means NO metric has any deviation
+        # left -- a stronger guarantee than merely "finite".
+        out = worst_window(self._windows(self.ORIG_SILENCE),
+                           self._windows([0.0] * len(self.ORIG_SILENCE)))
+        self.assertIsNone(out)
+
+    def test_driver_going_silent_where_original_is_not_is_still_caught(self):
+        # The real defect this metric exists to catch: the driver drops out
+        # mid-song while the original keeps playing. Opposite direction from
+        # the startup-silence confound, so it must survive the clip.
+        n = 12
+        orig = [0.0] * n
+        driver = [0.0] * n
+        driver[6] = 0.8   # driver goes silent at window 6; original does not
+        out = worst_window(self._windows(orig), self._windows(driver))
+        self.assertIsNotNone(out)
+        self.assertEqual(out.index, 6)
+        self.assertEqual(out.metric, 'silence')
+        self.assertTrue(out.is_outlier)
+
+    def test_reproduces_the_calibration_records_excluding_silence_result(self):
+        # pyscript/calibration_cases.json's "excluding_silence_frac" branch
+        # (the alternative considered before this fix) found: bad build's
+        # worst window is centroid +146 Hz at index 3 (15.0s); good build's is
+        # RMS +5.0 dB at index 0 (0.0s). Reproduce that shape here: silence
+        # follows the real Glyptodont pattern (driver always less silent, the
+        # confound), plus one genuine anomaly per build in another metric.
+        # With the fix, silence must NOT out-rank the real anomaly.
+        n = len(self.ORIG_SILENCE)
+
+        def build(spike_index, spike_metric, spike_delta):
+            orig = self._windows(self.ORIG_SILENCE)
+            driver = self._windows([0.0] * n)
+            base = driver[spike_index][1]
+            kwargs = dict(duration_s=base.duration_s, rms_db_mean=base.rms_db_mean,
+                          rms_db_max=base.rms_db_max, silence_frac=base.silence_frac,
+                          centroid_hz_mean=base.centroid_hz_mean, centroid_hz_std=base.centroid_hz_std,
+                          rolloff85_hz_mean=base.rolloff85_hz_mean, zcr_mean=base.zcr_mean,
+                          flatness_mean=base.flatness_mean)
+            kwargs[spike_metric] = getattr(base, spike_metric) + spike_delta
+            driver[spike_index] = (driver[spike_index][0], AudioFeatures(**kwargs))
+            return orig, driver
+
+        bad_orig, bad_driver = build(3, 'centroid_hz_mean', 146.0)
+        out_bad = worst_window(bad_orig, bad_driver)
+        self.assertEqual(out_bad.index, 3)
+        self.assertEqual(out_bad.metric, 'centroid')
+
+        good_orig, good_driver = build(0, 'rms_db_mean', 5.0)
+        out_good = worst_window(good_orig, good_driver)
+        self.assertEqual(out_good.index, 0)
+        self.assertEqual(out_good.metric, 'RMS level')
