@@ -35,7 +35,7 @@ __all__ = [
     'HardTrackError', 'HardTrackModule', 'Instrument',
     'ORDER_END', 'ORDER_HOLD', 'ORDER_JUMP',
     'CMD_TIE', 'CMD_GATE_OFF', 'CMD_RESET', 'CMD_SLIDE', 'CMD_PORTA',
-    'CMD_REST', 'PATTERN_END', 'INSTR_HOLD',
+    'CMD_REST', 'PATTERN_END', 'INSTR_HOLD', 'INSTR_LEGATO',
 ]
 
 # --- orderlist bytes -------------------------------------------------------
@@ -52,7 +52,13 @@ CMD_RESET = 0x62     # reset the per-voice synth cursors
 CMD_SLIDE = 0x63     # + 1 arg byte
 CMD_PORTA = 0x64     # + 1 arg byte
 CMD_REST = 0x67      # + 1 arg byte = rest length in rows
-INSTR_HOLD = 0x00    # instrument byte 0 = keep the current instrument
+INSTR_HOLD = 0x00    # instrument byte 0 = keep the instrument, RESTART its programs
+# Instrument byte $6F = LEGATO: the pitch changes but the instrument's wave and
+# pulse programs are NOT restarted ($16CB is set, which makes the note-on path
+# skip the instrument reload). Distinct from $00, which keeps the same
+# instrument but does restart it. 24.7% of note events in the Shogoon corpus
+# carry it, so it is a core feature, not an edge case.
+INSTR_LEGATO = 0x6F
 
 # The pattern reader masks the instrument byte with $1F, so an index is 0..31.
 # The number of instruments actually STORED is per-file, though, and it sets the
@@ -481,7 +487,7 @@ def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
                     v.trigger = True
                 a = module.byte(v.pat_ptr + v.pat_idx)
                 v.pat_idx += 1
-                if a not in (INSTR_HOLD, 0x6F):
+                if a not in (INSTR_HOLD, INSTR_LEGATO):
                     v.instr = a & 0x1F
                 if v.trigger:
                     on = ((v.note + v.transpose) & 0x7F, v.instr)

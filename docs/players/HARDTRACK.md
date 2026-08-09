@@ -104,9 +104,16 @@ duration is a separate rest command, so a "row" is one event, not one frame.
 | `$60` / `$61` / `$62` | tie / gate-off / reset — each still consumes an instrument byte |
 | other | **note** (`& $7F`, index into the 96-entry frequency table) followed by an instrument byte |
 
-Instrument byte: `$00` = *keep the current instrument*; otherwise `& $1F` selects
-one of 32. That is why the editor writes `$80` for "instrument 0" — a literal `$00`
-would mean "no change".
+Instrument byte: `$00` = *keep the current instrument*; **`$6F` = LEGATO**;
+otherwise `& $1F` selects one of 32. That is why the editor writes `$80` for
+"instrument 0" — a literal `$00` would mean "no change".
+
+**`$6F` is not a synonym for `$00`.** Both keep the current instrument, but `$6F`
+additionally sets `$16CB`, which makes the note-on path **skip the instrument
+reload** — so the pitch changes while the wave and pulse programs keep running
+from where they were, instead of restarting their attack. It carries **24.7% of
+all note events** in this corpus (4,353 of 17,628, in all 31 decodable files), so
+it is a core feature, not an edge case. Stage A does not reproduce it (see below).
 
 ### Tempo
 
@@ -303,36 +310,43 @@ By that reading: **6 of the 8 files the parser decodes at 100.0% are Stage A
 note of 454. The real losses are `Zakplus` (99.0 → 87.6) and `Hopscotch`
 (72.2 → 56.8).
 
-### The Stage A "losses" — diagnosed, and mostly not losses
+### The Stage A losses — attributed
 
-The first writeup of this build proposed that the `Zakplus`/`Hopscotch` losses
-came from **cross-pattern gate state** (one pattern becomes one sequence, so
-"is this voice still sounding at pattern start" is decided per sequence while the
-player decides it per voice). That hypothesis is **FALSIFIED**, on both sides:
+Measured over the notes the **parser itself resolves** (5,167), with the known
+Driver 11 startup frame corrected, Stage A loses **43 notes — it retains
+99.17%**. That is the informative number: the 90.64% / 91.26% figures are diluted
+by notes the parser never resolved either, which Stage A cannot be blamed for.
 
-- `Zakplus` voice 2 — the worst loss at 63.5% — has **zero** ambiguous patterns.
-  The hypothesis requires an ambiguous entry in the failing voice; there is none.
-- `Love_tune_2` has **3** ambiguous patterns and scores **100.0% on every voice**,
-  including 100% on the notes inside those very patterns.
+Attribution of those 43, by the note's raw instrument byte:
 
-The real cause is a **systematic one-frame lag**. Comparing the frame at which
-each note's exact frequency first appears, Stage A lands **+1 frame** behind the
-original on **68.9%** of all notes (+0 on 8.9%). Traced note by note the two
-renders play the *identical* arpeggio — here is Zakplus instrument 5, note 56:
+| | notes | Stage A loses | rate |
+|---|---|---|---|
+| **`$6F` legato** | 871 | **25** | **2.87%** |
+| plain / other | 4,296 | 18 | 0.42% |
 
-```
-frame   +0   +1   +2   +3   +4   +5   +6   +7   +8   +9   +10
-orig    20   20   20   76   63   63   60   60  [56]  56   63
-StageA  20   20   20   20   76   63   63   60   60  [56]  56
-```
+**58.1% of all Stage A losses are `$6F` legato notes** — a 6.8× enrichment. The
+mechanism is understood: `$6F` means "change pitch, do NOT restart the
+instrument's programs", and Stage A emits a normal Driver 11 note-on, which
+always restarts the wave program. When that program's tail does not return to
+arpeggio offset 0, the base pitch never reappears. `Love_tune_3` is the clearest
+case — 12 of its 14 losses are `$6F`, at 32.4% (12/38) against 1.1% (2/201) for
+its plain notes.
 
-Same sequence, shifted by one. The measurement window was `+0..+8`, so the
-original's arrival at +8 counted and Stage A's at +9 did not. **That single frame
-is the whole `Zakplus` voice-2 "loss".** It costs score only for arpeggiated
-instruments, whose target pitch arrives late in the ramp — instruments that rest
-on offset 0 in their first wave steps hit immediately and score 100% either way.
-That is exactly the split observed: every missing instrument arpeggiates past the
-window; every hitting one has an offset-0 step early.
+This is **not currently fixed**, and the honest reason is that the payoff does
+not justify the risk: 25 notes across the whole corpus (0.5% of parser-resolved
+notes). Runtime Driver 11 cannot express a tie at all — `$90-$9F` tie durations
+are an editor-only feature that desyncs the real driver, which
+`test_no_tie_bytes_emitted` already locks out. The workable approach would be to
+give `$6F` notes a **duplicate instrument slot whose `wave_idx` points at the
+program's settled step** rather than its attack, and that needs measuring across
+all 33 files before it could be trusted.
+
+**18 losses remain unattributed**, concentrated in `Walk_to_Soul` (5) and
+`Ritual_II_tune_2` (6). `Walk_to_Soul`'s are all plain notes — one specific event
+(note 21, instrument 3, pattern 1, once per 192-frame loop) where the original
+holds the bare note and Stage A runs the instrument's full descending ramp,
+settling at note+4. A `$62`-freeze explanation was tested and **refuted** (the
+notes actually tagged as followed-by-`$62` all hit).
 
 ### Where the +1 frame comes from — found
 
@@ -414,10 +428,13 @@ Two measurement traps this build walked into, both worth remembering:
 
 ## Next steps
 
-1. **Explain `Love_tune_3` (−5.8 pp) and `Walk_to_Soul` (−5.9 pp)** — the only
-   Stage A losses left once the Driver 11 startup phase is accounted for. Both
-   are unaffected by `--lag`, so the cause is something else entirely.
-2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
+1. **Reproduce `$6F` legato in Stage A** — 58% of the remaining losses. Give a
+   `$6F` note a duplicate instrument whose `wave_idx` is the program's settled
+   step, not its attack. Ties are not an option (runtime Driver 11 cannot parse
+   them). Measure across all 33 files before trusting it.
+2. **Explain the 18 unattributed losses**, mainly `Walk_to_Soul` (5) and
+   `Ritual_II_tune_2` (6). `$62`-freeze was tested and refuted.
+3. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
    not yet *modelled* in `simulate()` — doing so is what would let the fidelity
