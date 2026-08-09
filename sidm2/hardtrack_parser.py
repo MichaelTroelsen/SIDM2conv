@@ -126,12 +126,19 @@ class Instrument:
         return self.raw[1]
 
     @property
-    def pulse_hi(self) -> int:      # high nibble of f2 -> $D403
+    def pulse_lo(self) -> int:
+        """$D402. The player stores it in the HIGH nibble of field 2."""
         return self.raw[2] & 0xF0
 
     @property
-    def pulse_lo(self) -> int:      # low nibble of f2 -> $D402
+    def pulse_hi(self) -> int:
+        """$D403 (pulse-width bits 8-11). The LOW nibble of field 2."""
         return self.raw[2] & 0x0F
+
+    @property
+    def pulse_width(self) -> int:
+        """The 12-bit initial pulse width this instrument starts at."""
+        return (self.pulse_hi << 8) | self.pulse_lo
 
     @property
     def pulse_cursor(self) -> int:

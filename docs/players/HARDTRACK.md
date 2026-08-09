@@ -1,8 +1,9 @@
 # HardTrack Composer — SID → SF2 support
 
-**Status: RE stage only.** The module format is decoded, relocation-safe, and
-validated against siddump. There is **no converter yet** — no Stage A (Driver 11)
-and no Stage B (native driver). Nothing is wired into `DriverSelector`.
+**Status: RE + Stage A.** The module format is decoded, relocation-safe, and
+validated against siddump; a **Stage A transpile to an editable Driver 11 SF2**
+now exists (`bin/hardtrack_to_sf2.py`). No Stage B (native driver), and nothing
+is wired into `DriverSelector` — Stage A is a `bin/` tool, not a default path.
 
 **Format:** HardTrack Composer, a native C64 music editor released **1992** under
 Elysium by the Polish sceners **Longhair (Miłosz Ignatowski)** — replay routine —
@@ -22,8 +23,10 @@ give you table addresses.
 split with `tools/player-id.exe "SID/Shogoon/*.sid"`; do not assume the directory
 is single-player.
 
-**Code:** `sidm2/hardtrack_parser.py` · validator `pyscript/hardtrack_validate.py`
-· tests `pyscript/test_hardtrack_parser.py` (28).
+**Code:** parser `sidm2/hardtrack_parser.py` · Stage A `bin/hardtrack_to_sf2.py`
+· validators `pyscript/hardtrack_validate.py` (parser) and
+`pyscript/hardtrack_stagea_validate.py` (Stage A) · tests
+`pyscript/test_hardtrack_parser.py` (28) + `pyscript/test_hardtrack_to_sf2.py` (12).
 
 ---
 
@@ -244,13 +247,100 @@ which module it is looking at must say so; see PATTERNS.md and the DEENEN
 
 ---
 
+## Stage A — editable Driver 11 SF2
+
+```
+py -3 bin/hardtrack_to_sf2.py SID/Shogoon/Love_tune_2.sid       # -> out/hardtrack/
+py -3 pyscript/hardtrack_stagea_validate.py "SID/Shogoon/*.sid" -t 20
+```
+
+### What transfers exactly
+
+- **Notes and timing.** A HardTrack row lands every `speed+1` frames, a Driver 11
+  row plays `tempo+1`, so `tempo = speed` and one row maps to one row.
+- **The waveform/arpeggio program**, transliterated 1:1. Both formats are a
+  2-column table with a jump row, and — crucially — both use the same rule in
+  column 1: `$00–$7F` is a relative semitone, `$80+` an absolute note. So the
+  whole table is copied with row indices preserved and each instrument keeps its
+  own cursor as `wave_idx`; internal jumps stay valid with no remapping.
+- **Per-instrument AD/SR and the starting pulse width.**
+
+### What does not (all logged by the builder, never silent)
+
+- **Pulse sweep** — HardTrack sweeps the width every frame; Driver 11's pulse
+  table is set-and-hold, so swept leads sound static. Stage B material.
+- **Slide/portamento** (`$63`/`$64`) become sustain rows.
+- **The global filter sweep** is not ported.
+- **Orderlist transpose is materialised, not expressed.** Driver 11 *does* have
+  an `$A0+transpose` orderlist command, but the shared emitter writes transpose 0
+  unconditionally and changing it would touch a path eight other players depend
+  on. A pattern used at two transposes becomes two sequences with pre-transposed
+  notes: correct, just more sequences than necessary.
+- **The loop point** — `$FD n` loops to orderlist index *n*; a Driver 11
+  orderlist only loops to its start, so a song with an intro replays it.
+
+### Fidelity
+
+Same byte-exact frequency-register metric as the parser validator, over
+sequencer-pitch notes only, 20 s:
+
+| | notes | match |
+|---|---|---|
+| **Stage A** (Driver 11 render) | 5,846 | **90.64%** |
+| parser decode (original SID) | 5,846 | 88.39% |
+
+**Stage A scoring *above* the parser is a measurement artifact, not an
+improvement — do not read it as one.** Where the original's wave program bends a
+note's pitch away from the exact table value, the original *misses* the metric
+while Stage A — which does not port that modulation — plays the note plainly and
+*hits* it. Stage A wins those notes by being simpler, not better. The comparison
+is only meaningful in the losing direction: where Stage A scores **below** the
+parser, the transpile genuinely lost something.
+
+By that reading: **6 of the 8 files the parser decodes at 100.0% are Stage A
+100.0% too** (`Domagareflexow`, `If_I_Was_a_Rich_Man`, `Love_tune_2`,
+`Ritual_II_tune_1`, `Sling`, `Tribute_to_Laxity`). `Something_to_Eat` loses one
+note of 454. The real losses are `Zakplus` (99.0 → 87.6) and `Hopscotch`
+(72.2 → 56.8).
+
+### The known Stage A defect
+
+Those losses are **voice-localised and flat over time**, not drift — Zakplus
+voice 2 scores 63.5% against the original's 100.0%, Hopscotch voice 1 scores
+29.6% against 60.5%, while their other voices are near-perfect. No cap warning
+fires (sequences 62 and 56 against the 120 cap; instruments under 31), so it is
+not truncation.
+
+The leading suspect is structural and predicted by the design: one HardTrack
+pattern becomes one Driver 11 sequence, so **whether a voice is still sounding
+when a pattern starts is decided per sequence, not per voice**. A pattern opening
+with `$67` (rest) is emitted with note-offs, but the player would have sustained
+a note carried in from the previous pattern — and the same pattern can be entered
+both ways at different points in the orderlist. That is consistent with all the
+evidence, but it is a **hypothesis, not a confirmed diagnosis**; it has not been
+tested by fixing it.
+
+Two measurement traps this build walked into, both worth remembering:
+
+1. The Driver 11 note byte is the **semitone index itself**, not `index + 1` as
+   the shared IR's own comment suggests. Emitting `index + 1` put every note
+   exactly one semitone sharp — audible as a wrong key, and invisible to any
+   check that only asks "did a note play?".
+2. `pyscript/sf2_to_text_exporter.py` reports "invalid sequence address $0000"
+   and prints all three orderlists as sequence 00 for these files. The **emitted
+   file is correct** (checked by reading the orderlist bytes back through
+   `sf2_parser`); the exporter is what is wrong. Do not debug the builder from
+   its output.
+
+---
+
 ## Next steps
 
-1. **Stage A** — transpile to an editable Driver 11 SF2 through the shared
-   `GalwayDriver11Song` + `galway_driver11_emitter` IR. The parser already yields
-   what that needs (notes, durations, instruments, per-voice orderlists).
-   Watch the caps in [PLAYBOOK.md](PLAYBOOK.md) §3.
-2. **Resolve the residual** — instrument the `$63`/`$64` slide commands and
+1. **Confirm or refute the cross-pattern gate-state hypothesis** above — the one
+   named cause of the Stage A losses. A cheap test: for each (pattern,
+   transpose) key, check whether the voice is *always* entered sounding or never;
+   only genuinely ambiguous patterns need duplicating.
+2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
    not yet *modelled* in `simulate()` — doing so is what would let the fidelity
