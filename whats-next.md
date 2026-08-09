@@ -193,9 +193,26 @@ Ran the **audit-docs skill** first (`DOC-AUDIT.md`) rather than trimming on impr
    range-comparable in general — that was never shown to matter for any metric other than
    silence_frac's confound, which is now handled at the source, so it was not chased further.
 
-2. **The calibration set has exactly ONE case.** `pyscript/calibration_cases.json` is append-only
-   and needs no new test code per case. The A-weighting win (5.4×) rests on a single tune. Add a
-   second case the next time a human verdict disagrees with a metric.
+2. **A second calibration case was added — DONE 2026-08-09.**
+   `blackbird-glyptodont-e3e-drums-not-tight`: same tune as B13 but a deliberately DIFFERENT,
+   near-isolated commit range (`ef3263b` B25 → `12c7da5` E3e), chosen because the human verdict
+   ("sounds really good, [but] something not right with the drums... might be filters") was
+   recorded *after* B25 shipped a register-accuracy improvement (97.1%→97.5%) that did **not**
+   resolve the complaint — a real instance of the registers-vs-audio gap this tooling exists to
+   catch, not a hypothetical one. Measured independently end-to-end (own repeatability-floor
+   script, own worst_window rerun) rather than reusing B13's numbers. **Result: every finding
+   replicates** — orders correctly (56.8<65.2), no usable absolute gate (floor 84.3–99.8%),
+   `rms_dba_aweighted` is again the best feature (3.0× vs 1.5×), mel improves the same 2-of-3
+   metrics, centroid/rolloff show the same negative-separation completeness confound, chroma is
+   again a correct null, and `worst_window()`'s post-fix ranking lands on the *same* window indices*
+   (bad=centroid @15.0s window 3, good=RMS @0.0s window 0) as B13 despite being a wholly different
+   defect — independent evidence the silence_frac fix (item A1) generalizes rather than being
+   fitted to one tune. First attempt (Cybernoid/MoN, the SBC-carry-bug case) was **abandoned**:
+   both builds render ~1s of audio then go silent under sidplayfp — a pre-existing gap in this
+   project's MoN-audio pipeline (MoN has only ever been validated in the register/siddump domain,
+   never real audio), unrelated to the fix under test. Worth someone's attention separately; not
+   chased further here. 14/14 manifest consistency checks passed on first write — every
+   hand-computed finding number was correct.
 
 3. **`docs/players/` still duplicates the accuracy figures.** Only CLAUDE.md's copy was compressed.
    `ACCURACY_MATRIX.md` + 21 player docs still both carry them. The duplication root cause is
@@ -220,7 +237,7 @@ Ran the **audit-docs skill** first (`DOC-AUDIT.md`) rather than trimming on impr
 
 ### C. Suggested next steps, in order
 1. ~~Decide the `silence_frac` question (A1)~~ — **DONE 2026-08-09**, see item A1 above.
-2. Add a second calibration case (A2).
+2. ~~Add a second calibration case (A2)~~ — **DONE 2026-08-09**, see item A2 above.
 3. Consider whether `docs/players/` or `ACCURACY_MATRIX.md` should be the single home (A3).
 </work_remaining>
 
@@ -336,20 +353,30 @@ review; all fell out of running against real material and checking against an ex
 
 <current_state>
 
-### Everything is committed and pushed. Nothing is in-flight.
-- Previous snapshot: HEAD `fe9846b`, 2,065 passing. **Since then (2026-08-09, this turn)**: fixed
-  the `worst_window()` silence_frac swamping (item A1) — see below. Pending commit at the time of
-  this edit; tests now **2,069 passing** (5 new, 1 removed net +4), 8 skipped, 2 xfailed, 0
-  failures. Working tree otherwise clean (the Glyptodont rebuild used for live verification
-  dirtied `drivers_src/blackbird/*.inc`; reverted, confirmed via `git status`).
+### Nothing is in-flight. Commit pending at the time of this edit (about to be made).
+- Previous snapshot: HEAD `fe9846b`, 2,065 passing. **Since then (2026-08-09, this turn)**:
+  1. Fixed `worst_window()`'s silence_frac swamping (item A1, commit `11a64ec`).
+  2. Added a second calibration case (item A2, commit pending) — `blackbird-glyptodont-e3e-
+     drums-not-tight`, which independently replicated every finding from the B13 case.
+  Tests now **2,069 passing** (net +4 from A1; A2 added no code, only a JSON manifest entry), 8
+  skipped, 2 xfailed, 0 failures.
+- Working tree kept clean throughout: TWO throwaway `git worktree` builds this turn (Blackbird at
+  `ef3263b`/`12c7da5` for A2, plus one abandoned Cybernoid/MoN attempt at `d946701`-era commit)
+  dirtied tracked generated files (`drivers_src/blackbird/*.inc`, `drivers_src/mon/*.inc`,
+  `drivers_src/romuzak/layout.inc`) — all reverted via `git checkout --`, confirmed via
+  `git status` before each commit. All throwaway worktrees removed after use.
 - **Version 3.23.0** consistent across all four canonical places: `sidm2/__init__.py`,
-  `CHANGELOG.md`, `CLAUDE.md` header, `docs/reference/ACCURACY_MATRIX.md`. Not bumped for this fix
-  (a bugfix within the already-shipped listening tooling, not a new feature).
+  `CHANGELOG.md`, `CLAUDE.md` header, `docs/reference/ACCURACY_MATRIX.md`. Not bumped for either
+  A1 or A2 (both are within the already-shipped listening tooling, not new features).
 - **`tools/clap_venv` does NOT exist** (uninstalled). `clap_validate.py` degrades to a clear
   actionable error; its 19 tests still pass.
 - **`stash@{0}`** (SDI Stage B) is intact and untouched — pre-existing, not mine.
-- The throwaway `git worktree` used to rebuild the B13 bad SF2 for live verification of A1 was
-  removed after use (`git worktree remove --force`). Nothing left behind.
+- **New, previously-unknown finding from the abandoned Cybernoid attempt**: MoN-family SF2s
+  (Driver-11-emitted, `driver-init 0x1000 driver-play 0x1006`) render ~1s of audio then go
+  completely silent under sidplayfp, for BOTH a "before" and "after" build — this project's MoN
+  validation has only ever been done in the register/siddump domain, never real audio. Not fixed,
+  not filed as a tracked issue; just noted here and in item A2 above. Worth someone picking up if
+  MoN-family audio-domain listening is ever wanted.
 
 ### Deliverable status
 | Item | Status |
@@ -358,16 +385,17 @@ review; all fell out of running against real material and checking against an ex
 | SID2SID / WAV2WAV | **COMPLETE** — already worked, verified + documented |
 | Per-voice stem export | **COMPLETE**, wired to CLI + pipeline config |
 | Improvements #1–#5 | **COMPLETE**, all committed and tested |
-| Calibration against a human verdict | **COMPLETE**, 1 case |
+| Calibration against a human verdict | **COMPLETE, 2 cases**, second REPLICATES the first independently |
 | CLAP | **REJECTED on measurement**, code kept, venv removed |
 | v3.23.0 release (CHANGELOG/STORY/version) | **COMPLETE** |
 | CLAUDE.md compression | **COMPLETE** (−21 %), audit in `DOC-AUDIT.md` |
-| `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against the real B13 case |
-| Second calibration case | **NOT STARTED** |
+| `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against 2 independent cases |
+| MoN/Cybernoid audio-domain rendering | **NEW GAP FOUND, not fixed** — see above |
 | Accuracy percentages verified | **NOT DONE — out of scope, routed to the falsify agent** |
 
 ### Open questions for the user
 1. Should `ACCURACY_MATRIX.md` or `docs/players/` be the single home for accuracy figures? Two
    copies remain.
-2. Is a second calibration case worth building, and from which known defect?
+2. Is the MoN/Cybernoid sidplayfp silent-after-1s rendering gap worth investigating? It blocks any
+   future MoN-family audio-domain calibration case, not just the one this turn abandoned.
 </current_state>

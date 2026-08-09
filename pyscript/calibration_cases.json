@@ -169,6 +169,157 @@
         "windowed_silence_confound_fixed": "2026-08-09",
         "chroma_correct_null": true
       }
+    },
+    {
+      "id": "blackbird-glyptodont-e3e-drums-not-tight",
+      "tune": "SID/LFT/Glyptodont.sid",
+      "human_verdict": "sounds really good, [but] there is something not right with the drums... might be filters",
+      "verdict_source": "docs/players/BLACKBIRD.md, 'B25 SHIPPED' section (2026-07-24) -- recorded AFTER B25 shipped, i.e. the complaint that PERSISTED despite a register-accuracy improvement (97.1%->97.5%). The root cause (filter was actually the strongest category at 99.9%) was found by E3e, not by filter work.",
+      "measured_on": "2026-08-09",
+      "note": "SECOND case, same tune as blackbird-glyptodont-b13 but a DIFFERENT commit range isolating a DIFFERENT fix -- chosen deliberately to test whether the metrics' findings (ordinal-only sensitivity, A-weighting as best feature, centroid/rolloff as a completeness confound) replicate on an independent defect, not just restate the first case. Unlike B13 (which spans ~25 commits of compounding fixes), this pair isolates almost exactly the E3b/E3c(c)/E3e fix chain: 'bad' is the commit where the human's complaint was recorded as still-unresolved, 'good' is the commit the docs credit with resolving it.",
+      "render": {
+        "renderer": "sidplayfp",
+        "seconds": 60,
+        "power_on_delay": 0,
+        "driver_init": "0x1000",
+        "driver_play": "0x1003"
+      },
+      "builds": {
+        "bad": {
+          "commit": "ef3263b",
+          "commit_subject": "Blackbird Stage B25: model prepare2's pre-restart SR/gate blip via an fx-command sentinel -- fixes the real \"drums sound off\" cause, every corpus file improves or is unchanged",
+          "build_cmd": "py -3 bin/build_blackbird_native_song.py SID/LFT/Glyptodont.sid",
+          "artifact": "out/blackbird/Glyptodont_native_part01.sf2",
+          "register_overall_pct": 97.5,
+          "note": "The state the 'still not right with the drums' complaint was recorded against, despite B25 having just improved the register score."
+        },
+        "good": {
+          "commit": "12c7da5",
+          "commit_subject": "E3e: prepare2 blips from TWO call sites -- the \"implicit repeat-instrument\" hid 44.8% of all hard restarts",
+          "build_cmd": "py -3 bin/build_blackbird_native_song.py SID/LFT/Glyptodont.sid",
+          "artifact": "out/blackbird/Glyptodont_native_part01.sf2",
+          "register_overall_pct": 99.7,
+          "note": "docs/players/BLACKBIRD.md: 'This is the answer to the user's original \"the drums are still not tight\"'."
+        }
+      },
+      "measurements": {
+        "onset_match_pct": {
+          "bad": 56.8,
+          "good": 65.2
+        },
+        "repeatability_floor_pct": {
+          "description": "Original vs a re-render of ITSELF at perturbed power-on delays, measured independently for this case (own script, not reused from the B13 case -- a different render session, different floor).",
+          "min": 84.3,
+          "max": 99.8,
+          "samples": [
+            99.8,
+            91.3,
+            84.3
+          ]
+        },
+        "feature_separation": {
+          "description": "|delta(orig,bad)| - |delta(orig,good)| per feature, same 60 s sidplayfp delay=0 renders as onset_match_pct.",
+          "measured_on": "2026-08-09",
+          "by_metric": {
+            "rms_db_dbfs": {
+              "delta_bad": 1.346,
+              "delta_good": 0.804,
+              "separation": 0.542
+            },
+            "rms_dba_aweighted": {
+              "delta_bad": 2.087,
+              "delta_good": 0.453,
+              "separation": 1.634
+            },
+            "centroid_hz_linear": {
+              "delta_bad": 29.126,
+              "delta_good": 44.796,
+              "separation": -15.670
+            },
+            "centroid_hz_mel": {
+              "delta_bad": 29.931,
+              "delta_good": 44.458,
+              "separation": -14.527
+            },
+            "rolloff85_hz_linear": {
+              "delta_bad": 28.535,
+              "delta_good": 93.114,
+              "separation": -64.579
+            },
+            "rolloff85_hz_mel": {
+              "delta_bad": 29.683,
+              "delta_good": 94.534,
+              "separation": -64.851
+            },
+            "flatness_linear": {
+              "delta_bad": 0.022,
+              "delta_good": 0.003,
+              "separation": 0.019
+            },
+            "flatness_mel": {
+              "delta_bad": 0.036,
+              "delta_good": 0.015,
+              "separation": 0.021
+            }
+          }
+        },
+        "windowed": {
+          "description": "worst_window(), 5 s windows, run after the silence_frac fix (this case was measured entirely post-fix, so there is no 'before_fix' entry to record).",
+          "measured_on": "2026-08-09",
+          "window_s": 5.0,
+          "windows": 12,
+          "renderer": "sidplayfp, 60s, power_on_delay=0, driver-init 0x1000 driver-play 0x1003",
+          "result": {
+            "bad": {
+              "index": 3,
+              "start_s": 15.0,
+              "metric": "centroid",
+              "delta": 128.658,
+              "score": 3.920
+            },
+            "good": {
+              "index": 0,
+              "start_s": 0.0,
+              "metric": "RMS level",
+              "delta": 4.950,
+              "score": 2.691
+            },
+            "silence_score_both_builds": 0.0,
+            "discriminates": true,
+            "note": "Same shape as the B13 case despite being a totally different defect/fix: bad's worst window is mid-song centroid at 15.0s (window index 3, matching B13's), good's is a startup RMS transient at 0.0s (window index 0, also matching B13's) -- independent evidence the fix generalizes rather than an artifact of one tune's specific rendering."
+          }
+        },
+        "chroma": {
+          "description": "The drums/envelope-retrigger defect this case tests has no pitch component, so chroma should again stay quiet.",
+          "measured_on": "2026-08-09",
+          "dominant": {
+            "orig": "C 0.22, F 0.13, D# 0.12",
+            "bad": "C 0.20, F 0.13, D# 0.12",
+            "good": "C 0.20, F 0.13, D# 0.12"
+          },
+          "l1_distance": {
+            "bad": 0.0784,
+            "good": 0.0757
+          },
+          "separation": 0.0027,
+          "correct_null": true,
+          "note": "Both builds shift equally and slightly away from C, same as the B13 case; separation is again ~0. Confirms chroma correctly reports nothing for a second, unrelated non-pitch defect."
+        }
+      },
+      "findings": {
+        "orders_correctly": true,
+        "absolute_gate_usable": false,
+        "summary": "Replicates the B13 case's shape on an independent defect: the metric ranks bad below good (56.8 < 65.2), ORDINAL sensitivity again holds, but both builds still score well below their own 84.3-99.8% repeatability floor -- no usable absolute gate here either. Notably, the human's complaint PERSISTED across a register-accuracy improvement (97.1%->97.5%, B25) and was resolved only by a later, different fix (E3e) that moved the register score further (->99.7%) -- a real-world instance of the project's own registers-vs-audio gap, not merely a hypothetical one.",
+        "best_feature": "rms_dba_aweighted",
+        "aweighting_improves_separation": true,
+        "mel_improves_separation": true,
+        "feature_summary": "A-weighting is again the clear win here (separation 0.542 -> 1.634, 3.0x), replicating B13's finding independently. Mel spacing again improves 2 of 3 metrics (centroid -15.670 -> -14.527, flatness 0.019 -> 0.021) and again worsens rolloff (-64.579 -> -64.851) -- the exact same 2-of-3 pattern as B13, from an unrelated defect. Centroid and rolloff are again NEGATIVE (a CONFOUND, not anti-information): the good (E3e) build recovers far more of the missing hard-restart note-ons than the bad (B25) build does, so more content plays and the whole-file spectral average shifts, exactly as in B13.",
+        "mel_metrics_improved": 2,
+        "mel_metrics_total": 3,
+        "windowed_discriminates_as_shipped": true,
+        "chroma_correct_null": true,
+        "replicates_b13_findings": ["orders_correctly", "absolute_gate_usable=false", "best_feature=rms_dba_aweighted", "mel 2-of-3", "centroid/rolloff confound direction", "chroma correct null", "windowed worst-window window indices (3 for bad, 0 for good)"]
+      }
     }
   ]
 }
