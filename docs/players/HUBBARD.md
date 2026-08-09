@@ -131,11 +131,81 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
     Commando. Severity varies a lot: Zoids_song2 mild (96.5%), Commando_song2
     severe (14.3%) — likely depends on the specific instrument's `pv` value
     and how long a note sustains, not a single universal constant.
-  - **Not fixed.** Confirming the true clock rate needs disassembling the
-    ROM's IRQ/timer setup (not yet done) rather than curve-fitting the
-    observed 6-then-2 schedule, which could easily be a specific tune's
-    coincidence rather than the general rule. See `whats-next.md` if this is
-    picked back up.
+  - **The IRQ/timer setup was disassembled (2026-08-09) — there isn't one.**
+    `init` (`$5fb2-$5fc4`) is a 4-line subtune-select dispatcher; it never
+    touches `$FFFE/$FFFF`, CIA, or VIC timers. Every call traces back to ONE
+    per-frame entry (`play` = `$5012` → `$5052`), gated by a single tick
+    counter (`$5054: DEC $5513`) that branches between note-fetch (once every
+    `fpt` frames) and the freq-slide+pulsework block (the other frames) — no
+    separate/faster clock exists to find.
+  - **The real mechanism, fully verified by instruction-level trace, not
+    inference:** all three of Commando_song2's voices share ONE instrument
+    (10) for the whole drift window (`decode_song` confirms tick 8-32, frames
+    48-96) — a three-way chord on one fast-PWM instrument. Tracing actual PC
+    execution (not just the register symptom) at `$523d` (`ADC $5507`) shows
+    the per-instrument pulse-speed byte is `pv=1` (constant across the
+    window, confirmed), and the ROM code has **no `CLC` before that ADC** —
+    it inherits whatever carry the SAME voice's own preceding freq-slide
+    computation (`$5205-$521e`, immediately before, no intervening flag-
+    clearing instruction) happens to leave set that frame. `HPReplay.
+    state_at(frame)['live_pw']` (existing py65-replay machinery in
+    `bin/build_hubbard_native_song.py`, previously only sampled once per
+    part to seed the modelled engine's initial phase) reproduces this
+    EXACTLY when sampled every frame — confirmed byte-for-byte against the
+    siddump trace.
+  - **A driver fix was attempted and reverted — same day, same session.**
+    Moved the fast-PWM add out of `pulse_step` into `fm_step`'s own per-voice
+    loop, immediately after its own frequency ADC, with no `CLC`, matching
+    the ROM's instruction adjacency exactly (per-voice interleaved, not a
+    naive top-level JSR swap — a coarse subroutine reorder was checked first
+    and shown NOT to work, since each per-voice loop iterates all 3 voices
+    internally before the other starts, so carry would still belong to the
+    wrong voice). Assembled cleanly after trimming ~56 bytes of new code
+    down under a real `DRIVER STATE-REGION OVERLAP` budget the growth first
+    tripped (`$16CC-$1702`, SF2II's live playback-state region — confirmed
+    via a direct 64tass assemble + zero-byte-region check, not guessed).
+    **Verified NOT to change a single output byte** — PC-traced the new code
+    at runtime (hits `fmhp_step` 3 times/frame, every frame, exactly as
+    designed) and it computes the IDENTICAL flat result as before. Root
+    cause: the MODELLED driver's frequency engine (`fm_write`, `vfreq +
+    FM_ACC` from parsed FM-offset tables) is a **different algorithm** from
+    the ROM's raw 16-bit slide loop — both converge on the same numeric
+    frequency, but the modelled engine's own arithmetic never happens to
+    overflow the way the ROM's does, so its ambient carry is always 0.
+    "Inherit whatever carry is lying around" only works if the SAME
+    arithmetic produces it; a numerically-equivalent but structurally
+    different computation doesn't share carry history. **Reverted** (`git
+    checkout`) rather than leave inert, non-functional complexity in a
+    driver shared by MoN/ROMUZAK/Galway — confirmed via `git diff --stat`
+    showing zero changes and a full suite re-run (1888/7/2, unchanged).
+  - **Why the existing `HUBBARD_PULSE_ENGINE=0` fallback isn't the fix
+    either**, tried and measured before the driver-patch attempt above: it
+    disables `HP_ENGINE` for the whole file and falls back to captured/
+    canonical pulse bundles. On `Commando_song2` that moved 14.3% → 74% (a
+    real improvement — proof the flat model IS the dominant error) but not
+    to 100%: byte-exact for frames 0-191, then diverges starting EXACTLY at
+    frame 192, and again at 288 — the note-repeat/loop boundaries (period 96
+    frames). Root cause: the canonical-bundle emitter captures ONE pulse
+    sequence per unique {instrument, pattern} and reuses it on every repeat,
+    which is correct for instruments that reset per note but wrong here —
+    instrument 10's PW is a continuously-accumulating global that NEVER
+    resets between repeats, so replaying a bundle captured at the first
+    occurrence gives stale values at the second and third. Confirmed safe
+    for `song0` under the same flag (99.7-100%, unchanged), so the fallback
+    itself isn't harmful — it's just architecturally the wrong tool for a
+    non-resetting accumulator. This is exactly why `HP_ENGINE`'s live-
+    accumulation design is the right idea for this instrument class; only
+    its per-frame step FORMULA is wrong.
+  - **The correct fix, not yet built:** don't try to reproduce the ROM's
+    carry incidentally — derive the true per-frame "does this instrument get
+    `pv` or `pv+1` this frame" schedule from `HPReplay` at BUILD time (it
+    already has the ground truth, verified exact) and bake it as a per-frame
+    bitmap the driver reads and adds explicitly, the same pattern this
+    driver already uses for `TEMPO_SCHED`/`SCHEDTAB` (an empirically-derived
+    per-frame stretch bitmap for irregular tempo, `measure_tick_schedule`).
+    Live accumulation stays the underlying mechanism (per the captured-
+    bundle failure above) — what's missing is only the EXTRA-STEP schedule,
+    not the accumulation model itself.
 - **`out/hubbard/*.sf2` is a build cache, not a source of truth — it goes stale
   silently.** `out/` is `.gitignore`d entirely (not a tracked-vs-untracked
   question, it's simply not in the repo), so nothing enforces that what's on

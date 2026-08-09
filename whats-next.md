@@ -419,7 +419,7 @@ Was flagged repeatedly through the session (by the assistant's own status
 updates and independently by "do 4") as increasingly stale. This regenerated
 document supersedes it. No further action needed on this item specifically.
 
-## 5. HP_ENGINE fast-PWM rate deficit — ROOT-CAUSED, not fixed (2026-08-08)
+## 5. HP_ENGINE fast-PWM rate deficit — ROOT-CAUSED, one fix attempt built + reverted (2026-08-08/09)
 
 Picked `Commando_song2` (the cleanest lead from item 2 above) as a concrete
 next step. Disassembled the exact ROM routine the driver's own comment cites
@@ -431,33 +431,74 @@ in isolation. But the real register stream over a sustained fast-PWM note
 doesn't step at that flat rate: measured 6-of-8 frames at the modelled step,
 2-of-8 at DOUBLE it, for a genuine 1.25x rate deficit (confirmed the
 instrument's pulse-speed byte itself is constant across the window, ruling
-out "the step value changes" as an alternative explanation). Likely a
-separate/faster pulse-clock in the ROM, not yet traced to its actual source
-(everything disassembled so far is the *consumer* of the call frequency —
-the producer, presumably an IRQ/timer setup, hasn't been looked at).
+out "the step value changes" as an alternative explanation).
 
 **Checked whether this falsifies the documented "pulse 100%" claim before
-concluding anything** (per the user's explicit ask): re-tested
-`Monty_on_the_Run_song0` over its full ~56s part (2802 frames) and
-`Zoids_song0` over its full loop (386 frames) — **both hold, 99.9-100% on
-every voice.** The claim survives; it was always about main themes and
-remains true even on a much longer window than it was likely first tested at.
+concluding anything**: re-tested `Monty_on_the_Run_song0` over its full ~56s
+part (2802 frames) and `Zoids_song0` over its full loop (386 frames) — **both
+hold, 99.9-100% on every voice.** The claim survives on a much longer window
+than it was likely first tested at. **But the defect IS real on other
+subtunes of the same files** — `Zoids_song2` (same instrument bank as the
+clean `song0`) reads 96.5/96.5/96.6%, the identical "song0 clean / song2
+drifts" pattern seen in Commando (severity varies: mild there, severe —
+14.3% — in Commando_song2).
 
-**But the defect IS real on other subtunes of those same files.**
-`Zoids_song2` — same file, same fast-PWM instrument bank as the clean
-`song0` — reads 96.5/96.5/96.6%, the identical "song0 clean / song2 drifts"
-pattern seen in Commando. Severity varies a lot by instrument/note duration
-(Zoids_song2 mild, Commando_song2 severe at 14.3%).
+**Disassembled the ROM's IRQ/timer setup (2026-08-09) — there isn't one.**
+`init` is a 4-line subtune dispatcher touching no `$FFFE`/CIA/VIC timer.
+Everything traces to ONE per-frame call (`play` → a single shared tick
+counter that branches note-fetch vs. pulsework). The real mechanism,
+confirmed by instruction-level PC/register trace rather than static reading:
+all 3 of Commando_song2's voices share ONE instrument (10) for the whole
+drift window (a 3-way chord), and the ROM's `ADC $5507` (the fast-PWM add)
+has NO `CLC` before it — it inherits whatever carry that SAME voice's own
+preceding freq-slide computation left set, immediately before, no
+intervening flag-clearing instruction. `HPReplay.state_at()` (existing py65
+ground-truth machinery in the builder, previously sampled only once per part
+to seed the modelled engine) reproduces this exactly when sampled per-frame.
 
-Recorded with the full disassembly evidence in `docs/players/HUBBARD.md`'s
-"Fidelity gotchas" section. **Not fixed** — the true clock rate needs the
-ROM's IRQ/timer setup disassembled, not a curve-fit of the observed 6-then-2
-schedule (which could be a coincidence of this one instrument's pulse-speed
-value rather than the general rule). If this is picked back up, that
-disassembly is the next concrete step, followed by deciding how to encode a
-non-flat rate in `pulse_step` (a periodic accumulator, similar in shape to
-the existing `TEMPO_SWALLOW`/`TEMPO_SCHED` machinery for note tempo, but for
-the pulse clock specifically and only under HP_ENGINE fast-PWM mode).
+**Built the fix, verified it does nothing, reverted it.** Moved the fast-PWM
+add out of `pulse_step` into `fm_step`'s own per-voice loop, immediately
+after its own frequency ADC, with no `CLC` — true per-voice interleaving
+matching the ROM's instruction adjacency (a naive top-level JSR swap of the
+two subroutines was checked first and shown NOT to work: each subroutine
+loops all 3 voices internally, so carry would still belong to the wrong
+voice). Assembled cleanly after trimming code size under a real
+`DRIVER STATE-REGION OVERLAP` the growth first tripped ($16CC-$1702, SF2II's
+live state region — confirmed via direct 64tass assembly + a byte-region
+check, not guessed). Then PC-traced the new code executing at runtime
+(hits every frame, all 3 voices, exactly as designed) and found it computes
+the IDENTICAL result as before the change — verified byte-for-byte, not
+assumed. Root cause of the no-op: the MODELLED driver's frequency engine
+(`fm_write`, a data-driven `vfreq + FM_ACC` reproduction from parsed
+FM-offset tables) is a **different algorithm** from the ROM's raw slide
+loop — both converge on the same frequency VALUE, but the modelled engine's
+own arithmetic never overflows the way the ROM's does, so the carry it
+leaves is always 0. Reverted via `git checkout` (confirmed zero diff, full
+suite re-run 1888/7/2 unchanged) rather than leave non-functional complexity
+in a driver shared by MoN/ROMUZAK/Galway.
+
+**Also re-checked the existing `HUBBARD_PULSE_ENGINE=0` fallback** (disables
+HP_ENGINE, falls back to captured/canonical pulse bundles) as a possible
+simpler fix: moved Commando_song2 14.3% → 74% (proving the flat model is the
+dominant error) but not further — byte-exact through frame 191, then
+diverges exactly at frame 192 and 288, the note-repeat boundaries. The
+canonical-bundle emitter reuses one captured sequence per {instrument,
+pattern}, correct for note-resetting instruments but wrong here: instrument
+10's PW is a continuously-accumulating global that never resets, so a bundle
+captured at the first repeat is stale by the second. Confirmed safe for
+`song0` under the same flag (99.7-100%, unchanged) — the fallback itself
+isn't harmful, just the wrong architecture for a non-resetting accumulator.
+
+Recorded all of this (disassembly, both fix attempts, the exact reasons each
+one falls short) in `docs/players/HUBBARD.md`'s "Fidelity gotchas" section.
+**Still not fixed. The correct next step**: derive the true per-frame "pv or
+pv+1 this frame" schedule from `HPReplay` at build time (it already has
+verified-exact ground truth) and bake it as a per-frame bitmap the driver
+reads and adds explicitly — the SAME pattern this driver already uses for
+`TEMPO_SCHED`/`SCHEDTAB` (an empirically-derived stretch bitmap for
+irregular tempo). Live accumulation stays the mechanism (per the captured-
+bundle failure above); only the missing piece is an explicit EXTRA-STEP
+schedule instead of an implicit (and, as shown, non-functional) carry.
 
 ## 4. Nothing else outstanding from the pre-session backlog
 
