@@ -210,6 +210,13 @@ the write *sequence* agrees. Not wired into SIDM2.
   where both are empty is not a match; it's "no test ran". Audit any gate of that shape.
 - **A too-short window looks exactly like a broken trace** — Arkanoid gives 0 writes at 5
   frames and 460 at 200. Re-check at ≥200 frames before calling a file broken.
+- **Subtract the target driver's own startup frame before scoring it.** Driver 11's first
+  play call after init is spent initialising its state block and writes no SID register, so
+  **every Stage A transpile in this repo renders one frame late** against a native-player
+  original. It shows up as a *constant* `+1` offset (no drift) and is worth ~0.7 pp corpus-wide,
+  but it wrecks individual arpeggiated instruments whose target pitch arrives at the end of a
+  ramp. Fix it in the validator (`--lag 1`), never by patching the driver or widening the
+  window. Mechanism + affected builder list: [DRIVER11.md](DRIVER11.md); PATTERNS.md **F6**.
 - Byte-exact registers but wrong sound → **suspect the capture CPU** (the siddump SBC carry bug made a 16-bit vibrato too wide project-wide; cross-check py65 + VICE).
 - Trace-replay has a **cycle-level floor** (~0.17 VICE spectral distance on high-resonance filtered voices); write-order/schedule reproduction does *not* close it — don't chase it.
 - Aligned-waveform diff is the wrong audio metric for tonal voices (phase decorrelates identical-sounding audio); use RMS envelope + band spectra.
@@ -227,6 +234,8 @@ the write *sequence* agrees. Not wired into SIDM2.
 **6502 assembly:** `STY abs,x` does not exist (use `TYA`/`STA`); long routines overflow `bpl`/`bne` range (near-branch + `jmp`); ZP allocations collide silently (Galway's `pptr` at `$ea/$eb` vs `vhold` cost a two-voices-silent bug — keep a ZP map per driver).
 
 **Freq tables:** the generic PAL table is 1 semitone off and detuned vs real players — **always emit the player's own freq table** (`write_freqtable` from the binary). MoN's is SPLIT (separate lo/hi tables, not interleaved).
+
+**Wrapping an SF2 as a PSID probe — the play address differs by driver:** a **Driver 11** SF2 is driven at **`$1006`** (the per-frame tick; `$1003` is *stop* and gives total silence), while the repo's **native** drivers declare `init $1000` / **`play $1003`** / `stop $1006`. Both conventions are live in `bin/` — copy the one that matches the driver you built, not the nearest validator.
 
 **PSID quirks:** `load=0` means the real load address is the first 2 data bytes; the PSID default subtune is often a jingle (Hawkeye main theme = subtune 3, Combat School music = subtune 1) — pick the real tune explicitly.
 

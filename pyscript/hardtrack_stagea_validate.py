@@ -15,11 +15,13 @@ Notes played by an instrument whose wave program drives the frequency register
 is not the sequencer's to place.
 
 --lag N shifts the Stage A comparison window by N frames. Driver 11 spends its
-FIRST play call initialising its own state (the shipped template carries
-$16CC = $40, and bit 6 sends `BVS` at $100D into a state-clear path), so a
-Driver 11 render starts one frame behind the original -- a constant phase, not
-drift, and inaudible at 20 ms. It is NOT introduced by this builder and applies
-to every Driver 11 Stage A build in this repo. Default 0 so the reported number
+FIRST play call initialising its own state: its entry points are a command
+protocol over $16CC, init ($1000) leaves the command at $00, and the per-frame
+tick ($1006) reads $00 as "state not initialised" -- it clears and seeds
+$16CD-$1740, arms $80, and plays no row. So a Driver 11 render starts one frame
+behind the original -- a constant phase, not drift, and inaudible at 20 ms. It is
+NOT introduced by this builder and applies to every Driver 11 Stage A build in
+this repo (docs/players/DRIVER11.md; pinned by test_driver11_startup_frame.py). Default 0 so the reported number
 stays honest; --lag 1 answers "what is left once the known phase is removed",
 which for Zakplus and Hopscotch is nothing at all.
 

@@ -54,9 +54,14 @@ Address/Columns/Rows/VisibleRows. Already replicated in
 
 - SF2 PRG standalone entry `SYS4093` (`$0FFD`) → bootstrap `$2A2A`: `JSR init
   $1000`, install raster IRQ → `$2A4A`.
-- `$1000` = `JMP init`, `$1003` = `JMP play` are STUBS that only set a command
-  flag (`$16CC`; play→`$40`). Real per-frame dispatcher is `$1006` (reads the
-  flag). This is why headless tracing via the simple init+play CLI fails.
+- `$1000` and `$1003` are STUBS that only set a command byte (`$16CC`):
+  `$1000` = init (stores the subtune, command **`$00`** = *initialise on the next
+  tick*), `$1003` = **stop** (command **`$40`**, which gates all three voices off
+  — it is NOT a play entry). Real per-frame dispatcher is `$1006`, which reads the
+  command: `$80` play a row · `$40` gate off · `$00` seed the state block, arm
+  `$80`, **play nothing this call**. This is why headless tracing via the simple
+  init+play CLI fails — and why the first tick after init is silent, so every
+  Driver 11 render starts one frame late (`docs/players/DRIVER11.md`).
 - Tables (template `Driver 11 Test - Arpeggio.sf2`, load `$0D7E`): Instruments
   `$1784` (col-major 6×32), Wave `$1924` (col-major 2×256), Pulse `$1B24` (3×256),
   Filter `$1E24` (3×256), Arp `$2124`, Tempo `$2224`, HR `$1904`, Init `$1744`;

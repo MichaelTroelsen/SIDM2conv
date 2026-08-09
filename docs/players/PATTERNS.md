@@ -323,6 +323,37 @@ rules fall out, all learned the hard way here:
 `measure_repeatability_floor`; tests in
 `pyscript/test_audio_tightness_repeat_floor.py`).
 
+### F6. The target driver's own startup frame (and reading a flag at rest)
+**Symptom**: a Stage A transpile scores *below* its own parser, with the loss
+concentrated in arpeggiated/fast-attack instruments, and the offset histogram
+shows a **constant** `+1` frame — the same in every third of the song, no drift.
+**Detection**: two-part. (a) An offset histogram, not a score: drift is a timing
+bug, a constant offset is a **phase**. (b) Re-score with the phase removed
+(`--lag 1`); if files land *exactly* on the parser's own number they were never
+losses. HardTrack: `Zakplus` 87.6→99.0 = parser 99.0; `Hopscotch` 56.8→72.2 =
+parser 72.2, while the two genuine losses did not move at all.
+**Cause seen**: Driver 11 is a **command protocol**, not an init/play pair —
+`$1000` leaves `$16CC = $00`, and the per-frame tick at `$1006` treats `$00` as
+"clear and seed the state block, then arm `$80`, and play NO row". The first
+tick after init is spent initialising, so every render starts one frame late.
+This is the **target driver's** property, shared by every Stage A build that
+targets it, not the builder's bug — three builder-side explanations (wrapper play
+address, hard-restart flag, row layout) were falsified before it was found.
+**The second trap** is how it was first explained: `$16CC` **is** `$40` in the
+file at rest, and `BVS $1047` is right there in the dispatch — a self-consistent
+story assembled from the binary **at rest**, published, and wrong. `init`
+overwrites that byte before the first tick, and `$1047` is the *stop* path. A
+flag's value on disk is not its value when the code reads it: **run it and print
+the flag at the call**, don't infer the branch from a static byte.
+**Rule**: don't patch the driver to remove its startup frame (Driver 11 would
+never initialise) and don't widen the match window until it hides — a uniform
+20 ms offset of a whole song is not a fidelity defect. Subtract the known phase
+in the **validator**, and quote the lag next to the score.
+**Seen in**: Driver 11 / every Stage A transpile in this repo
+([DRIVER11.md](DRIVER11.md) has the dispatch and the affected builder list);
+`pyscript/hardtrack_stagea_validate.py --lag`, pinned by
+`pyscript/test_driver11_startup_frame.py`.
+
 ---
 
 ## Adding an entry

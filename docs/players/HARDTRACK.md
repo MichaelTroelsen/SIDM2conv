@@ -399,26 +399,41 @@ parser-resolved corpus.
 
 ### Where the +1 frame comes from — found
 
-`$16CC` in the shipped Driver 11 template (`G5/examples/Driver 11 Test -
-Arpeggio.sf2`) is **`$40`**, and the play routine opens:
+Driver 11's entry points are a **command protocol** over the byte at `$16CC`, and
+the per-frame tick at `$1006` dispatches on it. `init` at `$1000` leaves the
+command at **`$00`**, which means *state not initialised*:
 
 ```
-1006: lda #$00
-1008: bit $16cc      ; $40 -> bit 6 set
-100b: bmi $1051      ; not taken
-100d: bvs $1047      ; TAKEN -> state-init path, clears $16CD..$1740
+1000: sta $16cd      ; init: store subtune...
+1003: lda #$00
+1005: sta $16cc      ; ...and set command $00
+...
+1006: lda #$00       ; the per-frame TICK
+1008: bit $16cc
+100b: bmi $1051      ; $80 -> play one row  (the steady state)
+100d: bvs $1047      ; $40 -> STOP: gate off $D404/$D40B/$D412, rts
+100f: ...            ; $00 -> clear $16CD-$1740, seed, set command $80, rts
+                     ;        -- and play NO row this call
 ```
 
 So Driver 11 spends its **first play call initialising its own state** instead of
 playing a row, and every render starts one frame behind the original.
 
-It comes from the **template**, not from this builder — the emitted file is
-byte-identical to the template across `$16CC-$1702` (15 non-zero bytes, same
-values). It therefore applies to **every Driver 11 Stage A build in this repo**,
-not just HardTrack. Three other explanations were tested and refuted along the
-way: the PSID wrapper's play address (`$1006` is right; forcing `$1003` gives
-total silence), the instrument hard-restart flag (`$80`/`$00`/`$40` give
+It comes from **Driver 11**, not from this builder, so it applies to **every
+Driver 11 Stage A build in this repo**, not just HardTrack. Three other
+explanations were tested and refuted along the way: the PSID wrapper's play
+address (`$1006` is right; forcing `$1003` gives total silence — because `$1003`
+is the *stop* entry), the instrument hard-restart flag (`$80`/`$00`/`$40` give
 identical offset histograms), and the builder's own row layout.
+
+> ⚠️ **Corrected 2026-08-09.** This section previously said the cause was the
+> template shipping `$16CC = $40`, with `BVS $1047` taking a "state-init path".
+> The byte **is** `$40` in the file at rest, but `init` overwrites it with `$00`
+> before the first tick ever runs, and `$1047` is the **stop** path, not init.
+> The measured effect — one silent first frame — was right; the mechanism was read
+> off the binary at rest instead of from a run. Now pinned by
+> `pyscript/test_driver11_startup_frame.py` and documented canonically in
+> [DRIVER11.md](DRIVER11.md); the trap itself is PATTERNS.md **F6**.
 
 The shift is **constant, not drift** — median `+1` in every third of the song
 (68.6% / 71.5% / 66.8% of notes at exactly +1). A uniform 20 ms offset of the

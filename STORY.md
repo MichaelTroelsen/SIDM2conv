@@ -624,10 +624,15 @@ pattern position on every onset made the test exact and reversed the verdict.
 
 Two of the bugs found were in this project's own instruments rather than in the
 conversion. Driver 11 turned out to start **one frame late on every Stage A build
-in the repo** — the shipped template carries `$16CC = $40`, whose bit 6 sends the
-first play call into a state-init path instead of playing a row; constant,
+in the repo** — its entry points are a command protocol over `$16CC`, `init` leaves
+the command at `$00`, and the first per-frame tick reads that as "state not
+initialised" and spends itself seeding state instead of playing a row; constant,
 inaudible, and invisible until an arpeggio put a note one frame outside the match
-window and manufactured a 36-point "loss". And both HardTrack validators were
+window and manufactured a 36-point "loss". (That mechanism was itself published
+wrong first — blamed on the `$40` the template stores at `$16CC`, a self-consistent
+story assembled from the binary *at rest*, when `init` overwrites the byte before
+the branch is ever taken. The one-frame effect was measured; the cause was
+inferred. Corrected in `docs/players/DRIVER11.md` and pinned by a test.) And both HardTrack validators were
 counting notes whose match window ran past the end of the trace as misses. Fixing
 those, plus the legato, took Stage A from 43 losses to **16 of 5,132 notes it
 could have kept — 99.69% retention**. The 16 that remain are explained and are

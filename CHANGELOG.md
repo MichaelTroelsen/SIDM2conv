@@ -139,13 +139,18 @@ hits notes the original misses. The comparison is meaningful only in the losing
 direction.
 
 #### Two measurement bugs found in this project's own tooling
-- **Driver 11 starts one frame late, everywhere.** The shipped template
-  `G5/examples/Driver 11 Test - Arpeggio.sf2` carries `$16CC = $40`; bit 6 sends
-  `BVS` at `$100D` into a state-init path, so the driver spends its **first play
-  call initialising** rather than playing a row. This is a template property, so
-  **every Driver 11 Stage A build in this repo** starts a frame late. Constant,
-  not drift, and inaudible — it only ever broke measurement. `--lag 1` removes
-  exactly that phase; the default stays 0.
+- **Driver 11 starts one frame late, everywhere.** Its entry points are a command
+  protocol over `$16CC`: `init` at `$1000` leaves the command `$00`, and the
+  per-frame tick at `$1006` reads `$00` as *state not initialised* — it clears and
+  seeds `$16CD-$1740`, arms `$80`, and plays **no** row. So the driver spends its
+  **first play call initialising**, and **every Driver 11 Stage A build in this
+  repo** starts a frame late. Constant, not drift, and inaudible — it only ever
+  broke measurement. `--lag 1` removes exactly that phase; the default stays 0.
+  *(Mechanism corrected 2026-08-09: this entry first blamed the template's stored
+  `$16CC = $40` and `BVS $1047`. `init` overwrites that byte before the first tick,
+  and `$1047` is the stop path — the effect was measured right, the cause was read
+  off the binary at rest. Canonical writeup: `docs/players/DRIVER11.md`; pinned by
+  `pyscript/test_driver11_startup_frame.py`.)*
 - **Both HardTrack validators counted unscoreable notes as misses** — notes whose
   match window ran past the end of the trace. They now drop those, using a
   `max(lag, 1)` margin so a `--lag 0` and a `--lag 1` run score the same set.

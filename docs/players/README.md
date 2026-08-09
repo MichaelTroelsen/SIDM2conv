@@ -34,6 +34,15 @@ the single source of truth. This table drifted from it before (verified 2026-08-
 | **NP21-adjacent clusters** (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, Zetrex/V20) | [CLUSTERS.md](CLUSTERS.md) | inside the Laxity path | audio 100%; editor-view varies | `SID/` root + Laxity corpus |
 | **Blackbird** (Linus Åkesson / "lft") | [BLACKBIRD.md](BLACKBIRD.md) | `bin/` only (Stage B native), not wired | native driver, 16-file v1.2-exact corpus: mean 99.96%, 11 of 16 at exactly 100.0%, none below 99.8% | `SID/LFT/` (61; 16 are the locator-supported v1.2-exact bucket this driver covers) |
 
+> **Cross-cutting, affects every Stage A row above:** Driver 11 spends its **first
+> play call initialising its own state** (`init` leaves the `$16CC` command byte at
+> `$00`; the `$1006` tick reads that as "not initialised", seeds the state block and
+> plays no row). Any Stage A transpile therefore renders **one frame late** against a
+> native-player original — a constant, inaudible phase that nonetheless costs real
+> percentage points on arpeggiated instruments. Subtract it in the validator
+> (`--lag 1`), never in the driver. Mechanism, affected builders and the
+> native-driver exception: [DRIVER11.md](DRIVER11.md); the trap is PATTERNS.md **F6**.
+
 ## Player-id → driver mapping
 
 `player-id.exe` emits a player string; the registry maps it to a driver:
