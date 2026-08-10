@@ -23,6 +23,96 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+### HardTrack Composer: the filter engine, modelled — and the one control that moved nothing
+
+`simulate_registers()` predicted every register group except the filter. It now
+predicts that too, which leaves nothing in the SID register file unmodelled for
+this player.
+
+The filter is **global, not per-voice**, and that turned out to be the whole
+design question rather than a detail. The engine sits *past* the `dex / bmi` at
+`$1583` that ends the voice loop, so it runs **once per frame after all three
+voices** — and its cursor, cutoff accumulator, delta and `$D418` mode nibble
+live in **self-modified operands** rather than in the per-voice variable block,
+which is exactly why an operand scan for a table address had never named them.
+Voices are stepped **2, 1, 0**; immaterial for the per-voice registers, decisive
+here, because three note-ons on one frame write the same four operands and the
+last voice stepped wins.
+
+Instrument fields 6/7/12 only *seed* it at note-on. `init` resets none of it, so
+a ripped file starts from whatever the editor saved: `Love_tune_2` opens on
+cutoff `$1a` stepping `$40` a frame and siddump's first row reads `$5a`, which
+is reachable only from the saved pair.
+
+**Measured** (`pyscript/hardtrack_synth_validate.py`, 20 s, all 33 decodable
+files), byte-exact against the real playroutine:
+
+| | frames | byte-exact | files n/a |
+|---|---|---|---|
+| cutoff `$D416` | 32,967 | 100.00% | 0 |
+| resonance + routing `$D417` | 32,967 | 100.00% | 0 |
+| mode + volume `$D418` (bits 0-6) | 9,990 | 100.00% | **23 of 33** |
+
+⚠️ **`$D418` is exercised by only 10 of 33 files.** The other 23 hold one
+constant on both sides and are withheld by `exercised()` rather than reported as
+a vacuous 100% — the shape `docs/players/HUBBARD.md` had to retract a published
+"filter 100%" for. Quote the file count beside that column. `$D415` is excluded
+because the player never writes it (**0 stores corpus-wide**), so the cutoff is
+the 8-bit `$D416` alone; `$D418` bit 7 is modelled but **unverifiable here**,
+since siddump prints only `(D418 >> 4) & 7`.
+
+The filter also scores 100% on the **unseeded** second-build files, which the
+frequency column does not — its state lives in code operands recovered by
+signature, so the second build's different variable allocation never touches it.
+
+**Negative controls.** A uniform 100.00% across 33 files is the shape this
+project has twice been wrong about, so every assumption was broken on purpose:
+
+| deliberately broken | `$D416` | `$D417` |
+|---|---|---|
+| *(unmodified)* | 100.00% | 100.00% |
+| cutoff clamped at 255 instead of wrapping | 24.75% | 100.00% |
+| filter program never steps | 23.90% | 100.00% |
+| `f12 == 0` skips instead of clearing routing | 100.00% | 48.28% |
+| fields 6 and 7 swapped | 28.34% | 100.00% |
+| field-5 bit-4 re-arm gate ignored | **100.00%** | **100.00%** |
+
+Four of five break the score, so the metric can see what it claims to. **The
+fifth moved nothing, and is recorded as a negative result rather than a pass**:
+only **21 instruments** corpus-wide set field-5 bit 4 and just **one** of those
+has a filter to re-arm, so this corpus can neither confirm nor refute the
+reading taken from the bit's only consumer in the disassembly.
+`test_field5_bit4_is_not_exercised_by_this_corpus` pins both counts so the claim
+can be upgraded if a file ever exercises it.
+
+Two corrections to `docs/players/HARDTRACK_FILTER_AND_SLIDE.md`, both found by
+reading the consumers again rather than by measuring: `f12 == 0` does not merely
+mean "this voice is not routed", it **actively clears the voice's routing bit**
+at `$13cb` (reading it as a no-op costs 52 points of `$D417`); and the engine
+runs once per frame after the voice loop, not once per voice.
+
+**Added**
+- `sidm2/hardtrack_parser.py`: `_SIG_FILTPROG` / `_SIG_FILTACC` / `_SIG_FILTMODE`
+  / `_SIG_FILTARM` / `_SIG_FILTOFF`, all **unique in 33/33** decodable files, plus
+  `filter_program()` and the `filter_*` attributes. The signature-derived f6/f7/f12
+  table addresses are cross-checked against the stride-derived ones and agree on
+  33/33 — two recoveries sharing no inputs.
+- `sidm2/hardtrack_synth.py`: `FilterFrame`, `simulate_all()`. `simulate_registers()`
+  keeps its exact signature and return type.
+- `pyscript/hardtrack_synth_validate.py`: three filter columns, each guarded by
+  `exercised()` independently.
+- 15 tests (`test_hardtrack_synth.py` 22 -> 37).
+
+**Fixed**
+- The voice loop ran 0, 1, 2 where the player runs 2, 1, 0. No measured number
+  moved — per-voice registers cannot care — but the global filter would have
+  taken the wrong voice's note-on on any frame carrying more than one.
+- The runtime volume byte was read from the saved image, which is not what plays:
+  `init` stores `#$0f` into it. Recovered by finding init's own store to the
+  address the signature gives, because `Tribute_to_Laxity` shifts that block by
+  one instruction and a fixed offset returns a neighbouring variable there.
+
+
 ### HardTrack Composer Stage B - a native build that replays the synth engine instead of modelling it
 
 Stage A transpiles to stock Driver 11 and retains 99.69% of the notes the parser

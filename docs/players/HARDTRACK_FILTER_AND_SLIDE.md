@@ -6,10 +6,16 @@ under RetroDebugger and the consumers of every field table were read off the
 live, execute-marked disassembly, then each reading was checked against a
 falsifiable prediction over the whole corpus.
 
-> **Why this is a separate file.** It was written while two other sessions held
-> uncommitted edits to `hardtrack_parser.py` and `HARDTRACK.md`. Fold it into
-> HARDTRACK.md's field table and filter section when they land; nothing here
-> needs to stay standalone.
+> **Status.** The field identities below are folded into HARDTRACK.md's field
+> table, and the filter engine they describe is **modelled** as of v3.25.0 —
+> see HARDTRACK.md *The filter sweep* and *The filter registers*. This file is
+> kept for the disassembly listings and the RetroDebugger method; the measured
+> figures live in HARDTRACK.md.
+>
+> Two things here were **incomplete** and are corrected there: `f12 == 0` does
+> not merely mean "not routed", it **actively clears this voice's routing bit**
+> at `$13cb`; and the engine runs **once per frame after the voice loop**
+> (past the `dex / bmi` at `$1583`), not once per voice.
 
 ## All 13 fields are read by the player
 

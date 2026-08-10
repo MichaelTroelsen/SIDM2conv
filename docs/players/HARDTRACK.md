@@ -197,10 +197,37 @@ vibrato only reach the frequency once the wave program has stopped itself with
 and it is why the wave program's arpeggio offset — not the sequencer note — is
 what the frequency register actually shows for most of a note's life.
 
-The **global filter sweep** is a third, song-level program (`[cutoff][delay]`
-with a `$80 <index>` jump) writing `$D416`. Its cursor lives in self-modified
-code and **`init` does not reset it**, so a ripped file carries whatever value it
-was saved with — confirm on hardware before relying on it.
+### The filter sweep — global, and modelled
+
+A third program (`[delta][delay]` pairs with a `$80 <index>` jump) writing
+`$D416`. It is **global, not per-voice**, and that is structural rather than
+incidental: the engine sits *past* the `dex / bmi` at `$1583` that ends the
+voice loop, so it runs **once per frame after all three voices**. Its cursor,
+cutoff accumulator, delta and `$D418` mode nibble all live in **self-modified
+operands**, which is why an operand scan for a table address never named them —
+the addresses being written are inside the code.
+
+Instrument fields 6, 7 and 12 only *seed* it, at note-on (`$137d`): f6 the
+program cursor, f7 the initial cutoff, f12 `(resonance << 4) | mode`. `init`
+resets none of it, so a ripped file starts from whatever the editor saved —
+and that matters: `Love_tune_2` opens on cutoff `$1a` stepping `$40` a frame,
+and siddump's very first row reads `$5a`, which is reachable only from the
+saved pair.
+
+Three details are easy to get wrong, and each was checked by breaking it on
+purpose and watching the corpus score fall (see *Negative controls* below):
+
+- **The accumulator is 8-bit and wraps.** `CLC / ADC` with no clamp:
+  `Love_tune_2` runs `$1a → $5a → $9a → $da → $1a`, audibly a sawtooth.
+  Clamping instead scores **24.75%**.
+- **`f12 == 0` does not skip the re-arm — it CLEARS this voice's routing bit**
+  (`$13cb`, `AND $16da,x`). An instrument with no filter actively switches its
+  voice *out*. Reading it as a no-op scores `$D417` at **48.28%**.
+- **`$D415` is never written**, in none of the 33 decodable modules, so the
+  cutoff is the 8-bit `$D416` alone.
+
+The un-reset cursor is therefore **no longer an open hardware question** — it is
+modelled, and the model is byte-exact against the real playroutine.
 
 ### Frequency table
 
@@ -282,7 +309,8 @@ a sequencer pitch that never gets there.
 it: the three-frame note-on pipeline, the waveform/arpeggio stepper, the
 pulse-width sweep, the vibrato engine, `$63`/`$64` and the `$62` freeze. Every
 branch is annotated with the address it came from so it can be diffed against a
-disassembly. The filter is **not** modelled (it writes no register measured here).
+disassembly. The filter is modelled too, as of v3.25.0 — see below; it is
+scored over frames rather than voice-frames, because there is one of it.
 
 **20 s, all 33 decodable files, 97,806 voice-frames:**
 
@@ -299,6 +327,62 @@ disassembly. The filter is **not** modelled (it writes no register measured here
 **16 of the 18 seeded files are exactly 100.0% on all three registers.** The
 program-driven column moved from **2.64% to 100.00%** — it was never a fidelity
 figure, it was the score for predicting the wrong thing.
+
+### The filter registers (v3.25.0)
+
+Scored over **frames**, not voice-frames, because the engine is global. Same
+20 s window, same 33 files:
+
+| | frames | byte-exact | files scoring n/a |
+|---|---|---|---|
+| **cutoff** `$D416` | 32,967 | **100.00%** | 0 |
+| **resonance + routing** `$D417` | 32,967 | **100.00%** | 0 |
+| **mode + volume** `$D418` (bits 0–6) | 9,990 | **100.00%** | **23 of 33** |
+
+Three things this table is saying, none of which is "the filter is 100%":
+
+- **`$D418` is only exercised by 10 of the 33 files.** The other 23 hold one
+  constant on both sides for the whole window, so `exercised()` withholds them
+  rather than letting `0 == 0` report a confident 100%. Quote the file count
+  beside that column or it reads as three times the evidence it is.
+  `docs/players/HUBBARD.md` had to retract a published "filter 100%" for
+  exactly this shape.
+- **`$D415` is excluded because it does not exist here**, not because it was
+  hard. Zero stores corpus-wide; siddump's `FCut` is `(D415 & 7) | (D416 << 3)`
+  so `>> 3` recovers `$D416` exactly.
+- **`$D418` bit 7 is not visible to siddump**, which prints only
+  `(D418 >> 4) & 7`. f12 low nibbles of `9` and `14` do set it (voice 3 off), so
+  that one bit is modelled but unverified. The comparison masks to bits 0–6.
+
+The filter scores 100% on the **unseeded** build too, which the frequency
+column does not. That is not luck: the filter's state lives in self-modified
+code operands recovered by signature, not in the per-voice variable block, so
+the second player build's different allocation never touches it.
+
+### Negative controls
+
+A uniform 100.00% across 33 files is the shape this project has twice been
+wrong about, so each assumption was broken on purpose to check the measurement
+can still see it. Corpus-wide, 6 s window:
+
+| deliberately broken | `$D416` | `$D417` |
+|---|---|---|
+| *(unmodified)* | **100.00%** | **100.00%** |
+| cutoff clamped at 255 instead of wrapping | 24.75% | 100.00% |
+| filter program never steps (delta frozen) | 23.90% | 100.00% |
+| `f12 == 0` skips instead of clearing routing | 100.00% | 48.28% |
+| fields 6 and 7 swapped | 28.34% | 100.00% |
+| **field-5 bit 4 gate ignored** | **100.00%** | **100.00%** |
+
+The last row is a real negative result and is recorded as one. Ignoring the
+bit-4 gate entirely changes **nothing measurable**, because only **21
+instruments** in the corpus set the bit and just **one** of those has a filter
+to re-arm. The reading in the field table above comes from the bit's only
+consumer in the disassembly; this corpus can neither confirm nor refute it, and
+`test_field5_bit4_is_not_exercised_by_this_corpus` pins the two counts so the
+claim can be upgraded if a file ever exercises it. The f6/f7 row is worth
+noting separately: the swap costs 71 points, so the field identities are now
+confirmed by the metric independently of how they were read off the code.
 
 ### Why the two populations are never pooled
 
@@ -785,10 +869,13 @@ refused".
 4. ~~**Identify instrument fields 6, 7, 12**~~ — done, and reached
    independently by three passes: all three are the filter (program cursor /
    **initial cutoff** / resonance+mode+routing). Fields 8–11 are the vibrato
-   engine. The global filter sweep's un-reset cursor is still unconfirmed
-   on hardware, and **the filter itself is still unmodelled** — that is the one
-   register group `simulate_registers()` does not predict.
-   Detail: `docs/players/HARDTRACK_FILTER_AND_SLIDE.md`.
+   engine. Detail: `docs/players/HARDTRACK_FILTER_AND_SLIDE.md`.
+4a. ~~**Model the filter**~~ — done in v3.25.0, and with it the un-reset cursor
+   question: `$D416`/`$D417` are byte-exact on 32,967 frames across all 33
+   files, `$D418` on the 10 files that exercise it. `simulate_registers()` now
+   leaves **no register group unpredicted**. The one thing still unverified is
+   `$D418` bit 7 (siddump cannot see it) and the field-5 bit-4 re-arm gate,
+   which this corpus does not exercise — see *Negative controls*.
 4b. **Map the second player build's variable block** so the other 15 files can
    be seeded too. Their allocation genuinely differs (not an offset), so it needs
    its own `_RAM` table; until then they carry a startup transient.
