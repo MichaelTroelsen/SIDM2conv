@@ -321,8 +321,8 @@ scored over frames rather than voice-frames, because there is one of it.
 | &nbsp;&nbsp;• **program-driven** instruments (bit 7) | 6,129 | **100.00%** |
 | **waveform** `$D404` — seeded | 53,569 | **100.00%** |
 | **pulse width** `$D402/$D403` — seeded | 53,569 | **100.00%** |
-| frequency — unseeded files (15, second player build) | 44,237 | 99.15% |
-| waveform — unseeded | 44,237 | **100.00%** |
+| frequency — second-build files (15) | 44,237 | 99.68% |
+| waveform — second build | 44,237 | **100.00%** |
 
 **16 of the 18 seeded files are exactly 100.0% on all three registers.** The
 program-driven column moved from **2.64% to 100.00%** — it was never a fidelity
@@ -385,6 +385,12 @@ noting separately: the swap costs 71 points, so the field identities are now
 confirmed by the metric independently of how they were read off the code.
 
 ### Why the two populations are never pooled
+
+They are now labelled by **seed source** rather than by a yes/no: `layout+sig`
+(all 43 per-voice variables placed from the `_RAM` allocation) and `signature`
+(the 5 recovered from their consumers, the other 38 starting at zero). Three
+states, because collapsing them to a boolean hides the one that matters — and
+because "unseeded" is simply no longer true of the second build.
 
 The player's per-voice variables live **inside the loaded module image**, so
 their power-on values are the bytes the editor saved there — the player's live
@@ -876,9 +882,24 @@ refused".
    leaves **no register group unpredicted**. The one thing still unverified is
    `$D418` bit 7 (siddump cannot see it) and the field-5 bit-4 re-arm gate,
    which this corpus does not exercise — see *Negative controls*.
-4b. **Map the second player build's variable block** so the other 15 files can
-   be seeded too. Their allocation genuinely differs (not an offset), so it needs
-   its own `_RAM` table; until then they carry a startup transient.
+4b. ~~**Map the second player build's variable block**~~ — done differently, and
+   the answer reframed the item. A second `_RAM` table was the wrong shape: that
+   build lays out its **code** differently too (`$11bf` is mid-instruction
+   there), so no positional table can follow it, and a third would be needed for
+   `Tribute_to_Laxity`. Instead the variables that matter are recovered from
+   **their own consumers** (`HardTrackModule.voice_var_addrs`), which works on
+   every build because it assumes no allocation at all.
+   **Which variables matter was measured, not guessed**: ablating each seeded
+   variable in turn on the 18 build-1 files shows the whole startup transient is
+   `mode` (**1.67 points on its own**), then `freq_hi`/`freq_lo` (~0.2 each),
+   then a vibrato tail. Five signatures cover all of them, and on build-1 files
+   the addresses they yield agree with the `_RAM` layout on **18 of 18** — two
+   recoveries sharing no inputs. Second-build frequency **99.15% → 99.68%**.
+   ⚠️ **What is left there is NOT a seeding gap.** Restricting build 1 to the
+   same five variables costs it only **0.03 points** (99.976% → 99.946%), so the
+   other 38 cannot explain the remaining 0.3. More than half the residual is one
+   file (`Shogoon-Rave`, 81 of 141 frames) and it is unexplained — a lead, not a
+   finding.
 5. ~~**The editor is the strongest lever left**~~ — **spent, and it was not.**
    `-HARDTRACK 1.PRG` was run under RetroDebugger and it boots (two-stage
    self-relocator: Polish banner → a `$0340` trampoline → shift `$0900-$FFFF`

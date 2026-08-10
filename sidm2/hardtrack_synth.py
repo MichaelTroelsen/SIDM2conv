@@ -114,10 +114,40 @@ _RAM = (
     'active',
 )
 _RAM_GAP = 13       # index after which the 1-byte global shifts everything by 1
+_RAM_INDEX = {n: i for i, n in enumerate(_RAM) if n is not None}
 
 
 def _ram_addr(base: int, i: int) -> int:
     return base + 3 * i + (1 if i >= _RAM_GAP else 0)
+
+
+def seed_source(module):
+    """-> (resolve(name) -> address or None, label).
+
+    Two ways to find a per-voice variable's power-on value, and they cover
+    different populations:
+
+      'layout'    `ram_layout_base` places all 43 at once, but only on the
+                  build whose allocation `_RAM` describes.
+      'signature' five variables read off their own consumers, which works on
+                  both builds because it does not assume a layout at all.
+
+    The layout is preferred where it checks out and the signatures fill in
+    otherwise, so the second build stops running from zeroes. The label rides
+    along so a report can keep the populations apart instead of pooling a fully
+    seeded score with a partially seeded one.
+    """
+    base = ram_layout_base(module)
+    sig = module.voice_var_addrs()
+    if base is None and not sig:
+        return None, 'none'
+    if base is None:
+        return (lambda n: sig.get(n)), 'signature'
+
+    def resolve(name):
+        i = _RAM_INDEX.get(name)
+        return _ram_addr(base, i) if i is not None else sig.get(name)
+    return resolve, ('layout' if not sig else 'layout+sig')
 
 
 def ram_layout_base(module: HardTrackModule):
@@ -216,11 +246,14 @@ class _V:
 
     def __init__(self, order_ptr: int, sentinel: int, seed=None):
         # -- power-on state: the saved module image, where it is knowable -----
-        for i, name in enumerate(_RAM):
+        # `seed` is by NAME, not by index, because the two sources behind it
+        # (a whole-block layout and five per-variable signatures) do not share
+        # an indexing scheme. Anything neither source knows starts at 0.
+        for name in _RAM:
             if name is not None:
-                setattr(self, name, seed(i) if seed else 0)
-        self.cur_note = seed('cur_note') if seed else 0     # $1007
-        self.vib_depth = seed('vib_depth') if seed else 0   # $101c
+                setattr(self, name, seed(name) if seed else 0)
+        self.cur_note = seed('cur_note') if seed else 0
+        self.vib_depth = seed('vib_depth') if seed else 0
         # -- init ($109d-$10d5) overwrites this much of it --------------------
         self.order_ptr = order_ptr
         self.order_idx = 0          # $1016
@@ -286,19 +319,20 @@ def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
     sentinel = module.load + module.data.find(b'\xff') if b'\xff' in module.data \
         else module.load
 
-    ram = ram_layout_base(module)
-    # $1007 / $101c are in the module header's runtime-state area, not the
-    # per-voice block; $1007 is the operand _SIG_FREQ's `lda note,x` reads.
-    hdr = {'cur_note': module.load + 0x07, 'vib_depth': module.load + 0x1C}
+    resolve, _label = seed_source(module)
+    # `vib_depth` lives in the module header's runtime-state area rather than in
+    # the per-voice block on the build `_RAM` describes; it is the one variable
+    # still placed by a constant, and it is worth 0.05 points.
+    hdr = {'vib_depth': module.load + 0x1C}
 
     def seeded(v: int):
-        def seed(key):
-            a = hdr[key] if isinstance(key, str) else _ram_addr(ram, key)
-            return b(a + v)
+        def seed(name):
+            a = resolve(name) or hdr.get(name)
+            return b(a + v) if a is not None else 0
         return seed
 
     voices = [_V(module.order_pointer(v, subtune), sentinel,
-                 seeded(v) if ram is not None else None) for v in range(3)]
+                 seeded(v) if resolve is not None else None) for v in range(3)]
     filt = _F(module)
     speed = module.speed(subtune)
     ctr = 2                                     # init leaves $1100 at 2

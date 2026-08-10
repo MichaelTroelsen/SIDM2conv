@@ -92,6 +92,15 @@ _SIG_FREQ = [0xBD, _W, _W, 0x18, 0x7D, _W, _W, 0x29, 0x7F, 0x9D, _W, _W, 0xA8,
 _SIG_INSTR = [0xBC, _W, _W, 0xB9, _W, _W, 0x9D, _W, _W, 0xB9, _W, _W, 0x9D, _W, _W]
 # the "program drives frequency absolutely" flag: lda F5,y / and #$80 / sta abs,x
 _SIG_ABSFLAG = [0xB9, _W, _W, 0x29, 0x80, 0x9D, _W, _W]
+# the instrument's mode nibble, rotated into the previous-mode slot at note-on:
+#   ldy instr,x / lda F5,y / and #$03 / pha / lda MODE,x / sta PREVMODE,x
+#   / pla / sta MODE,x / lda PREVMODE,x / cmp #$02
+# Both operands appear twice, so a match can be checked against itself. This is
+# the ONE variable whose power-on value is worth ~1.7 points on its own, and it
+# is recovered here rather than positionally because the second player build
+# lays its code out differently, not merely its variables.
+_SIG_MODEVAR = [0xBC, _W, _W, 0xB9, _W, _W, 0x29, 0x03, 0x48, 0xBD, _W, _W,
+                0x9D, _W, _W, 0x68, 0x9D, _W, _W, 0xBD, _W, _W, 0xC9, 0x02]
 # waveform/arpeggio program stepper:
 #   ldy cur,x / inc cur,x / lda WAVE,y / cmp #$ff / bne / lda ARP,y
 _SIG_WAVEPROG = [0xBC, _W, _W, 0xFE, _W, _W, 0xB9, _W, _W, 0xC9, 0xFF, 0xD0, _W,
@@ -371,6 +380,38 @@ class HardTrackModule:
         self.filter_f12_table = _word(data, r + 1)
         self.filter_f7_table = _word(data, r + 37)
         self.filter_f6_table = _word(data, r + 43)
+
+    def voice_var_addrs(self) -> dict:
+        """Per-voice variables recovered from their CONSUMERS, not from a layout.
+
+        `hardtrack_synth.ram_layout_base()` recovers all 43 per-voice variables
+        at once, but only for the player build whose allocation `_RAM` describes
+        -- 15 of the 33 decodable files use a second build that lays out its
+        *code* differently too, so a positional table cannot follow it and those
+        files ran from zeroes.
+
+        These five come off the instructions that read and write them, so they
+        work on both builds and on `Tribute_to_Laxity`'s third shape. They are
+        not an arbitrary five: ablating each seeded variable in turn shows the
+        startup transient is almost entirely `mode` (worth ~1.67 points on its
+        own) plus `freq_hi`/`freq_lo` (~0.2 each). Returns {} when the
+        signatures did not match uniquely.
+        """
+        h = _find(self.data, _SIG_MODEVAR)
+        f = _find(self.data, _SIG_FREQ)
+        if len(h) != 1 or len(f) != 1:
+            return {}
+        mode, prev = _word(self.data, h[0] + 10), _word(self.data, h[0] + 13)
+        # Both operands are stored again a few bytes on; requiring the repeat to
+        # agree is what separates this block from any `ldy/lda/and/pha` sequence
+        # that merely looks like it.
+        if (_word(self.data, h[0] + 17) != mode
+                or _word(self.data, h[0] + 20) != prev):
+            return {}
+        return {'mode': mode, 'prev_mode': prev,
+                'cur_note': _word(self.data, f[0] + 10),
+                'freq_hi': _word(self.data, f[0] + 17),
+                'freq_lo': _word(self.data, f[0] + 23)}
 
     def filter_program(self, cursor: int, limit: int = 64):
         """[(delta, frames)] cutoff-sweep steps from `cursor`.

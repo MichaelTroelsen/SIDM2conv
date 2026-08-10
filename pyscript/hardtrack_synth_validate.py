@@ -36,7 +36,7 @@ from sidm2.fidelity_common import (  # noqa: E402
 )
 from sidm2.hardtrack_parser import HardTrackError, HardTrackModule  # noqa: E402
 from sidm2.hardtrack_synth import (  # noqa: E402
-    ram_layout_base, simulate_all,
+    seed_source, simulate_all,
 )
 
 # token index within a siddump voice cell: Freq Note Abs WF ADSR Pul
@@ -126,8 +126,7 @@ def validate(sid, seconds=20, subtune=0, offset=0):
             acc[key][1] = len(pv)
 
     live = exercised(pred_freq, real_freq)
-    seeded = ram_layout_base(module) is not None
-    return {k: tuple(v) for k, v in acc.items()}, skipped, live, seeded
+    return {k: tuple(v) for k, v in acc.items()}, skipped, live, seed_source(module)[1]
 
 
 def main(argv=None):
@@ -145,9 +144,10 @@ def main(argv=None):
 
     keys = ('freq', 'wf', 'pulse', 'freq_seq', 'freq_drv',
             'cutoff', 'res_route', 'mode_vol')
-    tot = {True: {k: [0, 0] for k in keys}, False: {k: [0, 0] for k in keys}}
+    LABELS = ('layout+sig', 'signature', 'layout', 'none')
+    tot = {lab: {k: [0, 0] for k in keys} for lab in LABELS}
     refused, dead = [], []
-    print(f'{"file":30} {"seed":>5} {"freq":>13} {"  seq-pitch":>13} '
+    print(f'{"file":30} {"seed":>10} {"freq":>13} {"  seq-pitch":>13} '
           f'{"  prog-driven":>14} {"wf":>8} {"pulse":>8} {"cutoff":>8} '
           f'{"$D417":>7} {"$D418":>7}')
     for sid in paths:
@@ -166,20 +166,27 @@ def main(argv=None):
         def pc(k):
             p = score_pct(*acc[k])
             return 'n/a' if p is None else f'{p:.1f}%'
-        print(f'{os.path.basename(sid):30} {"yes" if seeded else "no":>5} '
+        print(f'{os.path.basename(sid):30} {seeded:>10} '
               f'{acc["freq"][0]:6}/{acc["freq"][1]:<6} '
               f'{pc("freq_seq"):>12} {pc("freq_drv"):>13} '
               f'{pc("wf"):>8} {pc("pulse"):>8} {pc("cutoff"):>8} '
               f'{pc("res_route"):>7} {pc("mode_vol"):>7}')
 
-    # Seeded and unseeded files answer different questions -- the unseeded ones
-    # carry a startup transient the seeded ones do not -- so they are never
-    # pooled into one headline number.
-    for seeded in (True, False):
+    # The two seed sources answer different questions -- one places all 43
+    # per-voice variables, the other only the 5 whose consumers can be located
+    # on any build -- so they are never pooled into one headline number.
+    NOTE = {
+        'layout+sig': 'power-on RAM seeded from the module image (full 43-variable layout)',
+        'signature': 'SECOND PLAYER BUILD -- only the 5 signature-recovered variables are seeded.\n'
+                     '   The other 38 are worth 0.03 pts (measured on build 1), so what is left\n'
+                     '   here is NOT a seeding gap',
+        'layout': 'layout seeded; the variable signatures did not resolve',
+        'none': 'UNSEEDED -- neither source resolved; expect a startup transient',
+    }
+    for seeded in LABELS:
         if not tot[seeded]['freq'][1]:
             continue
-        print(f'\n-- power-on RAM {"seeded from the module image" if seeded else
-              "UNSEEDED (second player build): expect a startup transient"} --')
+        print(f'\n-- {NOTE[seeded]} --')
         for k, label in (('freq', 'frequency  (all frames)'),
                          ('freq_seq', '  sequencer-pitch instruments'),
                          ('freq_drv', '  program-driven instruments'),

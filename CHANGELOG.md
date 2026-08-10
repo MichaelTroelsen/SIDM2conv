@@ -21,6 +21,53 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [Unreleased]
+
+### HardTrack: the second player build is seeded per-variable, and the item it closes was the wrong shape
+
+Open item 4b asked for a second `_RAM` table so the 15 files on the other player
+build could be seeded. That was the wrong shape twice over: the second build
+lays out its **code** differently too (`$11bf` is mid-instruction there), so no
+positional table can follow it, and `Tribute_to_Laxity` would have needed a
+third.
+
+Instead the variables are recovered from **their own consumers**
+(`HardTrackModule.voice_var_addrs`), which assumes no allocation and therefore
+works on every build.
+
+**Which variables matter was measured, not guessed.** Ablating each seeded
+variable in turn across the 18 build-1 files (26,569 voice-frames) prices the
+startup transient precisely: `mode` alone is worth **1.67 points**, `freq_hi`
+and `freq_lo` ~0.2 each, then a vibrato tail of ~0.03 each. Five signatures
+cover all of them. On build-1 files, where both recoveries exist and share no
+inputs, the signature-derived addresses agree with the `_RAM` layout on **18 of
+18**.
+
+Second-build frequency: **99.15% → 99.68%** (20 s, 44,237 voice-frames).
+
+⚠️ **What remains there is NOT a seeding gap, and the report now says so.**
+Restricting build 1 to the same five variables costs it only **0.03 points**
+(99.976% → 99.946%), so the 38 unrecovered variables cannot account for the
+remaining 0.3. More than half of it is a single file — `Shogoon-Rave`, 81 of 141
+lost frames — and it is unexplained. Recorded as a lead, not a finding.
+
+**Changed**
+- The validator's `seed` column is now the **source name** (`layout+sig` /
+  `signature` / `layout` / `none`), not a bool. Three states exist and
+  collapsing them to yes/no hides the one that matters; "unseeded" also stopped
+  being true of the second build.
+- `_V.__init__` seeds **by name** rather than by `_RAM` index, since the two
+  sources behind it do not share an indexing scheme.
+- `test_unseeded_build_is_still_right_once_it_has_started` renamed to
+  `test_second_build_is_seeded_by_signature_not_by_layout`, and its floor
+  tightened 0.9 -> 0.99 to lock the improvement in.
+
+**Added**
+- `_SIG_MODEVAR`, unique in 33/33, self-checking (both operands appear twice).
+- 4 tests, including a negative control that seeding the second build changes
+  its output at all — without it, "the second build is now seeded" could be true
+  of the code and false of the result.
+
 ## [3.25.0] - 2026-08-10
 
 ### HardTrack Composer: the filter engine, modelled — and the one control that moved nothing

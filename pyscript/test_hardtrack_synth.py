@@ -29,8 +29,10 @@ needs_corpus = pytest.mark.skipif(not os.path.isdir(CORP),
 # Files whose per-voice RAM layout the three signature anchors agree on.
 SEEDED = ['Zakplus', 'Hopscotch', 'Love_tune_3', 'Ritual_II_tune_2',
           'Walk_to_Soul']
-# The second shipped player build: a different variable allocation, so the model
-# runs from zeroes and carries a startup transient until the first note-on.
+# The second shipped player build: a different variable allocation AND a
+# different code layout, so no positional table can follow it. These are seeded
+# per-variable from each one's own consumer instead -- see
+# `HardTrackModule.voice_var_addrs`.
 UNSEEDED = ['What_Can_I_Say_Crap', 'Illmatic_end']
 
 
@@ -137,11 +139,19 @@ def test_program_driven_instruments_are_scoreable_now():
 
 @needs_corpus
 @pytest.mark.parametrize('name', UNSEEDED)
-def test_unseeded_build_is_still_right_once_it_has_started(name):
+def test_second_build_is_seeded_by_signature_not_by_layout(name):
+    """These files have no `_RAM` layout, so they are seeded per-variable.
+
+    `seeded` used to be a bool. It is now the name of the source, because there
+    are three states and collapsing them loses the one that matters: 'signature'
+    means five variables were placed from their own consumers while the other 38
+    started at zero. Ablation on build 1 prices those 38 at 0.03 points, so a
+    file scoring below the seeded population is NOT short of seed data.
+    """
     acc, _, live, seeded = validate(sid(name), seconds=20)
-    assert live and not seeded
+    assert live and seeded == 'signature'
     ok, tot = acc['freq']
-    assert ok / tot > 0.9, f'{name}: {ok}/{tot}'
+    assert ok / tot > 0.99, f'{name}: {ok}/{tot}'
     assert acc['wf'][0] == acc['wf'][1], 'the waveform program must be exact'
 
 
@@ -342,3 +352,69 @@ def test_simulate_registers_still_returns_only_the_voices():
     voices = simulate_registers(m, 0, 50)
     assert voices == simulate_all(m, 0, 50)[0]
     assert all(len(row) == 3 for row in voices)
+
+
+# --------------------------------------------------------------------------
+# Per-variable seeding by signature: how the second player build stops running
+# from zeroes without anyone hand-mapping its variable allocation.
+# --------------------------------------------------------------------------
+
+@needs_corpus
+def test_voice_var_addrs_resolves_on_every_decodable_file():
+    """Including the second build and Tribute_to_Laxity's third shape.
+
+    `ram_layout_base` covers 18 of 33; this covers 33 of 33, because it asks
+    each variable's own consumer instead of assuming an allocation.
+    """
+    missing = [os.path.basename(p) for p, m in _decodable() if not m.voice_var_addrs()]
+    assert not missing, f'voice_var_addrs did not resolve: {missing}'
+
+
+@needs_corpus
+def test_signature_addrs_agree_with_the_layout_where_both_exist():
+    """The cross-check that makes the signatures trustworthy on files with no layout.
+
+    On the 18 build-1 files both recoveries are available and share no inputs --
+    one walks a positional table from the abs-flag anchor, the other reads
+    operands out of two unrelated instruction blocks. Agreement on every one is
+    what licenses using the signatures alone on the other 15.
+    """
+    from sidm2.hardtrack_synth import _RAM_INDEX, _ram_addr, ram_layout_base
+    checked = 0
+    for p, m in _decodable():
+        base = ram_layout_base(m)
+        if base is None:
+            continue
+        checked += 1
+        for name, addr in m.voice_var_addrs().items():
+            if name in _RAM_INDEX:
+                assert addr == _ram_addr(base, _RAM_INDEX[name]), \
+                    f'{os.path.basename(p)}: {name}'
+    assert checked == 18
+
+
+@needs_corpus
+def test_seed_source_splits_the_corpus_the_way_the_report_claims():
+    from sidm2.hardtrack_synth import seed_source
+    from collections import Counter
+    c = Counter(seed_source(m)[1] for _p, m in _decodable())
+    assert dict(c) == {'layout+sig': 18, 'signature': 15}
+
+
+@needs_corpus
+def test_seeding_the_second_build_actually_changes_its_output():
+    """Negative control: a seed that changed nothing would score the same.
+
+    Without it, "the second build is now seeded" could be true of the code and
+    false of the result -- the exact shape of a vacuous pass.
+    """
+    import sidm2.hardtrack_synth as HS
+    m = HardTrackModule.from_sid(sid('What_Can_I_Say_Crap'))
+    seeded = HS.simulate_registers(m, 0, 300)
+    orig = HS.seed_source
+    try:
+        HS.seed_source = lambda mod: (None, 'none')
+        bare = HS.simulate_registers(m, 0, 300)
+    finally:
+        HS.seed_source = orig
+    assert seeded != bare, 'seeding the second build changed nothing'
