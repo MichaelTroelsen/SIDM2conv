@@ -69,6 +69,45 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack Stage C: the FM prong priced at a 9x collapse, and every cheaper lever ruled out
+
+No code change. Follows the cap measurement below one level down, using the
+`BUNDLE_DECOMPOSE=1` hook that already existed in the builder.
+
+A bundle is an (FM, pulse) pair, and the pair count tracks the FM side almost
+exactly:
+
+    window     pairs   distinct FM   distinct pulse
+    0-1400       48         45            28
+    0-1700       79         71            34
+    0-2400       98         80            43
+
+Every existing lever was then measured rather than assumed. MON_PULSE_CANON and
+MON_WAVE_CANON target the wrong side and change nothing. BUNDLE_TOL -- which
+merges bundles whose pitch contours differ by less than a tolerance -- was swept
+0, 2, 4, 8, 16, 32 and the effective count stayed at 79 at EVERY setting. (The
+first sweep used the wrong env name and silently ran tol=0 six times; the
+`effective@tolN` label in the output is what caught it.)
+
+Those 71 FM programs are not near-duplicates. They are genuinely distinct in Hz
+space, because a per-note Hz-delta unroll of the same arpeggio at a different
+base pitch is a different byte sequence -- which is exactly what a structural
+representation fixes. Over the same window, 286 note events use 10 distinct
+instruments and only 8 distinct arp programs once read as pitch-independent
+semitones from the wave program's arp column:
+
+    per-note Hz-delta unrolls (today)   71 distinct FM programs
+    structural semitone arp (Stage C)    8
+
+A ~9x collapse on exactly the axis that binds.
+
+8 is the FM side ALONE, not the resulting bundle count: pairs are (FM, pulse)
+and the pulse side stays at 34, so the post-change count lands between 34 and
+8x34 depending on pairing -- likely pulse-dominated and comfortably under the 63
+cap, but only the implementation settles it. ARP_STRUCT is also still env-gated
+for MoN pending its siblings, so this remains a project across a builder shared
+by seven players.
+
 ### Doc audit: a retired lead was still live in two of the three places it appears
 
 An audit of everything published this cycle, because this repo has a documented

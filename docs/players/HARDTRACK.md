@@ -1225,14 +1225,43 @@ never as pass/fail.
    genuinely-per-note pulse sweeps rarely satisfy. There is nothing to collapse
    losslessly on the pulse side.
 
-   So the lever is the **FM side**: HardTrack's wave-program *arp column* is
-   already a looping, pitch-independent semitone program (relative offsets, with
-   `$80+` absolute), which is exactly the shape `arp_fm_program` emits for MoN
-   under `ARP_STRUCT`. Sourcing that from `hardtrack_parser.wave_program()`
-   instead of per-note Hz-delta unrolls is the concrete Stage C prong. Note
-   `ARP_STRUCT` is itself still env-gated pending its sibling prongs ("all three
-   caps must drop for the part count to fall"), so this is a project rather than
-   a flag flip.
+   So the lever is the **FM side**, and `BUNDLE_DECOMPOSE=1` prices it. A bundle
+   is an (FM, pulse) pair, and the pair count tracks the FM side almost exactly:
+
+   | window | pairs | distinct FM | distinct pulse |
+   |---|---|---|---|
+   | 0–1400 | 48 | 45 | 28 |
+   | 0–1700 | **79** | **71** | 34 |
+   | 0–2400 | 98 | 80 | 43 |
+
+   **Why every existing lever fails, measured not assumed.** `MON_PULSE_CANON`
+   and `MON_WAVE_CANON` target the wrong side and change nothing (above).
+   `BUNDLE_TOL`, which merges bundles whose pitch contours differ by less than
+   a tolerance, was swept **0, 2, 4, 8, 16, 32** and the effective count stayed
+   at **79 at every setting**. Those 71 FM programs are not near-duplicates —
+   they are genuinely distinct *in Hz space*, because a per-note Hz-delta unroll
+   of the same arpeggio at a different base pitch is a different byte sequence.
+
+   Which is precisely what a structural representation fixes. Over the same
+   window, 286 note events use **10 distinct instruments** and only **8 distinct
+   arp programs** once read as pitch-independent semitones from the wave
+   program's arp column:
+
+   | FM representation | distinct programs |
+   |---|---|
+   | per-note Hz-delta unrolls (today) | **71** |
+   | structural semitone arp (Stage C) | **8** |
+
+   A ~9× collapse on exactly the axis that binds — that is the prize, and it is
+   the shape `arp_fm_program` already emits for MoN under `ARP_STRUCT`.
+
+   ⚠️ **8 is the FM side alone, not the resulting bundle count.** Pairs are
+   (FM, pulse) and the pulse side stays at 34, so the post-change count lands
+   somewhere between 34 and 8×34 depending on how they pair up — likely
+   pulse-dominated, comfortably under the 63 cap, but only the implementation
+   settles it. `ARP_STRUCT` is also still env-gated for MoN pending its sibling
+   prongs ("all three caps must drop for the part count to fall"), so this
+   remains a project across a builder shared by seven players, not a flag flip.
 7. **Rung 3 only now** (PLAYBOOK §4): an instrumented SF2II capture. ~~The
    listening pass~~ was run in v3.25.0 — see *Rung 4* above; it found no gross
    defect and a small real brightness/pitch-class difference, and is recorded as
