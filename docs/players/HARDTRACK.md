@@ -921,57 +921,60 @@ refused".
 
 ---
 
-## Rung 3: the instrumented SF2II capture (v3.25.0) — INCONCLUSIVE
+## Rung 3: the instrumented SF2II capture (v3.25.0) — **FAILED**
 
 `bin/sf2ii_vs_real.py` runs a patched SF2II (`bin/SIDFactoryII_dbg.exe`) that
-dumps its SID registers every frame, so this is what the **editor's own driver
-actually plays**, not what our wrapper renders. Run on `Love_tune_2` part 1,
-20 s, three times:
+dumps its SID registers every frame, so this measures what the **editor's own
+driver actually plays** — not what our `.sid` wrapper renders.
+
+### The calibration, first
+
+| control | freq | waveform | pulse | AD/SR |
+|---|---|---|---|---|
+| **MoN `Cybernoid_II` native Stage B**, part 1 | **100 / 100 / 100%** | **100%** | **100%** | **100%** |
+| `Action_Biker` (Hubbard) | 100 / 100% | 96–99% | — | 93–98% |
+
+The MoN native build is byte-exact on **every register of every voice**
+(890/890, 863/863, 114/114), filter cutoff 99%, routing 100%. **The tool is not
+floored, not noisy, and not fragile** — on a correct native build it reports a
+flawless 100%.
+
+⚠️ An earlier version of this section claimed the opposite and is **RETRACTED**.
+It used `out/Cybernoid_II.sf2` as the control, which is a **Driver 11 Stage A**
+build, not the native Stage B build the byte-exact claim refers to. Comparing
+the tool against the wrong file produced "the tool gives a byte-exact build 0%",
+and the conclusion drawn from it — that HardTrack's numbers were a tool artifact
+— was wrong. The native build lives in `out/mon/`, built by
+`bin/build_mon_native_song.py`.
+
+### HardTrack Stage B fails it, on both files tested
 
 | | freq | waveform | pulse | AD/SR |
 |---|---|---|---|---|
-| osc1 | 66% | 92% | 96% | 96% |
-| osc2 | **21%** | 94% | 96% | 96% |
-| osc3 | 61% | 95% | 100% | 95% |
-| filter | cutoff 72% | | res/route **100%** | |
+| `Love_tune_2` osc1/2/3 | 66 / **21** / 61% | 92 / 94 / 95% | 96 / 96 / 100% | 96 / 96 / 95% |
+| `Zakplus` osc1/2/3 | 72 / 58 / 64% | 75 / 71 / 72% | 95 / 77 / 85% | 77 / 79 / 92% |
 
-**Reproducible to the frame across all three runs**, so this is not the editor
-flakiness the repo warns about.
+`Love_tune_2` was run three times and is reproducible to the frame, so this is
+not the editor flakiness the repo warns about.
 
-### ⚠️ Why the frequency column cannot be read as fidelity
+### What this means, and what it does not
 
-The tool was calibrated against two controls before any of the above was
-believed:
+**The headless Stage B figures do not survive an editor play-test.** Our own
+`.sid` wrapper renders `Love_tune_2` at raw freq 92.8/92.9/95.1%; SF2II playing
+the same SF2 gives 66/21/61%. The gap is an **SF2II-only discrepancy** — exactly
+the class rung 3 exists to catch, and exactly the reason PLAYBOOK §4 has the
+rung at all.
 
-| control | freq | waveform | AD/SR |
-|---|---|---|---|
-| `Action_Biker` (Hubbard) | **100% / 100%** | 96–99% | 93–98% |
-| `Cybernoid_II` (MoN) | **0% / 0% / 0%** | 92–99% | 96–99% |
+This does **not** retract the register-level model results
+(`simulate_registers`, now 100.00% on the seeded population): those measure the
+*player*, and they are validated against siddump independently. It bears on
+**Stage B's emitted SF2s**, and it means the Stage B accuracy claims in this
+document should be read as "true of our render, not yet true of the editor".
 
-`Action_Biker` proves the metric is not floored — it can and does report 100%.
-But **`Cybernoid_II` is documented byte-exact on freq/wf/pulse/cutoff** and
-scores **0% frequency** here while its waveform reads 99%. "Frequency near zero
-alongside a high waveform score" is therefore a known *tool* failure signature,
-and it is exactly the shape HardTrack shows.
-
-So the honest reading is:
-
-- **usable signal** — waveform 92–95%, pulse 96–100%, AD/SR 95–96%, filter
-  res/routing 100%. These agree with the headless results and say the editor is
-  executing our tables broadly as intended.
-- **not usable** — the frequency column, and the cutoff 72% that rides on the
-  same alignment. A control that should be 100% reads 0%.
-
-The tool picks one global offset by maximising frequency match and then reports
-each metric at its **own** best offset within ±8. That is the same per-register
-alignment hazard documented above under the retracted filter fix; a freq-vs-pulse
-offset gap on one voice means the two were aligned independently, not that the
-envelopes disagree.
-
-**Rung 3 is therefore run but not passed.** Making it conclusive means fixing
-`sf2ii_vs_real.py`'s alignment — most likely per-file multispeed/subtune
-handling, since `Cybernoid_II` fails the same way — which is tooling work
-benefiting Galway and MoN as much as HardTrack.
+The cause is **unknown** and is a lead, not a diagnosis. The obvious first
+suspects are the shim flags this builder sets and MoN's does not — `no_fm_scale`,
+`hp_engine = 0`, `filter_tie = 0`, `snap_gate` — since the same driver plays a
+MoN build perfectly.
 
 ---
 

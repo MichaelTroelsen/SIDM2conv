@@ -69,6 +69,54 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### CORRECTION: rung 3 is not inconclusive -- the tool is fine and HardTrack Stage B FAILS it
+
+The entry below is retracted. Its control was the wrong file.
+
+It used `out/Cybernoid_II.sf2` to calibrate `sf2ii_vs_real.py`, saw 0% frequency
+against 99% waveform, and concluded the tool's frequency column was unreliable
+-- which made HardTrack's poor numbers look like an artifact. But
+`out/Cybernoid_II.sf2` is a **Driver 11 Stage A** build. The byte-exact claim in
+the docs refers to the NATIVE Stage B build, which lives in `out/mon/` and is
+produced by `bin/build_mon_native_song.py`.
+
+Built properly and re-run, the native MoN build scores:
+
+    osc1  freq 100% (890/890)  waveform 100%  pulse 100%  AD/SR 100%
+    osc2  freq 100% (863/863)  waveform 100%  pulse 100%  AD/SR 100%
+    osc3  freq 100% (114/114)  waveform 100%  pulse 100%  AD/SR 100%
+    filter cutoff 99%   res/route 100%
+
+The tool is not floored, not noisy and not fragile. On a correct native build it
+reports a flawless 100% on every register of every voice.
+
+**So HardTrack Stage B genuinely fails rung 3**, on both files tested:
+
+                    freq            waveform        pulse          AD/SR
+    Love_tune_2   66 / 21 / 61%   92 / 94 / 95%  96 / 96 / 100%  96 / 96 / 95%
+    Zakplus       72 / 58 / 64%   75 / 71 / 72%  95 / 77 /  85%  77 / 79 / 92%
+
+Love_tune_2 was run three times, reproducible to the frame.
+
+WHAT THIS MEANS. Our own .sid wrapper renders Love_tune_2 at raw freq
+92.8/92.9/95.1%; SF2II playing the same SF2 gives 66/21/61%. That is an
+SF2II-ONLY discrepancy -- exactly the class rung 3 exists to catch, and exactly
+why PLAYBOOK §4 has the rung. The Stage B accuracy figures in the docs should be
+read as "true of our render, not yet true of the editor".
+
+This does NOT bear on the register-level model (`simulate_registers`, 100.00% on
+the seeded population) -- that measures the PLAYER and is validated against
+siddump independently. It bears on Stage B's emitted SF2s.
+
+Cause unknown; a lead, not a diagnosis. First suspects are the shim flags this
+builder sets and MoN's does not (`no_fm_scale`, `hp_engine = 0`,
+`filter_tie = 0`, `snap_gate`), since the same driver plays a MoN build
+perfectly.
+
+METHOD NOTE: the retracted conclusion came from never checking that the control
+file was the artifact the claim was about. "Calibrate before believing" was the
+right instinct; using whatever file happened to share the name was not.
+
 ### HardTrack rung 3: the instrumented SF2II capture RAN -- and is inconclusive
 
 `bin/sf2ii_vs_real.py` drives a patched SF2II (bin/SIDFactoryII_dbg.exe) that
