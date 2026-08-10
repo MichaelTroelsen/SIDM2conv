@@ -69,6 +69,39 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack Stage C scoped by measurement: bundles bind, and the pulse prong cannot help
+
+No code change -- this replaces a guess about where Stage C's part-count win has
+to come from with a measurement.
+
+Which cap forces the window split, growing from frame 0 on Love_tune_2:
+
+    window     bundles/63  instr/32  wave/256  filter/256  seq/120
+    0-1400         48         24        88        123         4     fits
+    0-1700         79 X       30       104        129         6     OVER: bundles
+    0-2400         98 X       33 X     109        129         9     OVER: bundles, instr
+    0-5865        262 X       54 X     165        161        19
+
+Bundles bind first, instruments second. The wave, filter and sequence tables
+never come close and are NOT the lever -- a bundle is an (FM, pulse) pair in the
+$c0-$ff command channel, so Stage C has to collapse that.
+
+The two existing opt-in prongs do nothing here, and this was measured rather
+than assumed: MON_PULSE_CANON=1 and MON_WAVE_CANON=1 both leave the part count
+at 6 with every fidelity figure byte-identical. The reason is PULSE_CANON's own
+gate -- for a shim without `hard_restart` it substitutes the per-instrument
+canonical only when `_pulse_unroll` makes it IDENTICAL over the compare window,
+a strictly lossless condition HardTrack's genuinely-per-note pulse sweeps rarely
+meet. There is nothing to collapse losslessly on the pulse side.
+
+So the lever is the FM side. HardTrack's wave-program ARP COLUMN is already a
+looping, pitch-independent semitone program (relative offsets, $80+ absolute) --
+exactly the shape `arp_fm_program` emits for MoN under ARP_STRUCT. Sourcing it
+from `hardtrack_parser.wave_program()` instead of per-note Hz-delta unrolls is
+the concrete prong. ARP_STRUCT is itself still env-gated pending its siblings
+("all three caps must drop for the part count to fall"), so this is a project,
+not a flag flip.
+
 ### HardTrack Stage B: the register table re-measured at the render's real offset
 
 Every per-register figure taken during the brightness investigation was measured

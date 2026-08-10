@@ -1201,6 +1201,38 @@ never as pass/fail.
    register model now predicts what those captures contain. Emitting the
    player's looping wave/pulse programs directly is the lossless way to collapse
    parts — the same "structural, not trace" step MoN's Supremacy work names.
+
+   **Scoped by measurement (v3.25.0).** Which cap actually forces the split, for
+   `Love_tune_2` growing the window from frame 0:
+
+   | window | bundles /63 | instr /32 | wave /256 | filter /256 | seq /120 |
+   |---|---|---|---|---|---|
+   | 0–1400 | 48 | 24 | 88 | 123 | 4 |
+   | 0–1700 | **79 ✗** | 30 | 104 | 129 | 6 |
+   | 0–2400 | **98 ✗** | **33 ✗** | 109 | 129 | 9 |
+   | 0–5865 | **262 ✗** | **54 ✗** | 165 | 161 | 19 |
+
+   **Bundles bind first**, instruments second; the wave, filter and sequence
+   tables never come close and are not the lever. A bundle is an (FM, pulse)
+   pair in the `$c0-$ff` command channel, so Stage C has to collapse *that*.
+
+   ⚠️ **The two existing opt-in prongs do nothing here, and this was measured
+   before assuming otherwise.** `MON_PULSE_CANON=1` and `MON_WAVE_CANON=1` leave
+   the part count at 6 and every fidelity figure byte-identical. The reason is in
+   `PULSE_CANON`'s own gate: for a shim without `hard_restart` it substitutes the
+   per-instrument canonical only when `_pulse_unroll` makes it *identical* over
+   the compare window — a strictly lossless condition that HardTrack's
+   genuinely-per-note pulse sweeps rarely satisfy. There is nothing to collapse
+   losslessly on the pulse side.
+
+   So the lever is the **FM side**: HardTrack's wave-program *arp column* is
+   already a looping, pitch-independent semitone program (relative offsets, with
+   `$80+` absolute), which is exactly the shape `arp_fm_program` emits for MoN
+   under `ARP_STRUCT`. Sourcing that from `hardtrack_parser.wave_program()`
+   instead of per-note Hz-delta unrolls is the concrete Stage C prong. Note
+   `ARP_STRUCT` is itself still env-gated pending its sibling prongs ("all three
+   caps must drop for the part count to fall"), so this is a project rather than
+   a flag flip.
 7. **Rung 3 only now** (PLAYBOOK §4): an instrumented SF2II capture. ~~The
    listening pass~~ was run in v3.25.0 — see *Rung 4* above; it found no gross
    defect and a small real brightness/pitch-class difference, and is recorded as
