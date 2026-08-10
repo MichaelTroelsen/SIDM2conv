@@ -74,7 +74,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .hardtrack_parser import (  # the private _SIG_*: see `ram_layout_base`
-    CMD_GATE_OFF, CMD_PORTA, CMD_REST, CMD_RESET, CMD_SLIDE, CMD_TIE,
+    NUM_NOTES, CMD_GATE_OFF, CMD_PORTA, CMD_REST, CMD_RESET, CMD_SLIDE, CMD_TIE,
     HardTrackError, HardTrackModule, INSTR_HOLD, INSTR_LEGATO, ORDER_END,
     ORDER_HOLD, ORDER_JUMP, PATTERN_END, _SIG_ABSFLAG, _SIG_PULSEPROG,
     _SIG_WAVEPROG, _find, _word,
@@ -320,6 +320,14 @@ def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
         else module.load
 
     resolve, _label = seed_source(module)
+    # A wave program's arp offset can push the note index PAST the 96-entry
+    # frequency table (`arp $33` on note 54 -> 105). The player reads whatever
+    # follows, and the tables sit directly in front of its own variable block --
+    # `freq_hi_table + 105` is `$1651`, voice 0's `freq_lo`. So the real player
+    # reads LIVE RAM there while an image-based model reads the frozen bytes the
+    # editor saved. `_live` maps the addresses we can name back onto the running
+    # state; anything unmapped falls through to the image, exactly as before.
+    live_map = _var_addr_map(module, resolve)
     # `vib_depth` lives in the module header's runtime-state area rather than in
     # the per-voice block on the build `_RAM` describes; it is the one variable
     # still placed by a constant, and it is worth 0.05 points.
@@ -333,6 +341,13 @@ def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
 
     voices = [_V(module.order_pointer(v, subtune), sentinel,
                  seeded(v) if resolve is not None else None) for v in range(3)]
+
+    def b_live(addr):
+        hit = live_map.get(addr)
+        if hit is None:
+            return b(addr)
+        name, vi = hit
+        return getattr(voices[vi], name, 0) & 0xFF
     filt = _F(module)
     speed = module.speed(subtune)
     ctr = 2                                     # init leaves $1100 at 2
@@ -348,7 +363,8 @@ def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
         # filter -- three note-ons on one frame write the same operands and the
         # last voice stepped is the one that survives into $d416/$d417/$d418.
         for vi in (2, 1, 0):
-            _step(module, voices[vi], ctr, b, field, flags, filt, vi, voices)
+            _step(module, voices[vi], ctr, b, field, flags, filt, vi, voices,
+                  b_live)
         out.append([
             VoiceFrame(v.r_freq, v.r_pulse, v.r_wf, v.r_ad, v.r_sr,
                        v.instr, v.cur_note,
@@ -383,6 +399,25 @@ def _step_filter(module, f: _F, b) -> None:
     # $15b1: CLC/ADC into an 8-bit operand, no clamp -- it wraps by design.
     f.acc = (f.acc + f.delta) & 0xFF
 
+
+
+def _var_addr_map(module, resolve):
+    """{address: (attribute, voice)} for every per-voice variable we can name.
+
+    Used only where a read lands outside the frequency table. Built from both
+    seed sources: `ram_layout_base` places all 43 on the first player build,
+    `voice_var_addrs` places 5 on either.
+    """
+    out = {}
+    if resolve is None:
+        return out
+    for name in list(_RAM_INDEX) + ['cur_note']:
+        a = resolve(name)
+        if a is None:
+            continue
+        for v in range(3):
+            out.setdefault(a + v, (name, v))
+    return out
 
 
 def _reset_poke(voices, x: int) -> None:
@@ -441,7 +476,8 @@ def _arm_filter(v: _V, vi: int, n: int, f: _F, field, flags) -> None:
     f.delay = 3                                             # $13c4
 
 
-def _step(module, v: _V, ctr: int, b, field, flags, filt, vi, voices) -> None:  # noqa: C901
+def _step(module, v: _V, ctr: int, b, field, flags, filt, vi, voices,
+          b_live=None) -> None:  # noqa: C901
     """One voice, one frame. `label` tracks the player's own control flow."""
     if v.halted:                                            # $10ef
         return
@@ -697,8 +733,11 @@ def _step(module, v: _V, ctr: int, b, field, flags, filt, vi, voices) -> None:  
                 # semitone added to the sounding note.
                 n = arp if arp & 0x80 else arp + v.cur_note
                 n &= 0x7F
-                v.freq_hi = b(module.freq_hi_table + n)
-                v.freq_lo = b(module.freq_lo_table + n)
+                # Past the 96-entry table this reads the player's own live
+                # variables, not the saved image -- see `_var_addr_map`.
+                rd = b_live if (b_live is not None and n >= NUM_NOTES) else b
+                v.freq_hi = rd(module.freq_hi_table + n)
+                v.freq_lo = rd(module.freq_lo_table + n)
             label = 'out'
             continue
 

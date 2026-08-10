@@ -316,12 +316,12 @@ scored over frames rather than voice-frames, because there is one of it.
 
 | | frames | byte-exact |
 |---|---|---|
-| **frequency** `$D400/$D401` — layout-seeded files (18) | 53,569 | **99.98%** |
+| **frequency** `$D400/$D401` — layout-seeded files (18) | 53,569 | **100.00%** |
 | &nbsp;&nbsp;• sequencer-pitch instruments | 47,440 | **99.97%** |
 | &nbsp;&nbsp;• **program-driven** instruments (bit 7) | 6,129 | **100.00%** |
 | **waveform** `$D404` — seeded | 53,569 | **100.00%** |
 | **pulse width** `$D402/$D403` — seeded | 53,569 | **100.00%** |
-| frequency — second-build files (15) | 44,237 | 99.81% |
+| frequency — second-build files (15) | 44,237 | 99.89% |
 | waveform — second build | 44,237 | **100.00%** |
 
 **16 of the 18 seeded files are exactly 100.0% on all three registers.** The
@@ -399,19 +399,31 @@ Reproduced, not corrected: the model exists to predict what the SID is fed.
 Voice 1 of `Shogoon-Rave` went **43 misses → 1**, and the second-build
 population **99.68% → 99.81%**.
 
-### The last 97 frames, diagnosed but not fixed
+### The out-of-range arp read — diagnosed, then FIXED
 
-Corpus-wide, **97 voice-frames of 97,806 (0.099%)** still differ. The mechanism
-is known and is a genuine curiosity: a wave program's arpeggio offset can push
-the note index **past the end of the 96-entry frequency table**. `Shogoon-Rave`
-instrument 4 steps `arp $33` on note 54 → index 105, and the two tables sit
-adjacent, so `freq_hi_table + 105` = `$1651` — which is the player's own
-per-voice `freq_lo` **variable**.
+A wave program's arpeggio offset can push the note index **past the end of the
+96-entry frequency table**. `Shogoon-Rave` instrument 4 steps `arp $33` on note
+54 → index 105, and the tables sit directly in front of the player's own
+variable block, so `freq_hi_table + 105` = `$1651` — voice 0's `freq_lo`
+**variable**. The real player reads **live RAM** there; an image-based model
+reads the frozen byte the editor saved.
 
-The real player therefore reads **live RAM** there; the model reads the frozen
-module image and gets a different byte. Fixing it properly means giving the
-model a real memory array rather than an image plus Python attributes, which is
-a much larger change than the 0.099% justifies. Recorded, not papered over.
+This was first recorded as needing "a real memory array" and left alone. That
+was an over-estimate: the model does not need general memory, only the addresses
+it can already **name**. `_var_addr_map` inverts the two seed sources into
+`{address: (attribute, voice)}` and the frequency-table read consults it **only
+when the index exceeds the table**; everything else falls through to the image
+exactly as before.
+
+| population | before | after |
+|---|---|---|
+| layout-seeded (43 variables mapped) | 99.98% — 13 misses | **100.00% — 0** |
+| second build (5 variables mapped) | 99.81% — 84 misses | **99.89% — 47** |
+
+**The split is the evidence.** The fully-mapped population goes to *exactly*
+100.00% while the partially-mapped one keeps a proportional remainder — which is
+what the mechanism predicts and coincidence does not. The 47 left are the
+variables the second build's layout does not expose.
 
 ### Negative controls
 

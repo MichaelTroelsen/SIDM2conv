@@ -490,3 +490,59 @@ def test_modelling_the_poke_fixes_shogoon_rave_voice_1():
     ok, tot = acc['freq']
     assert tot > 2900
     assert (tot - ok) <= 45, f'Shogoon-Rave lost {tot - ok} frames'
+
+
+@needs_corpus
+def test_out_of_range_arp_reads_the_players_live_variables():
+    """An arp offset past the 96-note table reads RAM, not the saved image.
+
+    `Shogoon-Rave` instrument 4 steps `arp $33` on note 54 -> index 105, and the
+    frequency tables sit directly in front of the player's own variable block,
+    so `freq_hi_table + 105` resolves to `$1651` -- voice 0's `freq_lo`. The
+    real player reads whatever is live there; an image-based model reads the
+    frozen byte the editor saved.
+
+    Modelling that takes the fully-mapped population to EXACTLY 100.00%, which
+    is the evidence for the mechanism: build 1 has all 43 variables mapped and
+    loses nothing, while build 2 has only the 5 signature-recovered ones and
+    keeps a proportional remainder.
+    """
+    from sidm2.hardtrack_parser import NUM_NOTES
+    from sidm2.hardtrack_synth import _var_addr_map, seed_source
+
+    m = HardTrackModule.from_sid(sid('Shogoon-Rave'))
+    resolve, _ = seed_source(m)
+    amap = _var_addr_map(m, resolve)
+    assert amap, 'no variable addresses resolved'
+
+    # at least one reachable arp index must land inside the variable block,
+    # or this file no longer exercises the path the test is named for
+    hits = [n for n in range(NUM_NOTES, 128)
+            if (m.freq_hi_table + n) in amap or (m.freq_lo_table + n) in amap]
+    assert hits, 'no out-of-range index resolves to a live variable'
+
+
+@needs_corpus
+def test_seeded_population_is_byte_exact_on_frequency():
+    """The whole seeded population, every register, no exceptions.
+
+    This is the headline the OOB fix earned: 53,569 of 53,569 voice-frames.
+    It was 99.98% while the model read the frozen image past the table.
+    """
+    import glob
+    ok = tot = 0
+    for p in sorted(glob.glob(os.path.join(CORP, '*.sid'))):
+        try:
+            m = HardTrackModule.from_sid(p)
+        except HardTrackError:
+            continue
+        from sidm2.hardtrack_synth import seed_source
+        if seed_source(m)[1] != 'layout+sig':
+            continue
+        acc, _, live, _ = validate(p, seconds=6)
+        if not live:
+            continue
+        o, t = acc['freq']
+        ok += o; tot += t
+    assert tot > 10000, tot
+    assert ok == tot, f'{tot - ok} frames differ across the seeded population'

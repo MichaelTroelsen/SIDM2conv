@@ -69,6 +69,36 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack: the out-of-range arp read is fixed -- the seeded population is now EXACTLY 100%
+
+Recorded two commits ago as needing "a real memory array rather than an image
+plus Python attributes, which is a much larger change than the 0.099%
+justifies". That was an over-estimate and the item is now closed.
+
+A wave program's arpeggio offset can push the note index past the end of the
+96-entry frequency table (`arp $33` on note 54 -> 105). The tables sit directly
+in front of the player's own variable block, so `freq_hi_table + 105` resolves
+to `$1651` -- voice 0's `freq_lo`. The real player reads LIVE RAM there; an
+image-based model reads the frozen byte the editor saved.
+
+The model does not need general memory. It only needs the addresses it can
+already NAME, and it can name them from the two seed sources it already builds.
+`_var_addr_map` inverts those into `{address: (attribute, voice)}`, and the
+frequency-table read consults it ONLY when the index exceeds the table --
+everything in range falls through to the image byte for byte as before.
+
+    population                            before              after
+    layout-seeded (43 variables mapped)   99.98%, 13 misses   100.00%, 0
+    second build  (5 variables mapped)    99.81%, 84 misses    99.89%, 47
+
+THE SPLIT IS THE EVIDENCE. The fully-mapped population goes to exactly 100.00%
+while the partially-mapped one keeps a proportional remainder -- which is what
+the mechanism predicts and what coincidence does not do. The 47 left are exactly
+the variables the second build's layout does not expose.
+
+2 tests (test_hardtrack_synth.py 45 -> 47), including one asserting the whole
+seeded population is byte-exact rather than a single file.
+
 ### HardTrack Stage C: the FM prong priced at a 9x collapse, and every cheaper lever ruled out
 
 No code change. Follows the cap measurement below one level down, using the
