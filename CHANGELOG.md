@@ -69,6 +69,40 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack Stage B: the register table re-measured at the render's real offset
+
+Every per-register figure taken during the brightness investigation was measured
+at shift 0, which the retraction below shows is the wrong alignment -- the whole
+part render sits at -3. Re-measured correctly on Love_tune_2 part 1:
+
+                              0-12s (not routed)   12-28s (routed in)
+    waveform $D404            100.0/99.7/99.7%     100.0/100.0/99.8%
+    pulse $D402/3             100.0/100.0/100.0%   100.0/100.0/100.0%
+    frequency                  96.3/95.1/93.5%      96.9/96.6/91.6%
+    ADSR $D405/6               93.0/92.3/90.6%      93.8/93.2/88.2%
+    cutoff $D416               37.2% (inaudible)    94.6%
+    $D417 / passband / volume  100% / 100% / 100%   100% / 100% / 100%
+
+Better than the shift-0 numbers implied, and it retires the "waveform
+divergence" lead: at the correct alignment the waveform is essentially exact and
+the symmetric mismatch pairs WERE the offset.
+
+**Next lead, recorded but not acted on.** ADSR is now the weakest register in
+the audible window and its residual is systematic, not phase: the high byte (AD)
+always agrees while the original writes SR = $00 where the driver writes the
+instrument's real SR ($0800->$088C x42, $0100->$013A x84, $0000->$00AA x40).
+That is HardTrack zeroing sustain/release on the frames BEFORE a note-on -- its
+hard restart, emitted by the check_note early return ($11e9: lda #$00 / sta
+$d406,y) and by $12ea. Those frames precede the per-note capture window, so the
+driver never sees them.
+
+The shim sets `hard_restart = 0` because "HardTrack's field-5 bit 4 is its OWN
+hard restart, already in the capture". True of bit 4; NOT true of this path,
+which is a different mechanism. Deliberately not changed here: the same comment
+warns B.HARD_RESTART is the Hubbard kill-ADSR engine and would add behaviour
+this player does not have, and the entry below is what shipping a plausible
+one-line change on a single measurement looks like.
+
 ### RETRACTED: the HardTrack filter-alignment "fix" (reverts 122eb55)
 
 122eb55 added a `filter_capture_shift` on the reading that HardTrack's filter

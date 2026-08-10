@@ -1047,6 +1047,54 @@ be a sharp peak — and the same discipline applies to the render.
 
 Reverted; the shared `build_native_song` is untouched again.
 
+### The register table, measured at the render's actual offset
+
+Every per-register figure earlier in this section was taken at shift 0 and is
+therefore **wrong**. Re-measured at the render's real −3 offset, `Love_tune_2`
+part 1:
+
+| | 0–12 s (filter not routed) | 12–28 s (filter routed in) |
+|---|---|---|
+| waveform `$D404` | 100.0 / 99.7 / 99.7% | **100.0 / 100.0 / 99.8%** |
+| pulse `$D402/3` | 100.0 / 100.0 / 100.0% | **100.0 / 100.0 / 100.0%** |
+| frequency | 96.3 / 95.1 / 93.5% | 96.9 / 96.6 / 91.6% |
+| ADSR `$D405/6` | 93.0 / 92.3 / 90.6% | **93.8 / 93.2 / 88.2%** |
+| cutoff `$D416` | 37.2% *(inaudible — not routed)* | **94.6%** |
+| `$D417` / passband / volume | 100% / 100% / 100% | **100% / 100% / 100%** |
+
+This is a much better result than the shift-0 numbers implied, and it retires
+the "waveform divergence" lead entirely: at the correct alignment the waveform
+is essentially exact, and the symmetric mismatch pairs were the offset itself.
+
+### Next lead: the pre-note-on SR zeroing is not reproduced
+
+With waveform, pulse, `$D417`, passband and volume all at 100%, **ADSR is now
+the weakest register in the audible window** (88–94%), and its residual is
+systematic rather than phase:
+
+```
+orig $0800 -> driver $088C   x42        AD matches, SR does not
+orig $0100 -> driver $013A   x84
+orig $0000 -> driver $00AA   x40
+```
+
+The high byte (AD) always agrees; the original writes **SR = `$00`** where the
+driver writes the instrument's real SR. That is HardTrack zeroing sustain/release
+on the frames *before* a note-on — the classic hard restart, emitted by the
+`check_note` early return (`$11e9`: `lda #$00 / sta $d406,y`) and by `$12ea`.
+
+Those frames sit **before** the note-on, so they precede the per-note capture
+window and the driver never sees them. Note that the shim currently sets
+`hard_restart = 0` on the stated grounds that "HardTrack's field-5 bit 4 is its
+OWN hard restart, already in the capture" — that is true of bit 4 and **not** of
+this path, which is a different mechanism.
+
+⚠️ Not acted on here, deliberately. The shim's comment also warns that
+`B.HARD_RESTART` is the *Hubbard kill-ADSR engine* and would add behaviour this
+player does not have, so flipping the flag is not obviously the fix, and the
+previous item in this document is what happens when a plausible one-line change
+is shipped on one measurement.
+
 ### ⚠️ Why the per-voice verdicts here are NOT quotable
 
 The per-voice sweep returns SYNTHESIS on voices 1 and 2 and SEQUENCER on voice 3,
