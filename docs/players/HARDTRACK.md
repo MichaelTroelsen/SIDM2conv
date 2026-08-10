@@ -903,10 +903,65 @@ refused".
 - **It windows.** Song length is bounded by the SF2II caps (`sidm2/sf2_caps.py`),
   and a dense tune becomes many parts; part count is a **density** measure, not
   an accuracy one.
-- **No SF2II play-test yet.** Every part is checked by the emitter's own parse
-  (`parse=OK`) and measured headless. Rungs 3 and 4 of the PLAYBOOK §4 ladder —
-  an instrumented SF2II capture and a listening pass — have not been run.
+- **No SF2II play-test yet** (rung 3). Every part is checked by the emitter's own
+  parse (`parse=OK`). Rung 4, the listening pass, has now been run once — see
+  below.
 - **`DriverSelector` is untouched**, deliberately, exactly as for Stage A.
+
+---
+
+## Rung 4: the first listening pass (v3.25.0)
+
+Every fidelity number in this document above is **headless**. PLAYBOOK §4 rung 4
+had never been run on this player, and in this repo headless has overstated
+before — Galway's "37 faithful" became 30/40 under an objective metric. So:
+`Love_tune_2` part 1 (0–28 s), original vs the Stage B render.
+
+**The control first.** Original vs itself scores **exactly 0.0 on every
+feature** — the render is deterministic — so any non-zero delta below is real
+signal rather than render noise.
+
+| | original | Stage B | delta |
+|---|---|---|---|
+| RMS level (A-weighted) | −29.2 dBA | −28.5 dBA | **+0.7 dBA** |
+| spectral centroid | 1994.0 Hz | 1894.7 Hz | **−99.3 Hz** |
+| rolloff (85%) | 4478.0 Hz | 4197.9 Hz | **−280.1 Hz** |
+| spectral flatness | 0.494 | 0.479 | −0.015 |
+| dominant pitch class | A 0.18, B 0.14 | A 0.16, D♯ 0.16 | **+0.023 D♯, −0.022 A** |
+
+Mix onsets: **225 of 308 matched**, offset +10 ms, jitter 50 ms.
+
+**The spectrogram shows no gross defect.** Both panels carry the same harmonic
+banding, the same rhythmic vertical structure and the same section boundary; the
+diff panel is mostly neutral with fine vertical striping, which is the signature
+of small time-alignment jitter rather than wrong or missing notes — consistent
+with the one-frame-per-note structural offset already documented above.
+
+So the honest verdict is **close but measurably not identical**: the Stage B
+render is slightly darker (centroid −99 Hz, rolloff −280 Hz) and carries a small
+pitch-class shift toward D♯. Not a pass, not a failure — a baseline.
+
+### ⚠️ Why the per-voice verdicts here are NOT quotable
+
+The per-voice sweep returns SYNTHESIS on voices 1 and 2 and SEQUENCER on voice 3,
+all below their measured repeatability floors (audio 73/67/47 vs floors
+90/96/95). **Do not quote that as a finding.** Two reasons, both from this
+repo's own history:
+
+1. **The driver render fails the voice-isolation guard.** Muting the other two
+   voices leaves 8.6/9.1/13.2% shared energy on the Stage B side, against
+   1.5/2.1/2.7% on the original — so those per-voice numbers are partly the same
+   signal measured three times. `audio-tightness` prints `[WARN]` for exactly
+   this and says the deltas are "usable but partly correlated".
+2. **"Register-exact but SYNTHESIS on every voice" is a reading that has already
+   been FALSIFIED once in this repo** — on MoN, where it turned out to be metric
+   noise (`PATTERNS.md` F5b). The tool itself scores the rank test at **p = 0.25
+   by chance** over 3 self-comparisons, which is not significance.
+
+Per `docs/AUDIO_LISTENING_CALIBRATION.md`, onset match has **ordinal sensitivity
+but no absolute gate**: a 99.8%-register-exact build scored 64.7% against an
+85–91% original-vs-itself floor. Use these numbers against a *baseline build*,
+never as pass/fail.
 
 ---
 
@@ -971,6 +1026,7 @@ refused".
    register model now predicts what those captures contain. Emitting the
    player's looping wave/pulse programs directly is the lossless way to collapse
    parts — the same "structural, not trace" step MoN's Supremacy work names.
-7. **Climb the last two rungs on Stage B** (PLAYBOOK §4): an instrumented SF2II
-   capture and a listening pass. Headless metrics have overstated before
-   (Galway's "37 faithful" became 30/40 under the objective metric).
+7. **Rung 3 only now** (PLAYBOOK §4): an instrumented SF2II capture. ~~The
+   listening pass~~ was run in v3.25.0 — see *Rung 4* above; it found no gross
+   defect and a small real brightness/pitch-class difference, and is recorded as
+   a baseline rather than a verdict. Rung 3 still needs the editor GUI.

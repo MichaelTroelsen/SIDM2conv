@@ -69,6 +69,53 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack: the first listening pass -- rung 4, and what it is NOT allowed to say
+
+Every fidelity figure for this player was headless, and in this repo headless has
+overstated before (Galway's "37 faithful" became 30/40 under an objective
+metric). PLAYBOOK §4 rung 4 has now been run once: `Love_tune_2` part 1
+(0-28 s), original vs the Stage B render.
+
+**The control ran first.** Original vs itself scores exactly 0.0 on every
+feature -- the render is deterministic -- so the deltas below are real signal and
+not render noise:
+
+    RMS level (A-weighted)   -29.2 -> -28.5 dBA     +0.7 dBA
+    spectral centroid         1994 -> 1895 Hz       -99.3 Hz
+    rolloff (85%)             4478 -> 4198 Hz      -280.1 Hz
+    spectral flatness        0.494 -> 0.479          -0.015
+    dominant pitch class   A 0.18 -> A 0.16, D#0.16  +0.023 D#, -0.022 A
+    mix onsets                225 of 308 matched, offset +10ms
+
+The spectrogram shows **no gross defect**: same harmonic banding, same rhythmic
+structure, same section boundary, and a diff panel that is mostly neutral with
+fine vertical striping -- the signature of small time-alignment jitter rather
+than wrong or missing notes, consistent with the one-frame-per-note structural
+offset already documented.
+
+Verdict recorded as **close but measurably not identical** -- slightly darker,
+with a small pitch-class shift toward D#. A baseline, not a pass or a failure.
+
+**What this pass is explicitly NOT allowed to conclude.** The per-voice sweep
+returns SYNTHESIS on voices 1-2 and SEQUENCER on voice 3, all below their
+measured floors (audio 73/67/47 vs floors 90/96/95). That is not quoted as a
+finding, for two reasons out of this repo's own history:
+
+  * the driver render FAILS the voice-isolation guard -- muting leaves
+    8.6/9.1/13.2% shared energy against the original's 1.5/2.1/2.7%, so those
+    three numbers are partly the same signal measured three times, and the tool
+    prints [WARN] saying so;
+  * "register-exact but SYNTHESIS on every voice" has already been FALSIFIED
+    once here, on MoN, where it was metric noise (PATTERNS.md F5b). The tool
+    scores its own rank test at p = 0.25 by chance over 3 self-comparisons.
+
+Per docs/AUDIO_LISTENING_CALIBRATION.md onset match has ordinal sensitivity but
+NO absolute gate, so these numbers are for comparing against a future baseline
+build, never for pass/fail.
+
+Rung 3 -- an instrumented SF2II capture -- still has not been run; it needs the
+editor GUI.
+
 ### HardTrack: the second build has a `STA $D406,X` where it means `,Y`
 
 Following the lead above -- "the residual is not a seeding gap" -- into
