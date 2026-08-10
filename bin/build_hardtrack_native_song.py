@@ -117,16 +117,6 @@ class HardTrackShim:
         # ...plus the note-on PIPELINE. The row dispatch is not the frame the
         # note reaches the SID: the gate rises PIPE frames later (see NOTE_PIPE).
         self.onset_delay += PIPE
-        # HardTrack's filter is GLOBAL and re-arms inside the note-on trigger,
-        # not at the row dispatch the events are placed from, so the shared
-        # per-note capture window sits `onset_delay` frames late and the render
-        # sweeps that much early. Measured on Love_tune_2 part 1 over the 800
-        # frames where the filter is actually routed in: at shift 0 the cutoff
-        # matched 0 of 800 and the best whole-track alignment was -3; at
-        # -onset_delay it matches 709 of 800 with the best alignment at +0 and
-        # mean error 36.4 -> 8.2. The sign is NOT the obvious one -- +3 was
-        # tried first and made it worse (best -6, error 44.5).
-        self.filter_capture_shift = -self.onset_delay
         self.voices = [[] for _ in range(3)]
         for v in range(3):
             out = self.voices[v]

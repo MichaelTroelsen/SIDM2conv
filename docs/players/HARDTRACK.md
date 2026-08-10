@@ -1001,57 +1001,51 @@ DMC's fix was verified by byte-diffing the emitted SF2 against a build with the
 change reverted: **exactly 8 bytes differ, all filter SET rows, every one
 `low → low+band` with its cutoff nibble untouched.**
 
-### The second defect: the filter capture was 3 frames out of phase
+### About half the brightness gap is still open
 
-The remaining step was chased the same way. Two things had to be established
-before it meant anything:
+After the fix the windowed step is roughly halved but still there (centroid
+−65/−146/−74 from 12 s on). That is the next lead, and it is a different
+mechanism from the passband.
+
+Two things are already ruled out:
 
 - **The waveform is not the cause.** Its mismatch pairs are *symmetric* —
   `$40→$09` ×22 alongside `$09→$40` ×22, `$13→$12` ×40 alongside `$12→$13` ×38.
   Equal counts in both directions is a phase offset, not wrong content.
 - **The filter is not routed in for the first 12 s** (`$D417` routing bits read
   0.00, then 0.79 → 1.00). That is why the cutoff being wrong by +115 over
-  0–12 s is inaudible, and why the step exists at all: the filter simply comes
-  into circuit at 12 s.
+  0–12 s is inaudible, and why the step exists at all: the filter comes into
+  circuit at 12 s.
 
-Over the 800 frames where it *is* routed in, the cutoff matched **0 of 800** —
-but at a whole-track shift of **−3 frames it matched 757 of 800 (94.6%)**. The
-sweep was correct and merely early. HardTrack's filter is global and re-arms
-inside the note-on trigger rather than at the row dispatch the events are placed
-from, so the shared per-note capture window sat `onset_delay` (= 1 + `HT_PIPE`
-= **3**) frames late.
+### ⚠️ A filter-alignment "fix" that was RETRACTED
 
-⚠️ **The sign was the opposite of the obvious guess, and the guess was tested
-first.** Capturing at `onset + 3` made it *worse* (best shift −3 → −6, mean
-error 36.4 → 44.5). `onset − 3` fixed it.
+Worth recording, because the mistake is a general one and it was caught only by
+a second measurement.
 
-| over the 800 routed frames | before | after |
-|---|---|---|
-| cutoff exact | **0 / 800** | **709 / 800 (88.6%)** |
-| mean cutoff error | 36.4 | **8.2** |
-| best whole-track shift | −3 | **+0** |
+Over the 800 frames where the filter is routed in, the cutoff matched **0 of
+800** at shift 0, and **757 of 800 (94.6%) at a whole-track shift of −3**. That
+reads as "the sweep is correct but 3 frames early", and `onset_delay` for this
+player is exactly 3, which made it look conclusive. A `filter_capture_shift` was
+added, and it did move the cutoff to 88.6% exact **at shift 0**.
 
-Implemented as `filter_capture_shift`, read off the shim and **defaulting to 0**,
-so the other five native builders are untouched — verified by rebuilding DMC's
-`Rockbuster` and confirming the SF2 is byte-identical (`559a4e69…`).
+**It was wrong.** The whole part render is uniformly **−3 frames** against the
+original — that is why `measure_voices` uses a best-delay alignment in the first
+place. Measured the same way, all three voices' frequency also peaks at −3
+(96.1% / 95.7% / 77.1% within 50 cents, against 26.5% / 4.7% / 2.4% at shift 0).
+So the cutoff's −3 was **already consistent with the rest of the render**, and
+"fixing" it to 0 moved the filter 3 frames out of step with the voices.
 
-### ⚠️ …and it did not change the sound
+The tell was there and was missed: the change produced a large register gain and
+**no audible change whatsoever**. That should have prompted the check it
+eventually got.
 
-This is worth stating plainly, because it is the opposite of the passband
-result. A large register-level gain bought **essentially nothing audible**:
+**The lesson: never align one register in isolation.** A per-register best-shift
+is only meaningful against the render's *global* offset. `HARDTRACK.md` already
+carries the sibling rule for the model —
+`test_siddump_frame_alignment_is_zero_not_fitted` exists because offset 0 must
+be a sharp peak — and the same discipline applies to the render.
 
-| | passband fix | cutoff-phase fix |
-|---|---|---|
-| centroid | −99.3 → −51.4 Hz | −51.4 → **−52.9 Hz** |
-| rolloff | −280.1 → −169.6 Hz | −169.6 → −190.6 Hz |
-| flatness | −0.015 → −0.003 | −0.003 → **−0.000** |
-
-Only spectral flatness closed. The windowed step is unchanged
-(−58/−144/−70 against −65/−146/−74). The change is kept because Stage B exists
-to predict what the SID is actually fed and 0% → 88.6% on a scored register is
-that — but it is **not** claimed as an audible improvement, and roughly half the
-original brightness gap remains **unexplained**. Frequency fidelity, part count
-and part sizes are unchanged by it.
+Reverted; the shared `build_native_song` is untouched again.
 
 ### ⚠️ Why the per-voice verdicts here are NOT quotable
 

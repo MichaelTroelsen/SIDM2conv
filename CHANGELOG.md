@@ -69,42 +69,40 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
-### Stage B: HardTrack's filter capture was 3 frames out of phase -- fixed, and it changed nothing audible
+### RETRACTED: the HardTrack filter-alignment "fix" (reverts 122eb55)
 
-The second half of the brightness gap. Two things had to be ruled in first:
+122eb55 added a `filter_capture_shift` on the reading that HardTrack's filter
+capture ran 3 frames early. The measurement behind it was real; the conclusion
+drawn from it was wrong, and the change is reverted.
 
-  * the WAVEFORM is not the cause -- its mismatch pairs are symmetric
-    ($40->$09 x22 alongside $09->$40 x22; $13->$12 x40 alongside $12->$13 x38),
-    and equal counts in both directions is a phase offset, not wrong content;
-  * the filter is NOT ROUTED IN for the first 12 s ($D417 routing bits read
-    0.00, then 0.79 -> 1.00), which is why a +115 cutoff error over 0-12 s is
-    inaudible and why the step exists at all -- the filter comes into circuit.
+What was measured: over the 800 frames where the filter is routed in, the
+cutoff matched 0 of 800 at shift 0 and 757 of 800 (94.6%) at a whole-track shift
+of -3. `onset_delay` for this player is exactly 3, which made it look settled.
 
-Over the 800 frames where it is routed in, the cutoff matched 0 of 800 -- but at
-a whole-track shift of -3 frames it matched 757 of 800 (94.6%). The sweep was
-correct and merely early. HardTrack's filter is GLOBAL and re-arms inside the
-note-on trigger rather than at the row dispatch events are placed from, so the
-shared per-note capture window sat onset_delay (= 1 + HT_PIPE = 3) frames late.
+What was NOT measured, and should have been: **the whole part render is
+uniformly -3 frames against the original.** That is precisely why
+`measure_voices` uses a best-delay alignment. Checked the same way, all three
+voices' frequency ALSO peaks at -3 -- 96.1% / 95.7% / 77.1% within 50 cents,
+against 26.5% / 4.7% / 2.4% at shift 0. So the cutoff's -3 was already
+consistent with the rest of the render, and forcing it to 0 moved the filter 3
+frames out of step with the voices it belongs to.
 
-The sign was the opposite of the obvious guess, and the guess was tested first:
-`onset + 3` made it WORSE (best shift -3 -> -6, mean error 36.4 -> 44.5).
+The tell was present at the time and was not acted on: the change produced a
+large register-level gain (0/800 -> 709/800) and NO audible change at all. A
+register gain that buys nothing audible is a reason to re-check the measurement,
+not a curiosity to write up.
 
-    cutoff exact             0/800  ->  709/800 (88.6%)
-    mean cutoff error         36.4  ->  8.2
-    best whole-track shift      -3  ->  +0
+THE LESSON: never align one register in isolation. A per-register best-shift is
+meaningful only against the render's GLOBAL offset. The model side of this repo
+already has the rule -- `test_siddump_frame_alignment_is_zero_not_fitted` exists
+because offset 0 must be a sharp peak -- and it applies to the render too.
 
-Implemented as `filter_capture_shift`, read off the shim and DEFAULTING TO 0, so
-the other five native builders are untouched -- verified by rebuilding DMC's
-Rockbuster and confirming the SF2 is byte-identical (559a4e69...).
+The passband fix in the preceding entry is UNAFFECTED and stands: it was
+verified by an independent register (`$D418` 0% -> 100%), by an audible change
+in the same direction, and on DMC by a byte-diff of the emitted SF2.
 
-**And it did not change the sound.** Stated plainly because it is the opposite
-of the passband result: a large register gain bought essentially nothing
-audible. Centroid -51.4 -> -52.9 Hz, rolloff -169.6 -> -190.6 Hz; only spectral
-flatness closed (-0.003 -> -0.000), and the windowed step is unchanged. The
-change is KEPT because Stage B exists to predict what the SID is actually fed
-and 0% -> 88.6% on a scored register is exactly that, but it is NOT claimed as
-an audible improvement, and about half the original brightness gap remains
-unexplained. Frequency fidelity, part count and part sizes are unchanged.
+`build_mon_native_song` is untouched again; the other five native builders were
+never affected either way (the knob defaulted to 0).
 
 ### Stage B: the $D418 passband was never captured -- HardTrack and DMC rebuilt low-pass
 
