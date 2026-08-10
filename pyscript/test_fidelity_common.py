@@ -348,7 +348,7 @@ def test_worse_tolerance_ignores_float_noise():
 # --- output_digest ----------------------------------------------------------
 
 def test_output_digest_missing_path_is_none_not_a_hash(tmp_path):
-    # sha1 of nothing is da39a3ee5e6b and compares EQUAL to itself: two failed
+    # the digest of nothing is e3b0c44298fc and compares EQUAL to itself: two failed
     # builds would otherwise read as "byte-identical output", the same
     # empty==empty defect score_pct documents.
     assert output_digest(str(tmp_path / "nope.sf2")) is None

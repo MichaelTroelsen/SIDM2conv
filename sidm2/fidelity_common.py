@@ -633,16 +633,16 @@ def format_coverage(dim_keys):
 # ---------------------------------------------------------------------------
 
 def output_digest(paths):
-    """sha1 (12 hex) over the artifacts a run BUILT, or None if any is missing.
+    """sha256 (12 hex) over the artifacts a run BUILT, or None if any is missing.
 
     This is the half of an A/B that "no number moved" cannot supply on its own.
     That sentence has two readings — the change is invisible to everything
     measured, or the change reached nothing — and they call for opposite next
     steps. Hashing the build output separates them.
 
-    Returns None, never a hash, when a path does not exist. sha1 of nothing is
-    `da39a3ee5e6b`, which compares equal to itself: two failed builds would
-    otherwise report "byte-identical output", the same empty==empty defect that
+    Returns None, never a hash, when a path does not exist. The digest of
+    nothing is `e3b0c44298fc`, which compares equal to itself: two failed
+    builds would otherwise report "byte-identical output", the same empty==empty defect that
     let the v3.21.0 zig64 gate certify 64 zero bytes as a match (see
     `score_pct`). No evidence is not agreement.
 
@@ -654,7 +654,10 @@ def output_digest(paths):
     paths = list(paths)
     if not paths:
         return None
-    h = hashlib.sha1()
+    # sha256, not sha1: this is a content fingerprint, not a security digest,
+    # but bandit B324 fails the CI security scan on sha1 regardless, and
+    # `usedforsecurity=False` needs Python 3.9 (the CI matrix still runs 3.8).
+    h = hashlib.sha256()
     for p in sorted(paths, key=lambda x: os.path.basename(str(x))):
         try:
             with open(p, "rb") as fh:
