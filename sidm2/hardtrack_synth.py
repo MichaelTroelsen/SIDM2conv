@@ -348,7 +348,7 @@ def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
         # filter -- three note-ons on one frame write the same operands and the
         # last voice stepped is the one that survives into $d416/$d417/$d418.
         for vi in (2, 1, 0):
-            _step(module, voices[vi], ctr, b, field, flags, filt, vi)
+            _step(module, voices[vi], ctr, b, field, flags, filt, vi, voices)
         out.append([
             VoiceFrame(v.r_freq, v.r_pulse, v.r_wf, v.r_ad, v.r_sr,
                        v.instr, v.cur_note,
@@ -385,6 +385,36 @@ def _step_filter(module, f: _F, b) -> None:
 
 
 
+def _reset_poke(voices, x: int) -> None:
+    """$1137 in the second player build: `STA $D406,X` meaning `STA $D406,Y`.
+
+    The handler loads `ldy vidx,x` on the line before and then never uses it, so
+    the store is indexed by the voice-loop counter rather than by the voice's
+    SID slot. Zero therefore lands at $D406 + x:
+
+        x=0 -> $D406   voice 0 sustain/release   (right by accident)
+        x=1 -> $D407   voice 1 frequency LOW
+        x=2 -> $D408   voice 1 frequency HIGH
+
+    So a `$62` on voice 1 or 2 silently zeroes part of VOICE 1's pitch. It
+    survives only until voice 1 next writes its own registers, which is why it
+    shows up on the frames where voice 1 takes the note-change early return and
+    writes nothing but $D404/$D406 -- 3-frame runs, every 20 frames, in
+    `Shogoon-Rave`.
+
+    This is a bug in the player. It is reproduced rather than corrected: the
+    model exists to predict what the SID is actually fed.
+    """
+    addr = 0xD406 + x
+    voice, off = divmod(addr - 0xD400, 7)
+    if off == 6:
+        voices[voice].r_sr = 0
+    elif off == 0:
+        voices[voice].r_freq &= 0xFF00
+    elif off == 1:
+        voices[voice].r_freq &= 0x00FF
+
+
 def _arm_filter(v: _V, vi: int, n: int, f: _F, field, flags) -> None:
     """$137d -- re-seed the filter envelope from instrument `n` at note-on.
 
@@ -411,7 +441,7 @@ def _arm_filter(v: _V, vi: int, n: int, f: _F, field, flags) -> None:
     f.delay = 3                                             # $13c4
 
 
-def _step(module, v: _V, ctr: int, b, field, flags, filt, vi) -> None:  # noqa: C901
+def _step(module, v: _V, ctr: int, b, field, flags, filt, vi, voices) -> None:  # noqa: C901
     """One voice, one frame. `label` tracks the player's own control flow."""
     if v.halted:                                            # $10ef
         return
@@ -440,7 +470,10 @@ def _step(module, v: _V, ctr: int, b, field, flags, filt, vi) -> None:  # noqa: 
                 label = 'instr_byte'
             elif c == CMD_RESET:                            # $113d
                 v.waveform = 0
-                v.sr = 0
+                if module.reset_pokes_sid:
+                    _reset_poke(voices, vi)                 # $1137, second build
+                else:
+                    v.sr = 0                                # $1146, first build
                 v.wave_freeze = 1
                 label = 'instr_byte'
             elif c in (CMD_SLIDE, CMD_PORTA):               # $1151 / $1168

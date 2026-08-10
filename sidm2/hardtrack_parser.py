@@ -101,6 +101,14 @@ _SIG_ABSFLAG = [0xB9, _W, _W, 0x29, 0x80, 0x9D, _W, _W]
 # lays its code out differently, not merely its variables.
 _SIG_MODEVAR = [0xBC, _W, _W, 0xB9, _W, _W, 0x29, 0x03, 0x48, 0xBD, _W, _W,
                 0x9D, _W, _W, 0x68, 0x9D, _W, _W, 0xBD, _W, _W, 0xC9, 0x02]
+# The $62 handler, second player build:
+#   lda #$00 / sta waveform,x / ldy vidx,x / STA $D406,X / lda #$01 / sta freeze,x
+# `ldy vidx,x` is loaded and then never used, because the store is $9D
+# (abs,X) where it plainly means $99 (abs,Y). A PLAYER BUG, reproduced rather
+# than corrected -- see `reset_pokes_sid`.
+_SIG_RESET_POKE = [0xA9, 0x00, 0x9D, _W, _W, 0xBC, _W, _W, 0x9D, 0x06, 0xD4]
+# The same handler in the first build: two variable writes, no SID poke.
+_SIG_RESET_VARS = [0xA9, 0x00, 0x9D, _W, _W, 0x9D, _W, _W, 0xA9, 0x01, 0x9D]
 # waveform/arpeggio program stepper:
 #   ldy cur,x / inc cur,x / lda WAVE,y / cmp #$ff / bne / lda ARP,y
 _SIG_WAVEPROG = [0xBC, _W, _W, 0xFE, _W, _W, 0xB9, _W, _W, 0xC9, 0xFF, 0xD0, _W,
@@ -293,6 +301,16 @@ class HardTrackModule:
         self.pulse_table = _word(data, h[0] + 7) if len(h) == 1 else None
 
         self._read_filter(data)
+
+        # Which shape the `$62` (CMD_RESET) handler has. The second build
+        # replaced the first's `sta sr,x` with a direct SID write and indexed it
+        # by X instead of Y, so a `$62` on voice 1 or 2 lands in ANOTHER voice's
+        # frequency registers. 15 of the 33 decodable files carry it and they are
+        # exactly the second-build files. Reproduced, not corrected: the model
+        # predicts what the chip is fed, and this is what the chip is fed.
+        self.reset_pokes_sid = len(_find(data, _SIG_RESET_POKE)) == 1
+        if not self.reset_pokes_sid and len(_find(data, _SIG_RESET_VARS)) < 1:
+            self.reset_pokes_sid = None     # neither shape: do not guess
 
         # How many instruments are STORED sets the stride of the 13 parallel
         # tables, and it is per-file (3..32 across the corpus) -- not a constant

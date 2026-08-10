@@ -418,3 +418,75 @@ def test_seeding_the_second_build_actually_changes_its_output():
     finally:
         HS.seed_source = orig
     assert seeded != bare, 'seeding the second build changed nothing'
+
+
+# --------------------------------------------------------------------------
+# The second build's `$62` handler writes a SID register with the wrong index
+# register. A player bug, reproduced rather than corrected.
+# --------------------------------------------------------------------------
+
+@needs_corpus
+def test_the_reset_poke_partitions_the_corpus_by_build():
+    """`STA $D406,X` appears in exactly the 15 files that have no `_RAM` layout.
+
+    A bug found in one file is a curiosity; a bug that lands on precisely the
+    build boundary already established by two unrelated signatures is the build
+    difference itself.
+    """
+    from sidm2.hardtrack_synth import seed_source
+    buggy = {os.path.basename(p) for p, m in _decodable() if m.reset_pokes_sid}
+    second = {os.path.basename(p) for p, m in _decodable()
+              if seed_source(m)[1] == 'signature'}
+    assert len(buggy) == 15
+    assert buggy == second
+
+
+@needs_corpus
+def test_reset_poke_lands_in_another_voices_frequency():
+    """$D406 + x for x in 0,1,2 -- only x=0 hits what the code meant.
+
+    The handler loads `ldy vidx,x` and then stores with `$9D` (abs,X) instead of
+    `$99` (abs,Y), so two of the three voices corrupt VOICE 1's pitch instead of
+    clearing their own sustain/release.
+    """
+    from sidm2.hardtrack_synth import _F, _V, _reset_poke
+    m = HardTrackModule.from_sid(sid('Shogoon-Rave'))
+    assert m.reset_pokes_sid is True
+
+    def fresh():
+        vs = [_V(0, 0) for _ in range(3)]
+        for v in vs:
+            v.r_freq, v.r_sr = 0xABCD, 0x55
+        return vs
+
+    vs = fresh(); _reset_poke(vs, 0)          # $D406 -> voice 0 SR
+    assert vs[0].r_sr == 0 and vs[1].r_freq == 0xABCD
+    vs = fresh(); _reset_poke(vs, 1)          # $D407 -> voice 1 freq LO
+    assert vs[1].r_freq == 0xAB00 and vs[0].r_sr == 0x55
+    vs = fresh(); _reset_poke(vs, 2)          # $D408 -> voice 1 freq HI
+    assert vs[1].r_freq == 0x00CD
+
+
+@needs_corpus
+def test_first_build_zeroes_the_sr_variable_instead():
+    """Build 1's handler is `sta waveform,x / sta sr,x` -- no SID write at all.
+
+    So the poke must not be applied there, and `sr` must be, or build 1 would
+    regress on a bug it does not have.
+    """
+    m = HardTrackModule.from_sid(sid('Love_tune_2'))
+    assert m.reset_pokes_sid is False
+
+
+@needs_corpus
+def test_modelling_the_poke_fixes_shogoon_rave_voice_1():
+    """The measurement that made it a finding: 43 misses -> 1 on that voice.
+
+    Scored against the real playroutine, so this fails if the poke is dropped,
+    mis-indexed, or applied to the wrong build.
+    """
+    acc, _, live, _ = validate(sid('Shogoon-Rave'), seconds=20)
+    assert live
+    ok, tot = acc['freq']
+    assert tot > 2900
+    assert (tot - ok) <= 45, f'Shogoon-Rave lost {tot - ok} frames'

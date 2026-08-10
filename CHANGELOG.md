@@ -48,8 +48,9 @@ Second-build frequency: **99.15% → 99.68%** (20 s, 44,237 voice-frames).
 ⚠️ **What remains there is NOT a seeding gap, and the report now says so.**
 Restricting build 1 to the same five variables costs it only **0.03 points**
 (99.976% → 99.946%), so the 38 unrecovered variables cannot account for the
-remaining 0.3. More than half of it is a single file — `Shogoon-Rave`, 81 of 141
-lost frames — and it is unexplained. Recorded as a lead, not a finding.
+remaining 0.3. More than half of it was a single file — `Shogoon-Rave`, 81 of 141
+lost frames. That lead was followed and the cause found: a bug in the player
+itself, see the entry below.
 
 **Changed**
 - The validator's `seed` column is now the **source name** (`layout+sig` /
@@ -67,6 +68,55 @@ lost frames — and it is unexplained. Recorded as a lead, not a finding.
 - 4 tests, including a negative control that seeding the second build changes
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
+
+### HardTrack: the second build has a `STA $D406,X` where it means `,Y`
+
+Following the lead above -- "the residual is not a seeding gap" -- into
+`Shogoon-Rave`, the worst second-build file at 96.5%, found a defect in the
+PLAYER. Its `$62` (CMD_RESET) handler loads `ldy vidx,x` and then stores with
+`$9D` (abs,X) instead of `$99` (abs,Y), discarding the Y it just computed:
+
+    x=0 -> $D406   voice 0 sustain/release  (right by accident)
+    x=1 -> $D407   voice 1 frequency LOW
+    x=2 -> $D408   voice 1 frequency HIGH
+
+So a `$62` on voice 1 or 2 silently zeroes part of VOICE 1's pitch. It survives
+only until voice 1 next writes its own registers, which is why it surfaces on
+exactly the frames where voice 1 takes the note-change early return and writes
+nothing but $D404/$D406 -- 3-frame runs, every 20 frames.
+
+`STA $D4xx,X` occurs in exactly two places corpus-wide: init's legitimate
+$D400-$D41C clear loop, and this one. The 15 files carrying it are PRECISELY the
+15 second-build files, so the bug is part of what makes it a second build.
+
+Reproduced, not corrected -- the model predicts what the SID is actually fed.
+Build 1's handler is `sta waveform,x / sta sr,x` with no SID write at all, so the
+poke is gated on the variant and build 1 is untouched.
+
+  * `Shogoon-Rave` voice 1: 43 misses -> 1
+  * second-build population: 99.68% -> 99.81% frequency
+  * build 1: unchanged at 99.98%
+
+**How it was found, because the method mattered.** Three static readings fitted
+the data and were all wrong -- the vibrato depth (which really does live in a
+different place per build), the seed, and the wave-program cursor. What settled
+it was running the real playroutine under py65 and logging which PC wrote the
+register: every other frequency write came from `$152f`; that one came from
+`$1137`.
+
+### HardTrack: the last 97 frames, diagnosed and left alone
+
+97 voice-frames of 97,806 (0.099%) across the corpus still differ, and the
+mechanism is now known. A wave program's arpeggio offset can push the note index
+past the end of the 96-entry frequency table -- `Shogoon-Rave` instrument 4 steps
+`arp $33` on note 54 -> index 105 -- and because the two tables sit adjacent,
+`freq_hi_table + 105` resolves to `$1651`, which is the player's own per-voice
+`freq_lo` VARIABLE. The real player reads live RAM there; the model reads the
+frozen module image and gets a different byte.
+
+Fixing it means giving the model a real memory array instead of an image plus
+Python attributes. That is a much larger change than 0.099% justifies, so it is
+recorded rather than attempted.
 
 ## [3.25.0] - 2026-08-10
 

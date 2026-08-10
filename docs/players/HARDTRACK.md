@@ -321,7 +321,7 @@ scored over frames rather than voice-frames, because there is one of it.
 | &nbsp;&nbsp;• **program-driven** instruments (bit 7) | 6,129 | **100.00%** |
 | **waveform** `$D404` — seeded | 53,569 | **100.00%** |
 | **pulse width** `$D402/$D403` — seeded | 53,569 | **100.00%** |
-| frequency — second-build files (15) | 44,237 | 99.68% |
+| frequency — second-build files (15) | 44,237 | 99.81% |
 | waveform — second build | 44,237 | **100.00%** |
 
 **16 of the 18 seeded files are exactly 100.0% on all three registers.** The
@@ -358,6 +358,60 @@ The filter scores 100% on the **unseeded** build too, which the frequency
 column does not. That is not luck: the filter's state lives in self-modified
 code operands recovered by signature, not in the per-voice variable block, so
 the second player build's different allocation never touches it.
+
+### The second build has a bug, and the model reproduces it
+
+Chasing `Shogoon-Rave` — the worst second-build file at 96.5% — found a defect
+in the **player**, not the model. Its `$62` (CMD_RESET) handler:
+
+```
+112F  LDA #$00
+1131  STA $165a,x     ; waveform := 0
+1134  LDY $16a0,x     ; Y := this voice's SID slot ...
+1137  9D 06 D4        ; STA $D406,X   <-- ... and then never uses it
+```
+
+`$9D` is `STA abs,X`; the code plainly means `$99`, `STA abs,Y`. The `ldy` on
+the line before is loaded and discarded. So zero lands at `$D406 + x`:
+
+| x | address | what it actually hits |
+|---|---|---|
+| 0 | `$D406` | voice 0 sustain/release — right, by accident |
+| 1 | `$D407` | **voice 1 frequency LOW** |
+| 2 | `$D408` | **voice 1 frequency HIGH** |
+
+A `$62` on voice 1 or 2 silently zeroes part of *voice 1's* pitch. It survives
+only until voice 1 next writes its own registers, which is why it surfaces on
+exactly the frames where voice 1 takes the note-change early return and writes
+nothing but `$D404`/`$D406` — 3-frame runs, every 20 frames.
+
+It was found by tracing the real playroutine under py65 and asking which PC
+wrote the register: every other frequency write came from `$152f`, that one came
+from `$1137`. Static reading had produced three wrong guesses first (vibrato
+depth, the seed, the wave-program cursor), all of which fitted the data until
+the PC did not.
+
+**`STA $D4xx,X` occurs in exactly two places corpus-wide**: `init`'s legitimate
+`$D400-$D41C` clear loop, and this. And the 15 files carrying it are *precisely*
+the 15 second-build files — the bug is part of what makes it a second build.
+
+Reproduced, not corrected: the model exists to predict what the SID is fed.
+Voice 1 of `Shogoon-Rave` went **43 misses → 1**, and the second-build
+population **99.68% → 99.81%**.
+
+### The last 97 frames, diagnosed but not fixed
+
+Corpus-wide, **97 voice-frames of 97,806 (0.099%)** still differ. The mechanism
+is known and is a genuine curiosity: a wave program's arpeggio offset can push
+the note index **past the end of the 96-entry frequency table**. `Shogoon-Rave`
+instrument 4 steps `arp $33` on note 54 → index 105, and the two tables sit
+adjacent, so `freq_hi_table + 105` = `$1651` — which is the player's own
+per-voice `freq_lo` **variable**.
+
+The real player therefore reads **live RAM** there; the model reads the frozen
+module image and gets a different byte. Fixing it properly means giving the
+model a real memory array rather than an image plus Python attributes, which is
+a much larger change than the 0.099% justifies. Recorded, not papered over.
 
 ### Negative controls
 
@@ -897,9 +951,8 @@ refused".
    recoveries sharing no inputs. Second-build frequency **99.15% → 99.68%**.
    ⚠️ **What is left there is NOT a seeding gap.** Restricting build 1 to the
    same five variables costs it only **0.03 points** (99.976% → 99.946%), so the
-   other 38 cannot explain the remaining 0.3. More than half the residual is one
-   file (`Shogoon-Rave`, 81 of 141 frames) and it is unexplained — a lead, not a
-   finding.
+   other 38 cannot explain the rest. Following that lead found the real cause —
+   see below.
 5. ~~**The editor is the strongest lever left**~~ — **spent, and it was not.**
    `-HARDTRACK 1.PRG` was run under RetroDebugger and it boots (two-stage
    self-relocator: Polish banner → a `$0340` trampoline → shift `$0900-$FFFF`
