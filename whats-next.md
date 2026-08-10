@@ -1,285 +1,144 @@
 <original_task>
-This file previously described a mid-arc state (HEAD `dee93ba`, "Stage B not started") and went
-stale: **fourteen commits landed after it was written**, including the whole of Stage B. It is
-rewritten here against HEAD `554db9c`.
+The session opened with "read what next", i.e. read this file. The version it found was itself
+stale (written at HEAD `dee93ba`, claiming "Stage B not started" when Stage B had shipped), so the
+first act was to report that and re-derive state from `docs/players/HARDTRACK.md`.
 
-The session that produced this rewrite began with "read what next" — which surfaced the staleness
-— and then ran one directive:
+Everything after came from the user repeatedly saying "cont"/"continue" plus four explicit asks:
 
-1. "read what next" → report state. Found the handoff stale; reported the real open threads from
-   `docs/players/HARDTRACK.md` § *Next steps*.
-2. **"model the filter"** (chosen from those threads after I flagged it as an Opus-grade task:
-   the fields that seed it are read per-voice, the engine that consumes them is global, and
-   getting that ordering wrong yields a plausible, register-shaped, silently-wrong model).
-3. "push and commit"
-4. "update whats-next.md" ← this file
+1. "read what next"            -> report state; the handoff was 10 commits stale.
+2. "push and commit"           -> the filter-engine work.
+3. `/subtask` "update whats-next.md"
+4. "rung 3"                    -> run PLAYBOOK §4 rung 3.
+5. "do 1."                     -> diagnose the (apparent) SF2II discrepancy.
 
-Everything before item 2 in the git log below came from earlier sessions and is summarised, not
-re-litigated.
+All work is HardTrack Composer except two SF2-viewer bug fixes found while using its output.
 </original_task>
 
 <work_completed>
 
-## End state: HEAD `554db9c`, `origin/master` in sync (0/0), working tree clean.
-Version **3.24.0 → 3.25.0**. Tests **2,117 → 2,284 passing**, 8 skipped, 2 xfailed, 0 failures.
+## HEAD `848972e`, v3.25.0, tree clean, `origin/master` in sync. Tests 2,297 pass / 8 skip / 2 xfail.
 
-### This session (3 commits)
+### The engine work (shipped)
+- **The filter is modelled.** It is GLOBAL, not per-voice: the engine sits past the `dex / bmi` at
+  `$1583` that ends the voice loop, so it runs once per frame AFTER all three voices, and its
+  cursor/accumulator/delta/mode live in self-modified operands. Byte-exact vs siddump: `$D416` and
+  `$D417` **100% on 32,967 frames**, `$D418` 100% on 9,990 — but `$D418` is exercised by only
+  **10 of 33 files**, the rest withheld by `exercised()`. `$D415` is never written (0 stores).
+- **Five negative controls**, four of which break the score (wrap 24.75%, stepper 23.90%, f6/f7
+  swap 28.34%, `f12==0` routing-clear 48.28%). The fifth — the field-5 bit-4 re-arm gate — moves
+  NOTHING, recorded as a negative result: only 21 instruments set it, one has a filter to re-arm.
+- **A player bug reproduced**: the second build's `$62` handler is `STA $D406,X` where it means
+  `,Y`, so a `$62` on voice 1/2 zeroes part of VOICE 1's frequency. Exactly the 15 second-build
+  files carry it. `Shogoon-Rave` voice 1: 43 misses -> 1. Found with py65 by logging which PC
+  wrote the register, after three static readings fitted the data and were all wrong.
+- **Second build seeded per-variable** from each variable's own consumer (`voice_var_addrs`) --
+  a positional table cannot follow that build because its CODE differs too. Ablation priced the
+  transient: `mode` alone is 1.67 points.
+- **Out-of-range arp reads resolve to live variables** (`_var_addr_map`). An arp offset can push
+  the note index past the 96-entry table into the player's own variables; the real player reads
+  live RAM, the model read the frozen image. **Layout-seeded population now EXACTLY 100.00% on
+  frequency (0 of 53,569)**; second build 99.89%. The split is the evidence.
+- `Instrument.hard_restart` renamed **`skip_filter_rearm`** (it gates the filter re-arm, nothing
+  else; zero callers).
 
-| SHA | Subject |
-|---|---|
-| `1078eba` | feat(hardtrack): model the filter engine -- it is global, not per-voice |
-| `a895820` | chore: bump to v3.25.0 |
-| `554db9c` | docs(hardtrack): the filter registers, and the control that moved nothing |
+### Audio / editor evidence (both rungs now run)
+- **Rung 4 (listening pass)** run for the first time. It found a real defect no headless metric
+  could: the **`$D418` passband was never captured**, so every render was low-pass while
+  `Love_tune_2` is low+band 100% of frames. Fixed; centroid -99.3 -> -51.4 Hz. **DMC had the
+  identical gap and is also fixed** (verified by byte-diffing the SF2: exactly 8 bytes, all filter
+  SET rows, `low -> low+band`). FC/SDI were right by luck; Hubbard/SoundMonitor have no passband.
+- **Rung 3 (instrumented SF2II) PASSES.** SF2II plays our Stage B SF2 **identically to our own
+  render** — 100% freq/waveform/pulse on all three voices at offset 0. No SF2II-only hazard.
 
-### Earlier, and NOT covered by the previous version of this file (10 commits;
-### `dee93ba` itself was already the previous file's HEAD, listed here only for continuity)
-
-| SHA | Subject |
-|---|---|
-| `dee93ba` | docs: explain the last 16 Stage A losses -- and RETRACT a wrong refutation *(previous file's own HEAD)* |
-| `c328c3c` | docs: update whats-next.md for the full HardTrack arc *(the stale version)* |
-| `a7abd39` | feat: promote the loss-attribution tool; close the CHANGELOG/STORY gap |
-| `bd25647` | docs: identify instrument fields 6, 7 and 12 -- they are the filter |
-| `c81b38c` | docs(driver11): the startup frame is repo-wide -- and its published cause was wrong |
-| `2c9db2d` | docs: second pass on the fields -- and bit 4 is not a hard restart |
-| `57ae0a4` | feat: model the synth engine -- program-driven column 2.6% -> 100% |
-| `cd41e12` | fix: field 7 is the initial cutoff, not the resonance |
-| `28dcd66` | feat: Stage B -- a native build that replays the synth engine |
-| `4aeae28` | docs: fold the field corrections into the canonical docs |
-| `6eab1d9` | feat: track the parser-residual attribution tool |
-
----
-
-## The filter engine (this session, `1078eba`)
-
-`simulate_registers()` predicted every register group except the filter. It now predicts that
-too, so **nothing in this player's SID register file is unmodelled**.
-
-### The shape was the question, not the code
-
-Instrument fields 6/7/12 are read **per voice** at note-on, which invites a per-voice filter
-envelope. The engine that consumes them is **global**, and the player settles it in three bytes:
-
-```
-1583  DEX
-1584  BMI l1589      ; all three voices done?
-1586  JMP $10ef      ; no -> next voice
-1589  DEC $16b2      ; <- the filter engine: ONCE PER FRAME, past the voice loop
-```
-
-Its cursor, cutoff accumulator, delta and `$D418` mode nibble live in **self-modified operands**
-(`$158f`, `$15b2`, `$15b5`, `$15bd`) rather than in the per-voice block — which is exactly why an
-operand scan for a table address had never named them: the addresses being written are inside the
-code. `init` resets **none** of them, so they seed from the saved module image.
-
-The same three bytes showed the voice loop runs **2, 1, 0** where the model ran **0, 1, 2**
-(`$10ed LDX #$02`). Immaterial for per-voice registers; decisive for a global filter, since three
-note-ons on one frame write the same operands and the last voice stepped wins.
-
-### Measured (20 s, all 33 decodable files, byte-exact vs siddump)
-
-| | frames | byte-exact | files n/a |
-|---|---|---|---|
-| cutoff `$D416` | 32,967 | **100.00%** | 0 |
-| resonance + routing `$D417` | 32,967 | **100.00%** | 0 |
-| mode + volume `$D418` (bits 0-6) | 9,990 | **100.00%** | **23 of 33** |
-
-⚠️ **`$D418` is exercised by only 10 of 33 files.** The other 23 hold one constant on both sides
-and are withheld by `exercised()` rather than scoring `0 == 0` — the identical shape
-`docs/players/HUBBARD.md` had to retract a published "filter 100%" for, arriving in the same
-player's docs one release later. **Quote the file count beside that column.**
-
-`$D415` is excluded because the player **never writes it** — 0 stores corpus-wide — so the cutoff
-is the 8-bit `$D416` alone. `$D418` bit 7 is modelled but **unverifiable here**: siddump prints
-only `(D418 >> 4) & 7`.
-
-The filter is 100% on the **unseeded** second-build files too, which the frequency column is not.
-Not luck — its state lives in code operands recovered by signature, so that build's different
-per-voice allocation never touches it.
-
-### Negative controls — four bite, one does not
-
-A uniform 100.00% across 33 files is the shape this project has twice been wrong about, so each
-assumption was broken on purpose (6 s window, corpus-wide):
-
-| deliberately broken | `$D416` | `$D417` |
-|---|---|---|
-| *(unmodified)* | 100.00% | 100.00% |
-| cutoff clamped at 255 instead of wrapping | 24.75% | 100.00% |
-| filter program never steps | 23.90% | 100.00% |
-| `f12 == 0` skips instead of clearing routing | 100.00% | 48.28% |
-| fields 6 and 7 swapped | 28.34% | 100.00% |
-| **field-5 bit-4 re-arm gate ignored** | **100.00%** | **100.00%** |
-
-The f6/f7 row is worth keeping: the swap costs 71 points, so the field identities are now
-confirmed **by the metric**, independently of how they were read off the code.
-
-**The last row is a negative result, recorded as one.** Ignoring the bit-4 gate changes nothing
-measurable because only **21 instruments** corpus-wide set the bit and just **one** of those has a
-filter to re-arm. The reading rests on the bit's only consumer in the disassembly; this corpus can
-neither confirm nor refute it. `test_field5_bit4_is_not_exercised_by_this_corpus` pins both counts
-so the claim can be upgraded if a file ever exercises it.
-
-### Two corrections found by re-reading consumers, not by measuring
-
-- **`f12 == 0` does not mean "skip the re-arm"** — it **actively clears this voice's routing bit**
-  (`$13cb`, `AND $16da,x`). Reading it as a no-op costs 52 points of `$D417`.
-- **The runtime volume is what `init` stores (`#$0f`), not what the image saved.** Recovered by
-  searching for init's own store to the signature-derived address, because `Tribute_to_Laxity`
-  shifts that block by one instruction and a fixed offset hands back a neighbouring variable.
-
-### Files
-
-`sidm2/hardtrack_parser.py` (5 new signatures, all **unique in 33/33**; `filter_program()`;
-`filter_*` attributes) · `sidm2/hardtrack_synth.py` (`FilterFrame`, `simulate_all()`;
-`simulate_registers()` keeps its exact signature) · `pyscript/hardtrack_synth_validate.py` (three
-filter columns, each `exercised()`-guarded separately) · `pyscript/test_hardtrack_synth.py`
-(22 → 37) · `docs/players/HARDTRACK.md` · `HARDTRACK_FILTER_AND_SLIDE.md` (marked folded-in) ·
-`ACCURACY_MATRIX.md` · `CLAUDE.md` · `CHANGELOG.md` · `STORY.md`.
-
-The signature-derived f6/f7/f12 table addresses are cross-checked against the stride-derived ones
-and **agree on 33/33** — two recoveries sharing no inputs.
-
----
-
-## Earlier in the arc (summarised — full detail in the commits and `docs/players/HARDTRACK.md`)
-
-- **Stage B** (`28dcd66`, `bin/build_hardtrack_native_song.py`) — no new driver, a MoN-compatible
-  shim into the shared engine. The synth programs are **CAPTURED, not modelled**, which dissolves
-  every Stage A loss class at once; `$6F` legato needs no mechanism at all. All 33 files build.
-  Per-frame freq raw **91.04%** / audible **88.25%** (60 s, 195 parts) — but **15,575 of 24,840
-  misses are the driver's own note-on frame**, which cannot match, and **15,203 of those carry the
-  SID TEST bit** (silent). Net **96.66%**. The attribution is *reported, never excluded*.
-- **Synth engine** (`57ae0a4`) — the program-driven column went **2.64% → 100.00%**. It was never
-  a fidelity figure; it was the score for predicting the wrong thing.
-- **Parser residual resolved** (`6eab1d9`, `pyscript/hardtrack_residual.py`) — the wave program's
-  arp column owns `$D400/$D401`. Of 652 lost notes, **630 predicted frame-exactly**; the same
-  model also holds on **97.7% of KEPT notes**, which a model fitted to the losses would not. For
-  **344 of 652 the bare table value is never written at all**. 22 (0.38%) unexplained.
-- **Driver 11 startup frame** (`c81b38c`) — promoted to `docs/players/DRIVER11.md` as a repo-wide
-  property, **and its published cause was found wrong on the way**: `init` overwrites the
-  template's `$16CC = $40` before the first tick reads it, and `$1047` is the *stop* path. The real
-  cause is the `$00` fall-through. The *effect* (one silent first frame) was always measured
-  correctly. Recorded as PATTERNS.md **F6**: a self-consistent branch story assembled from the
-  binary **at rest**, when the flag's value **at the call** decides the branch.
-- **Loss-attribution tool promoted** (`a7abd39`) — `simulate()`'s onsets now carry `.raw`,
-  `.pattern`, `.transpose`, `.pat_index` (still unpacking as the historical 2-tuple), so
-  attribution is exact by construction rather than re-derived by a cursor heuristic — the heuristic
-  is what produced a false refutation on `Walk_to_Soul`. A correction fell out: the `$6F` legato fix
-  is **25 → 0**, not 25 → 3.
-- **Fields 6/7/12 identified** (`bd25647`, `2c9db2d`) — reached independently by three passes.
-  Fields 8-11 are the vibrato engine. `$63`/`$64` are slide **UP/DOWN**, not slide vs portamento —
-  a continuous per-frame ramp with **no target note**, ended by the next note-on.
-- **Field-5 bit 4 is NOT a hard restart** (`2c9db2d`) — the parser still exposes it as
-  `hard_restart`. Field 5 is masked with only `$03`/`$10`/`$80` in 33/33; bit 4's single consumer
-  gates the filter re-arm on a repeated note and reaches nothing else.
+### Two SF2-viewer bugs, both "a Laxity constant applied to every driver"
+- `_detect_laxity_driver()` tested `load_address == 0x0D7E`, which is the SF2 CONTAINER address --
+  identical for every driver -- so it returned True for EVERY file. Now tests the driver NAME.
+  Needed `_normalize_driver_name` because the name ships in two encodings (screen-code and ASCII);
+  the first attempt regressed genuine Laxity files. 17/17 correct.
+- Driver 11 orderlists were read from the hardcoded LAXITY file offset `$1766`, landing on zeros,
+  so every position exported as `A000`. Real address is the Music Data block's word at offset 12.
+  Verified by an invariant the broken read cannot satisfy: sequences are numbered 0..N with no
+  gaps, so a correct orderlist references exactly max+1 distinct sequences.
 
 </work_completed>
 
 <work_remaining>
 
-Nothing requested was left incomplete. The items below are open threads recorded in
-`docs/players/HARDTRACK.md` § *Next steps*; none was requested this session.
-
-1. **Stage C — emit HardTrack's own looping programs instead of Stage B's unrolled per-note
-   captures.** Stage B's part count is pure capture *density*, and `hardtrack_synth` now predicts
-   the complete register file, so there is a reference model to check a structural emitter against.
-   The same "structural, not trace" step MoN's Supremacy work names.
-2. **Rungs 3-4 of the PLAYBOOK §4 ladder on Stage B** — an instrumented SF2II capture and a
-   listening pass. **Never run.** Everything measured so far is headless, and headless metrics have
-   overstated in this repo before (Galway's "37 faithful" became 30/40 under the objective metric).
-3. **Map the second player build's `_RAM` variable block** (item 4b) — 15 files run unseeded at
-   frequency 99.15% vs 99.98% seeded. **This session shrank the problem**: the filter is 100% on
-   those files too, because its state lives in code operands, so 4b is now strictly about the
-   per-voice variables. Their allocation genuinely differs (not an offset), so it needs its own
-   `_RAM` table.
-4. **`pyscript/sf2_to_text_exporter.py` misreads these files** ("invalid sequence address `$0000`",
-   all three orderlists printed as sequence 00). The emitted SF2 is correct — verified through
-   `sf2_parser`. A separate bug, **not** a HardTrack problem.
-5. **Rename `hard_restart`** in `hardtrack_parser.py`. It is documented as a misnomer in two
-   places but never renamed, because the tree held sibling forks' work at the time.
-6. **`DriverSelector` is untouched, deliberately** — both stages are `bin/` tools.
+1. **Stage C's FM prong** — the biggest structural win, now PRICED. Bundles bind first (79 > 63 at
+   window 1700), instruments second; wave/filter/seq tables never come close. A bundle is an
+   (FM, pulse) pair and the pair count tracks FM almost exactly. **FM collapses 71 -> 8** when read
+   as pitch-independent semitones from the wave program's arp column instead of per-note Hz-delta
+   unrolls. Every cheaper lever is ruled out BY MEASUREMENT: `MON_PULSE_CANON` and `MON_WAVE_CANON`
+   change nothing, and `BUNDLE_TOL` swept 0/2/4/8/16/32 stays at 79 — those 71 programs are
+   genuinely distinct in Hz space, which is exactly what a structural form fixes.
+   ⚠️ 8 is the FM side alone; pulse stays at 34, so the resulting bundle count needs the
+   implementation to settle. Touches a builder shared by SEVEN players.
+2. **`sf2ii_vs_real.py` needs a PER-VOICE offset.** It picks one global offset by maximising the
+   SUMMED frequency match, which is a compromise when voices need different alignments — that is
+   what produced two retracted conclusions this cycle. Galway and MoN use the same tool.
+3. **SR-only `$7D` row.** ADSR is the weakest register in the audible window (88-94%) and the
+   residual is systematic: AD always agrees while the original writes SR = `$00` (HardTrack's
+   pre-note-on hard restart, on frames that PRECEDE the capture window). ⚠️ `hard_restart = 1` is
+   PROVABLY wrong — the driver's `$7D` row zeroes AD too and AD differs on 0/10/20 of 1,397 frames.
+   A correct fix is asm in the shared driver; audible value unproven.
+4. **Second build's remaining 47 frames** — needs more of its variable layout mapped.
+5. **Laxity's orderlist address** in `sf2_viewer_core` — the hardcoded `$1766` does not survive
+   inspection for Laxity either (the block word disagrees on all five files tested), but Laxity has
+   its own working parse path and choosing needs Laxity ground truth. Scope pinned by a test.
+6. About half the rung-4 brightness gap is unexplained; ADSR/SR is the best candidate (item 3).
 
 </work_remaining>
 
 <attempted_approaches>
 
-### Falsified this session
-1. **"The filter might be per-voice."** Settled by `$1583 DEX / BMI` — the engine is past the voice
-   loop, so once per frame. Reading the *seeding* fields (per-voice) rather than the *consumer*
-   (global) is what makes this a trap.
-2. **"A 100% needs no defending."** Five negative controls were run precisely because it was 100%
-   on 33 of 33 files. Four broke it; that is what makes the number evidence rather than a claim.
+### ⚠️ THREE wrong conclusions this cycle, ALL from alignment
+This is the single most important thing to carry forward.
 
-### Falsified earlier in the arc — DO NOT RE-ADOPT
-3. **"Cross-pattern gate state causes the Stage A losses."** `Zakplus` v2 (worst loss) has ZERO
-   ambiguous patterns; `Love_tune_2` has THREE and scores 100.0%.
-4. **"The hard-restart flag causes the +1 lag."** Flags `$80`/`$00`/`$40` give identical histograms.
-5. **"The PSID wrapper calls the wrong play address."** `$1006` is correct; `$1003` is silent.
-6. **"Instrument fields 3/4 can be told apart by plausibility."** A "do these look like SID control
-   values?" check scored BOTH readings at ~91.6%. *A plausibility test both hypotheses pass is not
-   evidence.* Reading the CONSUMERS settled it.
-7. **"The template's `$16CC = $40` causes the Driver 11 startup frame."** Self-consistent and wrong
-   — `init` overwrites it first. See `c81b38c`.
-8. **"The editor is the strongest untapped lever."** **Spent, and it was not.** `-HARDTRACK 1.PRG`
-   boots (two-stage self-relocator) but its main screen is unlabelled hex whose only words are
-   `SPEED`, `SONG`, `OCT` and the title. **Do not pick this lever up a third time.**
+1. **A filter-capture "fix" — REVERTED (`0ed5986`).** The cutoff matched 0/800 at shift 0 and
+   757/800 at -3, and `onset_delay` is exactly 3, so it looked settled. But the WHOLE part render
+   sits at -3 — all three voices' frequency also peaks there (96.1/95.7/77.1% vs 26.5/4.7/2.4% at
+   0). The cutoff's -3 was already correct; "fixing" it to 0 desynced the filter from the voices.
+   **The tell was present and ignored**: a large register gain with zero audible change.
+2. **"rung 3 is inconclusive, the tool is unreliable" — RETRACTED.** The control was
+   `out/Cybernoid_II.sf2`, a Driver 11 Stage A build, not the native Stage B build the byte-exact
+   claim refers to. The native build (`out/mon/`, from `build_mon_native_song.py`) scores 100% on
+   every register of every voice.
+3. **"Stage B fails rung 3" — RETRACTED.** An artifact of the tool's single global offset. Done per
+   voice, the same comparison gives 91.2/93.4/64.1% at shift -3 against the tool's 66/21/61%.
 
-### ⚠️ A FALSIFICATION THAT WAS ITSELF FALSE
-9. **"`$62`-freeze is refuted"** was published for two commits and is **RETRACTED**. It came from a
-   tagger already flagged as unreliable, whose output was used anyway because the answer was
-   convenient. Recording the **pattern byte-index at note time** made the test exact and reversed
-   it (25× enrichment). *An unreliable instrument does not become reliable because its answer is
-   convenient.*
+**The rule**: a per-register or per-voice best-offset means nothing without the render's GLOBAL
+offset. `measure_voices` uses a best-delay alignment for exactly this reason.
 
-### Measurement traps hit across the arc
-10. **Matching siddump's note-NAME column scored a CORRECT model at 0.0%** — every instrument opens
-    with a one-frame attack transient, so siddump reports `E-6` as the onset row for nearly every
-    note. Comparing the raw frequency register turned 0% into 100% without touching the decoder.
-11. **The 8-frame window was one frame too short** for arpeggiated instruments, manufacturing an
-    entire "loss". The window has **no plateau**, so widening it to improve a number would be
-    laundering.
-12. **Validators counted unscoreable notes as misses** (window past the end of the trace).
-13. **`pulse_table` was read from signature +6** (the opcode) rather than +7 (its operand), so it
-    pointed outside the module on **every** file and `pulse_program()` returned zeroes that read
-    exactly like a program holding the pulse width still. Nothing caught it because nothing scored
-    `$D402/3`.
+### Other measurement traps hit
+- An "equal track lengths" invariant in a new test failed on Hopscotch (44/48/48) — voices loop at
+  different points. The invariant was wrong, not the code. Replaced with sequence contiguity.
+- A `BUNDLE_TOL` sweep used the wrong env name and silently ran tol=0 six times; the
+  `effective@tolN` label in the output is what caught it.
+- A test harness used `startswith('SF2/')` where Windows `glob` returns `SF2\` — reported 8 false
+  failures against correct code.
 
-### Tooling gotchas
-14. `retro_load` does **not** clear RAM and still reports `"loaded"`. Without a preceding
-    `retro_reset` you debug the previous session's program. Compare bytes at the load address.
-15. `mcp__tdz-c64-knowledge__search_docs` hung for 1800 s once; `list_docs` exceeds the token cap.
-16. Grep on code files is blocked by a tokensave hook when the pattern looks like a symbol —
-    override with `TOKENSAVE_DISABLE_GREP_HOOK=1`.
-17. `pyscript/disasm6502.py` is in the repo and works; `DisassembledLine` has `.bytes`/`.instruction`
-    /`.operand` (no `.size` — use `len(ln.bytes)`), and `d.lines` is keyed by address.
+### Doc drift, caught by an audit
+CLAUDE.md and ACCURACY_MATRIX still carried a RETIRED lead ("the waveform match falling 86% ->
+70-79%") four commits after the correction landed in HARDTRACK.md. Also two "runs all" test counts
+where only one had been maintained. Every headline figure was re-run and reproduces exactly,
+including the derived ones (32,967 = 17,982 + 14,985; 97 = 13 + 84).
 
 </attempted_approaches>
 
 <critical_context>
 
-### Reporting rules (do not violate)
-- **Two fidelity columns, never averaged**: sequencer-pitch vs program-driven. *(Now largely
-  historical — the register-level metric supersedes it — but any onset figure still splits.)*
-- **Always quote the match window.** It has **no plateau**.
-- **Stage A > parser is an ARTIFACT**, meaningful only in the LOSING direction. Quote **retention
-  over parser-resolved notes: 99.69%**, not the diluted 91.34%.
-- **Quote `$D418`'s file count (10 of 33)**, or it reads as three times the evidence it is.
-- **Stage B: quote raw AND audible, never net alone**, and never drop the note-on frame silently.
-
-### The measurement discipline that this arc keeps vindicating
-`sidm2/fidelity_common.py` — `score_pct()` returns **None** on `n == 0`; `exercised()` returns
-False when both series are the same single constant. **Both are load-bearing here**: siddump
-force-displays every register on its first row, so a tune that never filters yields a full-length
-non-None series of zeroes on both sides and scores a confident 100%.
-
-### Environment
-- `SID/Shogoon/` (mixed-player: **38 of 150** files) and `bin/hardtrack composer/` are **TRACKED**,
-  so every test and sweep runs from a fresh clone.
-- Full `pytest` run ≈ 172 s.
-- Refusals are deliberate: 6 of 38 files (5 wrapped/multi-instance rips + `Dune_Cover`, PSID init
-  `$4000` ≠ entry `$0900`). A refusal count needs the **right denominator** — the sweep once
-  reported "117 refused" by counting non-HardTrack files in a mixed-player directory.
+- **Two fidelity columns, never averaged**; always quote the match window (it has NO plateau).
+- **Stage A > parser is an ARTIFACT** — quote retention (99.69%), not the diluted 91.34%.
+- **`$D418`'s 100% rests on 10 files of 33** — quote the file count, or it reads as 3x the evidence.
+- **The render sits at -3.** Any per-register alignment must be judged against that.
+- **The filter is GLOBAL** — do not model it per-voice.
+- `SID/Shogoon/` is mixed-player: 38 of 150 files.
+- Stage B accuracy figures are true of our render AND of the editor (rung 3 confirmed both).
+- Native MoN builds live in `out/mon/`; `out/<name>.sf2` is the Driver 11 Stage A build. Using the
+  wrong one as a control produced retraction #2.
+- `bin/SIDFactoryII_dbg.exe` is the patched editor that dumps `SIDFR <frame> r0..r24` per frame.
+- Build-generated `drivers_src/{mon,romuzak}/*.inc` get dirtied by any native build; `git checkout`
+  them (`bin/_sm_build_all.py` does the same).
 
 </critical_context>
 
@@ -287,30 +146,15 @@ non-None series of zeroes on both sides and scores a confident 100%.
 
 | item | status |
 |---|---|
-| `sidm2/hardtrack_parser.py` | **complete**, 31 tests |
-| `sidm2/hardtrack_synth.py` (incl. the filter) | **complete**, 37 tests |
-| `bin/hardtrack_to_sf2.py` (Stage A) | **complete**, 20 tests |
-| `bin/build_hardtrack_native_song.py` (Stage B) | **complete**, 22 tests |
-| `pyscript/hardtrack_{validate,stagea_validate,synth_validate,attribute,residual,player_xref}.py` | **complete** |
-| `docs/players/HARDTRACK.md` + `HARDTRACK_FILTER_AND_SLIDE.md` | **complete + current** |
-| ACCURACY_MATRIX / CLAUDE.md / CHANGELOG / STORY | **complete + current** at v3.25.0, all four header-stamped. The matrix header and the `## [3.25.0]` heading were **missed by the bump and caught by a review pass** — CLAUDE.md names the matrix as the file a bump must re-stamp precisely because it has drifted before |
-| Stage C | **not started** |
-| SF2II play-test + listening pass (PLAYBOOK §4 rungs 3-4) | **not started** |
-| `DriverSelector` wiring | **not done, deliberately** |
-
-- HEAD `554db9c`, **`origin/master` in sync (0/0)**, working tree **clean**.
-- Version **3.25.0**; tests **2,284 passing / 8 skipped / 2 xfailed / 0 failures**.
-- `out/hardtrack/` and `output/Love_tune_2_export/` may hold untracked build scratch — safe to delete.
-
-### Standing caveats a fresh context must not lose
-- The filter is **global**, runs **once per frame after the voice loop**, and the voice order is
-  **2, 1, 0**.
-- **`$D418` is only exercised by 10 of 33 files** — never quote it bare.
-- The **+1 frame** is a Driver 11 property affecting EVERY Stage A builder here, and its *cause* was
-  corrected once already.
-- **`SID/Shogoon/` is mixed-player: 38 of 150 files.**
-- Across this arc **eight hypotheses were falsified and one falsification was itself false.** Every
-  one failed the same way — a measurement that had not itself been verified. **Verify the
-  instrument before trusting its verdict, especially when the verdict is convenient.**
+| RE (format, all 13 fields, filter, vibrato, slides) | **complete** |
+| `sidm2/hardtrack_parser.py` / `hardtrack_synth.py` | **complete** — every register group predicted |
+| Register fidelity, layout-seeded population | **frequency EXACTLY 100.00%** (0 of 53,569) |
+| Stage A (`bin/hardtrack_to_sf2.py`) | complete, 99.69% retention |
+| Stage B (`bin/build_hardtrack_native_song.py`) | complete, 33/33 build |
+| PLAYBOOK §4 rung 3 (SF2II capture) | **PASSED** |
+| PLAYBOOK §4 rung 4 (listening pass) | **run**; found + fixed the passband defect |
+| Stage C | **not started**, priced at 71 -> 8 FM programs |
+| `DriverSelector` wiring | not done, deliberately — both stages are `bin/` tools |
+| tests | 121 HardTrack + 4 SF2-viewer; suite 2,297 |
 
 </current_state>
