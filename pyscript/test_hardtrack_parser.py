@@ -306,3 +306,22 @@ def test_next_pattern_event_finds_the_freeze_command():
     onsets = [r[v] for r in simulate(m, 0, 1000) for v in range(3) if r[v]]
     kinds = {next_pattern_event(m, o.pattern, o.pat_index) for o in onsets}
     assert 'cmd62' in kinds
+
+
+def test_field5_bit4_is_named_for_what_it_does():
+    """`hard_restart` was a misnomer; the bit gates the FILTER re-arm only.
+
+    Renamed in v3.25.0. Pinned because the old name actively misleads a Stage B
+    port: the shared driver's hard-restart row zeroes AD and SR together, while
+    HardTrack's path never touches $D405 at all.
+    """
+    import os
+    corp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'SID', 'Shogoon')
+    if not os.path.isdir(corp):
+        import pytest
+        pytest.skip('Shogoon corpus absent')
+    m = HardTrackModule.from_sid(os.path.join(corp, 'Love_tune_2.sid'))
+    inst = m.instrument(0)
+    assert not hasattr(inst, 'hard_restart'), 'the misnomer is back'
+    assert inst.skip_filter_rearm == bool(inst.flags & 0x10)

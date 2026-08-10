@@ -221,7 +221,29 @@ class Instrument:
         return bool(self.raw[5] & 0x80)
 
     @property
-    def hard_restart(self) -> bool:
+    def skip_filter_rearm(self) -> bool:
+        """Bit 4: on a REPEATED note, leave this instrument's filter envelope alone.
+
+        Named `hard_restart` until v3.25.0, which is what it looks like and not
+        what it does. Its only consumer in the player is the guard immediately
+        in front of the filter block:
+
+            $137d  lda F5,y / and #$10 / beq $138f      ; clear -> arm the filter
+            $1384  lda instr,x / cmp prev_instr,x / bne $138f
+            $138c  jmp $13d7                            ; same note again -> skip
+                                                        ;   the WHOLE filter re-arm
+
+        It suppresses one re-arm and reaches nothing else -- field 5 is read
+        exactly three times per file and the masks are $03, $10 and $80 in 33 of
+        33 modules. A Stage B driver implementing it as a general hard restart
+        would retrigger envelopes the original holds; concretely, the shared
+        driver's own hard-restart row zeroes AD *and* SR, while HardTrack never
+        touches $D405 (AD agrees on 98.6-100% of frames, measured).
+
+        This corpus cannot confirm or refute the reading -- only 21 instruments
+        set the bit and just one of those has a filter to re-arm, which is why
+        `test_field5_bit4_is_not_exercised_by_this_corpus` pins both counts.
+        """
         return bool(self.raw[5] & 0x10)
 
     @property

@@ -174,7 +174,7 @@ has to be taken on trust:
 
 ## Field 5 bit 4 gates the filter re-arm — it is not a hard restart
 
-`sidm2/hardtrack_parser.py` exposes bit 4 of the flag byte as `hard_restart`.
+`sidm2/hardtrack_parser.py` exposed bit 4 of the flag byte as `hard_restart` until v3.25.0, where it was renamed `skip_filter_rearm`.
 The player never uses it that way. Field 5 is read exactly three times per
 file, and the masks are `$03`, `$10`, `$80` in **33 of 33** modules — bits 2,
 5 and 6 are never consulted at all. Bit 4's single consumer sits immediately

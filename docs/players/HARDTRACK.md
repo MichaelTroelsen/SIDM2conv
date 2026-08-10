@@ -149,7 +149,7 @@ is flagged via `instrument_count_verified == False` rather than silently trusted
 | 2 | pulse width: high nibble → `$D403`, low nibble → `$D402` |
 | 3 | **pulse-sweep** program start cursor |
 | 4 | **waveform/arpeggio** program start cursor |
-| 5 | **flags** — bit 7 = program drives frequency absolutely, bit 4 = *on a repeated note, skip the filter re-arm* (**not** a hard restart — it reaches nothing else), bits 0–1 = mode. Bits 2, 5, 6 are never read: the player masks field 5 with only `$03`/`$10`/`$80`, in 33/33 |
+| 5 | **flags** — bit 7 = program drives frequency absolutely, bit 4 = *on a repeated note, skip the filter re-arm* (**not** a hard restart — it reaches nothing else; the parser property was renamed `hard_restart` → `skip_filter_rearm` in v3.25.0), bits 0–1 = mode. Bits 2, 5, 6 are never read: the player masks field 5 with only `$03`/`$10`/`$80`, in 33/33 |
 | 6 | filter program start cursor (self-modified into `$158f`) |
 | 7 | **initial filter cutoff** (self-modified into `$15b2`, the base the program's per-frame delta accumulates onto → `$D416`). Not the resonance — that is field 12's high nibble |
 | 8 | **vibrato**: low nibble = frames per direction, high nibble ×2 = onset delay |

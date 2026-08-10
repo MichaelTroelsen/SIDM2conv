@@ -69,6 +69,28 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack: `Instrument.hard_restart` renamed to `skip_filter_rearm`
+
+Documented as a misnomer in two places since the field identities landed, and
+never renamed because the tree held sibling forks' work at the time.
+
+Bit 4 of instrument field 5 is not a hard restart. Its only consumer in the
+player is the guard immediately in front of the filter block ($137d), which on a
+REPEATED note skips the whole filter re-arm and reaches nothing else -- field 5
+is read exactly three times per file and the masks are $03, $10 and $80 in 33 of
+33 modules.
+
+The name mattered rather than being cosmetic: a Stage B port implementing it as
+a general hard restart would retrigger envelopes the original holds. The shared
+driver's own hard-restart row zeroes AD *and* SR, while HardTrack never touches
+$D405 -- AD agrees on 98.6-100% of frames, measured this cycle.
+
+Zero callers, so the rename is clean rather than aliased. The docstring now
+carries the disassembly, the 33/33 mask evidence, and the reason the corpus
+cannot test the bit (21 instruments set it, one has a filter to re-arm).
+`docs/players/HARDTRACK.md` and `HARDTRACK_FILTER_AND_SLIDE.md` updated;
+1 test added, pinning both the new name and the absence of the old one.
+
 ### HardTrack Stage C scoped by measurement: bundles bind, and the pulse prong cannot help
 
 No code change -- this replaces a guess about where Stage C's part-count win has
