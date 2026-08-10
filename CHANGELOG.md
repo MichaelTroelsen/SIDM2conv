@@ -69,6 +69,43 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### Stage B: HardTrack's filter capture was 3 frames out of phase -- fixed, and it changed nothing audible
+
+The second half of the brightness gap. Two things had to be ruled in first:
+
+  * the WAVEFORM is not the cause -- its mismatch pairs are symmetric
+    ($40->$09 x22 alongside $09->$40 x22; $13->$12 x40 alongside $12->$13 x38),
+    and equal counts in both directions is a phase offset, not wrong content;
+  * the filter is NOT ROUTED IN for the first 12 s ($D417 routing bits read
+    0.00, then 0.79 -> 1.00), which is why a +115 cutoff error over 0-12 s is
+    inaudible and why the step exists at all -- the filter comes into circuit.
+
+Over the 800 frames where it is routed in, the cutoff matched 0 of 800 -- but at
+a whole-track shift of -3 frames it matched 757 of 800 (94.6%). The sweep was
+correct and merely early. HardTrack's filter is GLOBAL and re-arms inside the
+note-on trigger rather than at the row dispatch events are placed from, so the
+shared per-note capture window sat onset_delay (= 1 + HT_PIPE = 3) frames late.
+
+The sign was the opposite of the obvious guess, and the guess was tested first:
+`onset + 3` made it WORSE (best shift -3 -> -6, mean error 36.4 -> 44.5).
+
+    cutoff exact             0/800  ->  709/800 (88.6%)
+    mean cutoff error         36.4  ->  8.2
+    best whole-track shift      -3  ->  +0
+
+Implemented as `filter_capture_shift`, read off the shim and DEFAULTING TO 0, so
+the other five native builders are untouched -- verified by rebuilding DMC's
+Rockbuster and confirming the SF2 is byte-identical (559a4e69...).
+
+**And it did not change the sound.** Stated plainly because it is the opposite
+of the passband result: a large register gain bought essentially nothing
+audible. Centroid -51.4 -> -52.9 Hz, rolloff -169.6 -> -190.6 Hz; only spectral
+flatness closed (-0.003 -> -0.000), and the windowed step is unchanged. The
+change is KEPT because Stage B exists to predict what the SID is actually fed
+and 0% -> 88.6% on a scored register is exactly that, but it is NOT claimed as
+an audible improvement, and about half the original brightness gap remains
+unexplained. Frequency fidelity, part count and part sizes are unchanged.
+
 ### Stage B: the $D418 passband was never captured -- HardTrack and DMC rebuilt low-pass
 
 The rung-4 listening pass (below) measured the HardTrack Stage B render as

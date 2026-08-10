@@ -579,13 +579,23 @@ def detect_filter_drives(ftr, onsets_by_voice, routed=None, dynamic=False):
     return drives
 
 
-def filter_program_for(ftr, onset, span, pbtr=None):
+def filter_program_for(ftr, onset, span, pbtr=None, shift=0):
     """Per-note FILTER program = the cutoff ENVELOPE captured from the note-on frame
     `onset` for `span` frames, compressed into a SET row + ADD-rows (one per run of
     constant per-frame delta) + a freeze. Reproduces the full attack/decay/rise/sustain
     exactly. Capture starts at the onset (row 0 is applied on the note frame, matching the
-    driver's per-note restart), so the note-on frame's own cutoff is the SET base."""
+    driver's per-note restart), so the note-on frame's own cutoff is the SET base.
+
+    `shift` moves the capture window against the trace for a player whose filter
+    re-arms at a different point in its note-on pipeline than the driver's. It
+    defaults to 0, which is byte-for-byte the previous behaviour for every
+    caller that does not set it. HardTrack needs -onset_delay: measured, not
+    assumed, and the sign was the opposite of the obvious guess -- +3 made the
+    misalignment WORSE (best shift -3 -> -6, mean cutoff error 36.4 -> 44.5)
+    before -3 fixed it (exact match 0/800 -> 709/800, error 36.4 -> 8.2).
+    """
     n = len(ftr)
+    onset = max(0, onset + shift)
     if onset + 1 >= n:
         return 0, None
     cap = max(2, min(span, 220))
@@ -1386,7 +1396,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         span = _gap(o)
         if key not in canon_src or span > canon_src[key][1]:
             canon_src[key] = (o, span)
-    canon_prog = {key: filter_program_for(ftr, o, span, pbtr)
+    # Per-player capture alignment; 0 for everyone who does not set it, so the
+    # other five native builders emit byte-identical output.
+    fshift = getattr(m, "filter_capture_shift", 0)
+    canon_prog = {key: filter_program_for(ftr, o, span, pbtr, fshift)
                   for key, (o, span) in canon_src.items()}
 
     # PER-DRIVE EXACTNESS GUARD (same model as wave/pulse/FM): the canonical program
@@ -1413,7 +1426,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     for o, key in drive_key.items():
         span = _gap(o)
         canon_filt[o] = (canon_prog[key] if _filt_exact(o, span, key)
-                         else filter_program_for(ftr, o, span, pbtr))
+                         else filter_program_for(ftr, o, span, pbtr, fshift))
 
     # WINDOW-START residual filter (the "seam"): a window beginning between drives
     # played the previous drive's envelope TAIL in the original, but the part's
@@ -1436,7 +1449,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     if cands and (first_drive is None or first_drive > t0w):
         o0, v0 = min(cands)
         if (v0, o0) not in drives and lead_end - o0 >= 2:
-            canon_filt[o0] = filter_program_for(ftr, o0, lead_end - o0, pbtr)
+            canon_filt[o0] = filter_program_for(ftr, o0, lead_end - o0, pbtr, fshift)
             drives.add((v0, o0))
     if os.environ.get("FILT_DEBUG"):
         print(f"  [FILT_DEBUG] drives={len(drive_frames)} canon={len(canon_src)} "
