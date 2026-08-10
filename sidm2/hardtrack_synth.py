@@ -39,19 +39,35 @@ therefore only reach the frequency at all once the wave program has stopped
 itself with `$FE`, or been frozen by the pattern's `$62`. That is a structural
 property of the player, not a modelling shortcut.
 
+THE FILTER IS GLOBAL, NOT PER-VOICE
+-----------------------------------
+It is modelled here too, but it is not a fourth voice. The engine sits *past*
+the `dex / bmi` at $1583 that ends the voice loop, so it runs ONCE PER FRAME
+after all three voices have been stepped -- and its cursor, cutoff accumulator,
+delta and $d418 mode nibble live in self-modified operands rather than in the
+per-voice block. Instrument fields 6, 7 and 12 only seed it, at note-on: f6 the
+program cursor, f7 the initial cutoff, f12 `(resonance << 4) | mode`.
+
+Two consequences worth stating because both are easy to get wrong:
+
+  * The voices are stepped 2, 1, 0 ($10ed `ldx #$02` ... $1583 `dex`). For the
+    per-voice registers the order cannot matter, since each voice writes its
+    own $d400+7v. For the filter it decides the whole frame -- three note-ons
+    on one frame all write the same four operands and the LAST one wins.
+  * f12 == 0 does not skip the re-arm, it CLEARS this voice's routing bit
+    ($13cb). An instrument with no filter actively switches its voice out.
+
+$d415 is never written by this player -- not once in any of the 33 decodable
+modules -- so the cutoff is the 8-bit $d416 alone, accumulated with CLC/ADC and
+no clamp. It wraps, audibly and by design: `Love_tune_2` runs $1a -> $5a -> $9a
+-> $da -> $1a and siddump agrees on every frame.
+
 NOT MODELLED
 ------------
-The filter. `$D415-$D417` come from a song-global `[cutoff][delay]` program
-plus instrument fields 6, 7 and 12, and touch none of the registers predicted
-here. Field 6 is that program's start cursor, field 7 the INITIAL CUTOFF that the
-program's per-frame delta accumulates onto ($13b3 -> $15b2, the operand of the
-`lda #cut` at $15b1 whose result reaches $D416), and field 12 is
-`(resonance << 4) | mode`, zero meaning this voice is not routed through the
-filter at all ($138f: low nibble << 4 -> the $D418 mode nibble, high nibble ->
-$D417, plus the voice's own enable bit). Resonance lives in field 12, NOT in
-field 7 -- all three were read straight off their consumers, which is why they
-are named here after being listed as unidentified for the whole of the decode
-arc.
+Nothing in the register file is left unpredicted now. The one thing this does
+not do is *reset* the filter state at init, because the player does not either:
+`init` zeroes $d400-$d41c and the per-voice block but touches none of the
+filter's operands, so they are seeded from the saved module image.
 """
 from __future__ import annotations
 
@@ -64,14 +80,15 @@ from .hardtrack_parser import (  # the private _SIG_*: see `ram_layout_base`
     _SIG_WAVEPROG, _find, _word,
 )
 
-__all__ = ['VoiceFrame', 'simulate_registers', 'ram_layout_base']
+__all__ = ['FilterFrame', 'VoiceFrame', 'simulate_all', 'simulate_registers',
+           'ram_layout_base']
 
 # Instrument fields the synth engine reads, by consumer address.
 F_AD, F_SR, F_PULSE, F_PULSECUR, F_WAVECUR, F_FLAGS = 0, 1, 2, 3, 4, 5
-F_FILTPROG, F_FILTCUT = 6, 7            # $13b9 / $13b3 -- filter, not modelled
+F_FILTPROG, F_FILTCUT = 6, 7            # $13b9 filter cursor / $13b3 cutoff
 F_VIBRATO, F_VIBDEPTH = 8, 9            # $12b2 nibbles / $12c8
 F_VIBINC, F_VIBLIMIT = 10, 11           # $12ce / $12d4
-F_FILTER = 12                           # $138f -- filter, not modelled
+F_FILTER = 12                           # $138f (resonance << 4) | mode
 
 _JUMP_GUARD = 64    # a $FF program row may only chain this many times per step
 
@@ -149,6 +166,39 @@ class VoiceFrame:
     started: bool        # a note has been triggered on this voice at least once
 
 
+@dataclass
+class FilterFrame:
+    """The filter registers at the end of one frame. There is one, not three."""
+    cutoff: int          # $D416 -- the 8-bit accumulator; $D415 is never written
+    res_route: int       # $D417 -- (resonance << 4) | the three routing bits
+    mode_vol: int        # $D418 -- (mode << 4) | volume
+
+
+class _F:
+    """Filter engine state: five self-modified operands and one shadow byte.
+
+    `init` resets none of them, so they start from whatever the editor saved.
+    `located` is False when the engine's signatures did not match, and then the
+    caller is told rather than being handed a confident series of zeroes.
+    """
+
+    __slots__ = ('cursor', 'acc', 'delta', 'mode', 'delay', 'shadow',
+                 'r_d417', 'located', 'bits', 'masks')
+
+    def __init__(self, module):
+        self.located = module.filter_table is not None
+        self.bits = module.filter_route_bits or (1, 2, 4)
+        self.masks = module.filter_route_masks or (0xFE, 0xFD, 0xFB)
+        self.cursor = module.filter_cursor or 0
+        self.acc = module.filter_cutoff or 0
+        self.delta = module.filter_delta or 0
+        self.mode = module.filter_mode or 0
+        self.delay = module.filter_delay or 0
+        self.shadow = module.filter_shadow or 0
+        self.r_d417 = 0     # init's $d400-$d41c wipe DOES clear the register,
+                            # even though it leaves the shadow alone
+
+
 class _V:
     """Per-voice player state, named after the addresses it transcribes."""
 
@@ -192,7 +242,19 @@ class _V:
 
 def simulate_registers(module: HardTrackModule, subtune: int = 0,
                        frames: int = 1000) -> list[list[VoiceFrame]]:
-    """Run the whole play routine. -> frames[f][voice] = `VoiceFrame`.
+    """The three voices' registers. See `simulate_all` for the filter as well."""
+    return simulate_all(module, subtune, frames)[0]
+
+
+def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
+                 ) -> tuple[list[list[VoiceFrame]], list[FilterFrame]]:
+    """Run the whole play routine. -> (frames[f][voice], frames[f]) .
+
+    The second list is the filter, which is global rather than per-voice and so
+    cannot live inside a `VoiceFrame`. It is empty when the filter engine did
+    not match its signatures -- an empty list scores nothing, where a
+    full-length list of zeroes would score a confident 100% against a tune that
+    never filters.
 
     Raises `HardTrackError` when the file's program tables were not located,
     rather than running the engine against address 0 and returning a full-length
@@ -237,26 +299,85 @@ def simulate_registers(module: HardTrackModule, subtune: int = 0,
 
     voices = [_V(module.order_pointer(v, subtune), sentinel,
                  seeded(v) if ram is not None else None) for v in range(3)]
+    filt = _F(module)
     speed = module.speed(subtune)
     ctr = 2                                     # init leaves $1100 at 2
 
     out: list[list[VoiceFrame]] = []
+    fout: list[FilterFrame] = []
     for _ in range(frames):
         ctr -= 1                                # $10e3
         if ctr < 0:
             ctr = speed
-        for v in voices:                        # $10ed  LDX #$02 ... DEX
-            _step(module, v, ctr, b, field, flags)
+        # $10ed `ldx #$02` down to $1583 `dex / bmi`: voice 2 first, voice 0
+        # last. Immaterial for the per-voice registers, decisive for the
+        # filter -- three note-ons on one frame write the same operands and the
+        # last voice stepped is the one that survives into $d416/$d417/$d418.
+        for vi in (2, 1, 0):
+            _step(module, voices[vi], ctr, b, field, flags, filt, vi)
         out.append([
             VoiceFrame(v.r_freq, v.r_pulse, v.r_wf, v.r_ad, v.r_sr,
                        v.instr, v.cur_note,
                        bool(flags(v.instr) & 0x80), v.started)
             for v in voices
         ])
-    return out
+        if filt.located:
+            _step_filter(module, filt, b)       # $1589, once, after the loop
+            fout.append(FilterFrame(filt.acc, filt.r_d417,
+                                    filt.mode | module.filter_volume))
+    return out, fout
 
 
-def _step(module, v: _V, ctr: int, b, field, flags) -> None:  # noqa: C901
+def _step_filter(module, f: _F, b) -> None:
+    """$1589 -- the cutoff sweep. Runs once per frame, after all three voices."""
+    f.delay = (f.delay - 1) & 0xFF                      # $1589 DEC
+    if f.delay == 0:                                    # $158c BNE -> skip
+        y = f.cursor
+        for _ in range(_JUMP_GUARD):
+            y = f.cursor                                # $158e LDY #cur
+            f.cursor = (f.cursor + 1) & 0xFF            # $1590 INC curop
+            val = b(module.filter_table + y)            # $1593
+            if val != 0x80:                             # $1596 CMP #$80
+                break
+            # $159a: the jump target overwrites the INC that just happened
+            f.cursor = b(module.filter_table + ((y + 1) & 0xFF))
+        else:
+            val = 0
+        f.delta = val                                   # $15a4
+        f.cursor = (f.cursor + 1) & 0xFF                # $15a8 INC curop
+        f.delay = b(module.filter_table + ((y + 1) & 0xFF))     # $15ae
+    # $15b1: CLC/ADC into an 8-bit operand, no clamp -- it wraps by design.
+    f.acc = (f.acc + f.delta) & 0xFF
+
+
+
+def _arm_filter(v: _V, vi: int, n: int, f: _F, field, flags) -> None:
+    """$137d -- re-seed the filter envelope from instrument `n` at note-on.
+
+    Field 5 bit 4 is NOT a hard restart, despite the parser's name for it. Its
+    only consumer is the guard here, and it means "on a repeated note, leave
+    the filter envelope running" -- it reaches nothing else in the player, so
+    implementing it as a general restart would retrigger envelopes the original
+    holds.
+    """
+    if (flags(n) & 0x10) and v.instr == v.prev_instr:       # $137d / $1384
+        return
+    f12 = field(F_FILTER, n)                                # $138f
+    if not f12:
+        # $13cb -- not "no filter for this note" but "switch this voice OUT".
+        f.shadow &= f.masks[vi]
+        f.r_d417 = f.shadow
+        return
+    f.mode = (f12 & 0x0F) << 4                              # $1395 -> $d418
+    f.shadow = (f.shadow & 0x0F) | (f12 & 0xF0) | f.bits[vi]     # $139f-$13aa
+    f.r_d417 = f.shadow                                     # $13ad / $13b0
+    f.acc = field(F_FILTCUT, n)                             # $13b3 initial cutoff
+    f.cursor = field(F_FILTPROG, n)                         # $13b9 program cursor
+    f.delta = 0                                             # $13bf
+    f.delay = 3                                             # $13c4
+
+
+def _step(module, v: _V, ctr: int, b, field, flags, filt, vi) -> None:  # noqa: C901
     """One voice, one frame. `label` tracks the player's own control flow."""
     if v.halted:                                            # $10ef
         return
@@ -443,9 +564,8 @@ def _step(module, v: _V, ctr: int, b, field, flags) -> None:  # noqa: C901
             v.wave_freeze = 0                               # $1370
             v.pulse_step = 0
             v.pulse_frames = 2
-            # $137d..$13d4 is the filter setup -- not modelled, writes only
-            # $D416/$D417, and the hard-restart branch around it skips nothing
-            # this predicts.
+            if filt.located:
+                _arm_filter(v, vi, n, filt, field, flags)    # $137d..$13d4
             v.r_sr = v.sr                                   # $13d7
             v.r_ad = v.ad
             v.r_wf = 0x09

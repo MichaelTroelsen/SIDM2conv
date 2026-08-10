@@ -100,6 +100,34 @@ _SIG_WAVEPROG = [0xBC, _W, _W, 0xFE, _W, _W, 0xB9, _W, _W, 0xC9, 0xFF, 0xD0, _W,
 _SIG_PULSEPROG = [0xBC, _W, _W, 0xFE, _W, _W, 0xB9, _W, _W, 0xC9, 0xFF, 0xD0, _W,
                   0xC8, 0xB9, _W, _W]
 
+# --- the filter engine -----------------------------------------------------
+# Unlike everything above it is NOT indexed by voice: it sits past the
+# `dex / bmi` that ends the voice loop, so it runs once per frame, and its
+# cursor/accumulator/delta/mode all live in SELF-MODIFIED OPERANDS rather than
+# in the per-voice variable block. That is why an operand scan for a table
+# address never named them -- the addresses being written are inside the code.
+#
+# filter program stepper (once per frame, after the voice loop):
+#   dec DELAY / bne acc / ldy #CUR / inc CUROP / lda FILTPROG,y / cmp #$80
+_SIG_FILTPROG = [0xCE, _W, _W, 0xD0, _W, 0xA0, _W, 0xEE, _W, _W, 0xB9, _W, _W,
+                 0xC9, 0x80]
+# the accumulate-and-write: lda #CUTOFF / clc / adc #DELTA / sta ACC / sta $d416
+_SIG_FILTACC = [0xA9, _W, 0x18, 0x69, _W, 0x8D, _W, _W, 0x8D, 0x16, 0xD4]
+# the mode/volume write: lda #MODE / ora VOLUME / sta $d418
+_SIG_FILTMODE = [0xA9, _W, 0x0D, _W, _W, 0x8D, 0x18, 0xD4]
+# the note-on re-arm, $138f..$13c8 -- 58 bytes, so the operand offsets below are
+# not guesswork. Yields, in order: the f12 table, the $d418 mode operand, the
+# $d417 shadow, the per-voice routing OR-bits, the f7 and f6 tables, and the
+# accumulator / cursor / delta / delay destinations.
+_SIG_FILTARM = [0xB9, _W, _W, 0xF0, _W, 0x48, 0x29, 0x0F, 0x0A, 0x0A, 0x0A, 0x0A,
+                0x8D, _W, _W, 0x68, 0x29, 0xF0, 0x85, 0xFB, 0xAD, _W, _W, 0x29,
+                0x0F, 0x05, 0xFB, 0x1D, _W, _W, 0x8D, _W, _W, 0x8D, 0x17, 0xD4,
+                0xB9, _W, _W, 0x8D, _W, _W, 0xB9, _W, _W, 0x8D, _W, _W, 0xA9,
+                0x00, 0x8D, _W, _W, 0xA9, 0x03, 0x8D, _W, _W]
+# f12 == 0 does not merely skip the re-arm, it CLEARS this voice's routing bit:
+#   lda SHADOW / and ANDMASK,x / sta SHADOW / sta $d417
+_SIG_FILTOFF = [0xAD, _W, _W, 0x3D, _W, _W, 0x8D, _W, _W, 0x8D, 0x17, 0xD4]
+
 
 def _find(data: bytes, pat) -> list[int]:
     n = len(pat)
@@ -255,6 +283,8 @@ class HardTrackModule:
         h = _find(data, _SIG_PULSEPROG)
         self.pulse_table = _word(data, h[0] + 7) if len(h) == 1 else None
 
+        self._read_filter(data)
+
         # How many instruments are STORED sets the stride of the 13 parallel
         # tables, and it is per-file (3..32 across the corpus) -- not a constant
         # 32. Derive it two independent ways and require agreement: field 5 is
@@ -277,6 +307,93 @@ class HardTrackModule:
             self.instrument_count_verified = True
         elif n5 and 0 < n5 <= MAX_INSTRUMENTS:
             self.num_instruments = n5
+
+    def _read_filter(self, data: bytes) -> None:
+        """Locate the filter engine and read its POWER-ON state off the image.
+
+        `init` zeroes $d400-$d41c and the per-voice block, but it does not touch
+        a single one of these: the cursor, the cutoff accumulator, the delta,
+        the $d418 mode nibble, the step delay and the $d417 shadow are all
+        whatever the editor happened to save. Reading them as zero costs real
+        accuracy -- `Love_tune_2` opens on cutoff $1a stepping by $40 a frame
+        and siddump's very first row shows $5a, which is only reachable from
+        the saved pair.
+
+        Every attribute is None when the engine did not match uniquely, so a
+        caller can tell "not located" from "located and zero" rather than
+        modelling a filter against address 0.
+        """
+        self.filter_table = self.filter_cursor = self.filter_cutoff = None
+        self.filter_delta = self.filter_mode = self.filter_delay = None
+        self.filter_shadow = self.filter_volume = None
+        self.filter_route_bits = self.filter_route_masks = None
+
+        prog = _find(data, _SIG_FILTPROG)
+        acc = _find(data, _SIG_FILTACC)
+        mode = _find(data, _SIG_FILTMODE)
+        arm = _find(data, _SIG_FILTARM)
+        off = _find(data, _SIG_FILTOFF)
+        if not all(len(h) == 1 for h in (prog, acc, mode, arm, off)):
+            return
+        p, a, m, r, f = prog[0], acc[0], mode[0], arm[0], off[0]
+
+        # The three self-modified operands must be the very bytes these
+        # instructions carry their immediates in, or the engine has been read
+        # off some other code that merely looks like it.
+        if (_word(data, p + 8) != self.load + p + 6          # inc CUROP
+                or _word(data, a + 6) != self.load + a + 1):  # sta ACC
+            return
+
+        self.filter_table = _word(data, p + 11)
+        self.filter_cursor = data[p + 6]
+        self.filter_cutoff = data[a + 1]
+        self.filter_delta = data[a + 4]
+        self.filter_mode = data[m + 1]
+        self.filter_delay = self.byte(_word(data, p + 1))
+        self.filter_shadow = self.byte(_word(data, r + 21))
+        # The volume byte is one of the few things `init` DOES set, so its
+        # power-on image value is not what plays. Find init's own
+        # `lda #imm / sta VOLUME` rather than assuming a fixed offset into
+        # init -- `Tribute_to_Laxity` shifts that whole block by one
+        # instruction and would otherwise hand back a neighbouring variable.
+        vol_addr = _word(data, m + 3)
+        v = _find(data, [0xA9, _W, 0x8D, vol_addr & 0xFF, vol_addr >> 8])
+        self.filter_volume = data[v[0] + 1] if len(v) == 1 else self.byte(vol_addr)
+        # $d417's low nibble is per-voice routing: an OR-bit to switch this
+        # voice in, and (at the f12 == 0 branch) an AND-mask to switch it out.
+        # They are constants in the image, not state.
+        orb, msk = _word(data, r + 28), _word(data, f + 4)
+        self.filter_route_bits = tuple(self.byte(orb + v) for v in range(3))
+        self.filter_route_masks = tuple(self.byte(msk + v) for v in range(3))
+        # f6/f7/f12 come off the re-arm's own operands rather than off
+        # instrument_base + k * stride, so they survive the per-file patching
+        # for the same reason every other table address here does.
+        self.filter_f12_table = _word(data, r + 1)
+        self.filter_f7_table = _word(data, r + 37)
+        self.filter_f6_table = _word(data, r + 43)
+
+    def filter_program(self, cursor: int, limit: int = 64):
+        """[(delta, frames)] cutoff-sweep steps from `cursor`.
+
+        `delta` is added to an 8-bit accumulator with CLC/ADC and no clamp, so
+        it is unsigned here and wraps by design -- `Love_tune_2` sweeps $1a ->
+        $5a -> $9a -> $da -> $1a and siddump agrees on every frame. A `$80`
+        byte is a jump whose target is the byte after it.
+        """
+        if self.filter_table is None:
+            return []
+        out, i, seen = [], cursor, set()
+        while len(out) < limit:
+            if i in seen:
+                break
+            seen.add(i)
+            v = self.byte(self.filter_table + i)
+            if v == 0x80:
+                i = self.byte(self.filter_table + i + 1)
+                continue
+            out.append((v, self.byte(self.filter_table + i + 1)))
+            i = (i + 2) & 0xFF
+        return out
 
     # -- construction -------------------------------------------------------
     @classmethod
