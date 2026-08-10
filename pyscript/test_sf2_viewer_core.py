@@ -64,3 +64,64 @@ def test_laxity_detection_is_not_the_container_load_address():
         pr = SF2Parser(p); pr.parse()
         assert pr.load_address == 0x0D7E                    # ...which is the point
         assert not pr.is_laxity_driver, os.path.basename(p)
+
+
+@pytest.mark.skipif(not os.path.isdir(_sf2('out', 'hardtrack')), reason='no Driver 11 SF2s')
+def test_driver11_orderlist_is_not_read_from_the_laxity_offset():
+    """Regression: every Driver 11 orderlist position exported as `A000`.
+
+    `_parse_music_data` derived column 1 from the hardcoded LAXITY file offset
+    $1766, which on a Driver 11 file lands in a run of zeros -- so the unpacker
+    dutifully produced 'transpose $A0, sequence 0' for every position of all
+    three tracks. The real address is in the Music Data block's word at offset
+    12 ($242A on all five files here).
+
+    Checked structurally rather than against a golden dump. The strong
+    invariant is CONTIGUITY: the emitter numbers sequences 0..N with no gaps, so
+    a correct orderlist references exactly max+1 distinct sequences. All five
+    files satisfy that (Zakplus 62 refs / max $3D, Love_tune_2 30 / $1D, ...),
+    and the broken read could not -- it referenced sequence 0 and nothing else.
+
+    Track lengths are deliberately NOT asserted equal: voices loop at different
+    points, and Hopscotch really is 44/48/48.
+    """
+    import glob
+    from sf2_viewer_core import SF2Parser
+
+    paths = sorted(glob.glob(_sf2('out', 'hardtrack', '*.sf2')))
+    if not paths:
+        pytest.skip('no Driver 11 SF2s built')
+    for p in paths:
+        name = os.path.basename(p)
+        pr = SF2Parser(p); pr.parse()
+        assert not pr.is_laxity_driver, name
+        tracks = pr.orderlist_unpacked
+        assert len(tracks) == 3, name
+        assert all(tracks), f'{name}: an empty track'
+        seqs = [tuple(e['sequence'] for e in t) for t in tracks]
+        assert len(set(seqs)) == 3, f'{name}: tracks are identical'
+        used = {s for t in seqs for s in t}
+        assert used == set(range(max(used) + 1)), f'{name}: gaps in {sorted(used)}'
+        assert max(used) > 0, f'{name}: only sequence 0 referenced (the old bug)'
+
+
+@pytest.mark.skipif(not os.path.isdir(_sf2('SF2')), reason='SF2 corpus absent')
+def test_laxity_orderlist_address_is_deliberately_unchanged():
+    """The Laxity path keeps the hardcoded offset, and that is on purpose.
+
+    The constant does not survive inspection for Laxity either -- the block word
+    disagrees with it on every Laxity file -- but Laxity has its own parse path
+    that works today, and choosing between them needs ground truth this change
+    does not have. Pinned so the scope stays explicit rather than drifting.
+    """
+    import glob
+    from sf2_viewer_core import SF2Parser
+
+    paths = sorted(glob.glob(_sf2('SF2', '*.sf2')))[:4]
+    if not paths:
+        pytest.skip('no Laxity SF2s')
+    for p in paths:
+        pr = SF2Parser(p); pr.parse()
+        if not pr.is_laxity_driver:
+            continue
+        assert pr.music_data_info.orderlist_address == pr.load_address + (0x1766 - 4)

@@ -69,6 +69,45 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### SF2 viewer: Driver 11 orderlists were read from a hardcoded Laxity file offset
+
+Every Driver 11 orderlist position exported as `A000` -- transpose $A0,
+sequence 0 -- for all three tracks.
+
+`_parse_music_data` derived orderlist column 1 as `load_address + (0x1766 - 4)`.
+$1766 is a LAXITY file offset, applied to every SF2 regardless of driver. On a
+Driver 11 file it resolves to $24E0, which is a run of zeros, so the unpacker
+faithfully produced "transpose $A0, sequence 0" for every position.
+
+The real address is in the Music Data block's own word at offset 12 -- $242A on
+all five Driver 11 files here, and the bytes there are an orderlist on sight:
+
+    $242A: A0 00 00 00 00 01 01 02 03 03 03 03 04 04 ...   (Love_tune_2)
+    $24E0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ...   (what was read)
+
+Columns 2 and 3 sit at +$100/+$200, which the existing code already assumed --
+only column 1 was wrong.
+
+Verified by an invariant the broken read cannot satisfy: the emitter numbers
+sequences 0..N with no gaps, so a correct orderlist references exactly max+1
+distinct sequences. All five files now do (Zakplus 62 refs / max $3D,
+Love_tune_2 30 / $1D, Love_tune_3 25 / $18, Muminki 20 / $13, Hopscotch 56 /
+$37); the old read referenced sequence 0 and nothing else. Two independent
+corroborations: Muminki's raw track ends with the $FF loop marker at exactly its
+unpacked length, and every transpose reads $A0 -- which matches HardTrack Stage
+A's documented behaviour of materialising transposes into duplicate sequences
+because the shared emitter hardcodes $A0.
+
+SCOPE: deliberately limited to NON-Laxity files. The hardcoded offset does not
+survive inspection for Laxity either -- the block word disagrees with it on all
+five Laxity files tested -- but Laxity has its own parse path that works today,
+and choosing between them needs Laxity ground truth this change does not have.
+Left exactly as it was, and pinned by a test so the scope stays explicit.
+
+2 tests (4 in the file now). One of them initially asserted equal track lengths
+and failed on Hopscotch (44/48/48) -- voices loop at different points, so that
+invariant was wrong, not the code.
+
 ### SF2 viewer: the Laxity driver detector matched EVERY SF2 file
 
 `_detect_laxity_driver()` tested `load_address == 0x0D7E` plus "some non-zero
@@ -96,13 +135,7 @@ where the old detector scored 12/17 (every Driver 11 file wrong).
 
 2 tests, in a previously EMPTY, untracked `pyscript/test_sf2_viewer_core.py`.
 
-⚠️ **This does not fix the orderlist export**, and that is a separate bug still
-open. For a Driver 11 SF2 the exporter still writes every position as `A000`
-(transpose $A0, sequence 0) because `music_data_info`'s addresses are wrong for
-that driver: `orderlist_address` ($24E0 for Love_tune_2) points at a run of
-zeros, and `sequence_data_address` reads $8023 -- outside a file that loads at
-$0D7E and ends near $4711. The detector fix removes the misleading warnings and
-nothing more; the address parsing is the real defect and is untouched here.
+The orderlist export was a SECOND, separate bug and is fixed in the next entry.
 
 ### HardTrack: `Instrument.hard_restart` renamed to `skip_filter_rearm`
 

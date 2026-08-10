@@ -925,10 +925,30 @@ class SF2Parser:
             # SF2 file structure: bytes 0-3 are header, bytes 4+ start at load_address
             # Therefore: C64_addr = load_address + (file_offset - 4)
 
-            col1_file_offset = 0x1766
-            col1_addr = self.load_address + (col1_file_offset - 4)
-            col2_addr = self.load_address + (0x1866 - 4)
-            col3_addr = self.load_address + (0x1966 - 4)
+            # $1766 is a LAXITY-driver file offset. It was applied to every SF2,
+            # and for a Driver 11 file it lands on a run of zeros -- which is why
+            # the text exporter wrote every orderlist position as A000 (transpose
+            # $A0, sequence 0) for all three tracks.
+            #
+            # The Music Data block carries the real column-1 address in its word
+            # at offset 12. On all five Driver 11 files here that word is $242A
+            # and the bytes there are an orderlist on sight
+            # (`A0 00 00 00 00 01 01 02 03 ...`), while $24E0 is zeros.
+            #
+            # Deliberately scoped to NON-Laxity files. The hardcoded offset does
+            # not survive inspection for Laxity either, but Laxity has its own
+            # parse path that currently works, the block word disagrees with the
+            # constant on all five Laxity files tested, and picking a winner
+            # there needs Laxity ground truth this change does not have. Left
+            # exactly as it was rather than changed on a guess.
+            info = getattr(self, 'driver_info', None) or {}
+            is_laxity = 'LAXITY' in info.get('name_normalized', '')
+            if not is_laxity and len(data) >= 14:
+                col1_addr = data[12] | (data[13] << 8)
+            else:
+                col1_addr = self.load_address + (0x1766 - 4)
+            col2_addr = col1_addr + 0x100
+            col3_addr = col1_addr + 0x200
 
             # Store col1 address as the primary orderlist_address for accessing the data
             # Caller should read all 3 columns to get complete OrderList entries
