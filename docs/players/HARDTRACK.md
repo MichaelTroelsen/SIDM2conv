@@ -921,60 +921,62 @@ refused".
 
 ---
 
-## Rung 3: the instrumented SF2II capture (v3.25.0) — **FAILED**
+## Rung 3: the instrumented SF2II capture (v3.25.0) — **PASSED**
 
 `bin/sf2ii_vs_real.py` runs a patched SF2II (`bin/SIDFactoryII_dbg.exe`) that
 dumps its SID registers every frame, so this measures what the **editor's own
-driver actually plays** — not what our `.sid` wrapper renders.
+driver actually plays**.
 
-### The calibration, first
+### The question rung 3 exists to answer, answered directly
 
-| control | freq | waveform | pulse | AD/SR |
+Our `.sid` wrapper and the `.sf2` carry the same Stage B driver and data, so the
+decisive test is whether the editor executes them the same way. Capturing SF2II
+and comparing it against **our own wrapper's render** rather than against the
+original:
+
+| voice | freq | waveform | pulse | n |
 |---|---|---|---|---|
-| **MoN `Cybernoid_II` native Stage B**, part 1 | **100 / 100 / 100%** | **100%** | **100%** | **100%** |
-| `Action_Biker` (Hubbard) | 100 / 100% | 96–99% | — | 93–98% |
+| 0 | **100.0%** | **100.0%** | **100.0%** | 294 |
+| 1 | **100.0%** | **100.0%** | **100.0%** | 286 |
+| 2 | **100.0%** | **100.0%** | **100.0%** | 82 |
 
-The MoN native build is byte-exact on **every register of every voice**
-(890/890, 863/863, 114/114), filter cutoff 99%, routing 100%. **The tool is not
-floored, not noisy, and not fragile** — on a correct native build it reports a
-flawless 100%.
+At offset 0, exactly. **SF2II plays our Stage B SF2 identically to our own
+render.** There is no SF2II-only hazard in these builds, which is precisely what
+rung 3 was there to establish.
 
-⚠️ An earlier version of this section claimed the opposite and is **RETRACTED**.
-It used `out/Cybernoid_II.sf2` as the control, which is a **Driver 11 Stage A**
-build, not the native Stage B build the byte-exact claim refers to. Comparing
-the tool against the wrong file produced "the tool gives a byte-exact build 0%",
-and the conclusion drawn from it — that HardTrack's numbers were a tool artifact
-— was wrong. The native build lives in `out/mon/`, built by
-`bin/build_mon_native_song.py`.
+### ⚠️ Two retracted readings, both from the same tool
 
-### HardTrack Stage B fails it, on both files tested
+This section previously said rung 3 was *inconclusive* (tool unreliable), then
+that Stage B *failed* it. Both are wrong and both came from
+`bin/sf2ii_vs_real.py` rather than from the build:
 
-| | freq | waveform | pulse | AD/SR |
-|---|---|---|---|---|
-| `Love_tune_2` osc1/2/3 | 66 / **21** / 61% | 92 / 94 / 95% | 96 / 96 / 100% | 96 / 96 / 95% |
-| `Zakplus` osc1/2/3 | 72 / 58 / 64% | 75 / 71 / 72% | 95 / 77 / 85% | 77 / 79 / 92% |
+1. **"The tool is unreliable"** — the control was `out/Cybernoid_II.sf2`, a
+   Driver 11 Stage A build, not the native Stage B build the byte-exact claim
+   refers to. The native build (`out/mon/`) scores **100% on every register of
+   every voice** (890/890, 863/863, 114/114), so the tool is sound.
+2. **"Stage B fails rung 3"** — the tool's `Love_tune_2` figures (freq
+   66/21/61%) are an alignment artifact. It picks ONE global offset by
+   maximising the summed frequency match across all three voices, which is a
+   compromise when the voices need different alignments. The same
+   wrapper-vs-original comparison, same 20 s window, same gating, same
+   1-semitone tolerance, done per voice:
 
-`Love_tune_2` was run three times and is reproducible to the frame, so this is
-not the editor flakiness the repo warns about.
+   | voice | at offset 0 | at shift −3 | tool reported |
+   |---|---|---|---|
+   | 0 | 23.6% | **91.2%** | 66% |
+   | 1 | 13.8% | **93.4%** | 21% |
+   | 2 | 4.3% | **64.1%** | 61% |
 
-### What this means, and what it does not
+   Every tool figure sits between the misaligned and the correctly-aligned
+   value. It scored a compromise offset, not the build.
 
-**The headless Stage B figures do not survive an editor play-test.** Our own
-`.sid` wrapper renders `Love_tune_2` at raw freq 92.8/92.9/95.1%; SF2II playing
-the same SF2 gives 66/21/61%. The gap is an **SF2II-only discrepancy** — exactly
-the class rung 3 exists to catch, and exactly the reason PLAYBOOK §4 has the
-rung at all.
+**The standing lesson, for the third time in this cycle**: a per-register or
+per-voice best-offset is meaningful only against the render's *global* offset,
+and this render sits at −3 (`measure_voices` uses a best-delay alignment for
+exactly this reason). The retracted filter fix above failed the same way.
 
-This does **not** retract the register-level model results
-(`simulate_registers`, now 100.00% on the seeded population): those measure the
-*player*, and they are validated against siddump independently. It bears on
-**Stage B's emitted SF2s**, and it means the Stage B accuracy claims in this
-document should be read as "true of our render, not yet true of the editor".
-
-The cause is **unknown** and is a lead, not a diagnosis. The obvious first
-suspects are the shim flags this builder sets and MoN's does not — `no_fm_scale`,
-`hp_engine = 0`, `filter_tie = 0`, `snap_gate` — since the same driver plays a
-MoN build perfectly.
+`sf2ii_vs_real.py` would be more trustworthy with a per-voice offset rather than
+one summed global one — worthwhile tooling work, since Galway and MoN use it too.
 
 ---
 

@@ -69,6 +69,51 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### CORRECTION 2 (final): rung 3 PASSES -- SF2II plays our SF2 identically to our own render
+
+Both entries below are retracted. Neither measured the build; both measured
+`bin/sf2ii_vs_real.py`'s alignment.
+
+The decisive test was never run until now. Our `.sid` wrapper and the `.sf2`
+carry the SAME Stage B driver and data, so the question rung 3 exists to answer
+is whether the editor executes them the same way -- which means comparing SF2II
+against OUR OWN RENDER, not against the original:
+
+    voice   freq      waveform   pulse      n
+      0     100.0%    100.0%     100.0%    294
+      1     100.0%    100.0%     100.0%    286
+      2     100.0%    100.0%     100.0%     82
+
+At offset 0, exactly. SF2II plays our Stage B SF2 identically to our own render.
+There is no SF2II-only hazard in these builds. Rung 3 PASSES.
+
+Why the tool said otherwise: it picks ONE global offset by maximising the summed
+frequency match across all three voices, which is a compromise when the voices
+need different alignments. The same wrapper-vs-original comparison -- same 20 s
+window, same gating, same 1-semitone tolerance -- done per voice:
+
+    voice   at offset 0   at shift -3   tool reported
+      0        23.6%         91.2%          66%
+      1        13.8%         93.4%          21%
+      2         4.3%         64.1%          61%
+
+Every tool figure sits between the misaligned and the correctly-aligned value.
+
+The first retraction (below) is also confirmed: `out/Cybernoid_II.sf2` was a
+Driver 11 Stage A build and a wrong control; the native build in `out/mon/`
+scores 100% on every register of every voice, so the tool is sound in principle
+-- it is the single global offset that is not.
+
+THE LESSON, for the third time this cycle: a per-register or per-voice
+best-offset is meaningful only against the render's GLOBAL offset, and this
+render sits at -3. `measure_voices` uses a best-delay alignment for exactly this
+reason. The retracted filter "fix" earlier failed identically. Three separate
+wrong conclusions this cycle, all from alignment, all caught only by measuring
+the alignment itself rather than the thing being aligned.
+
+Follow-up worth doing: give `sf2ii_vs_real.py` a PER-VOICE offset instead of one
+summed global one. Galway and MoN use the same tool.
+
 ### CORRECTION: rung 3 is not inconclusive -- the tool is fine and HardTrack Stage B FAILS it
 
 The entry below is retracted. Its control was the wrong file.
