@@ -21,7 +21,7 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
-## [Unreleased]
+## [3.25.0] - 2026-08-10
 
 ### HardTrack Composer: the filter engine, modelled — and the one control that moved nothing
 

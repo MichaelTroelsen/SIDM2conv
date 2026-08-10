@@ -31,11 +31,12 @@ Version **3.24.0 → 3.25.0**. Tests **2,117 → 2,284 passing**, 8 skipped, 2 x
 | `a895820` | chore: bump to v3.25.0 |
 | `554db9c` | docs(hardtrack): the filter registers, and the control that moved nothing |
 
-### Earlier, and NOT covered by the previous version of this file (11 commits)
+### Earlier, and NOT covered by the previous version of this file (10 commits;
+### `dee93ba` itself was already the previous file's HEAD, listed here only for continuity)
 
 | SHA | Subject |
 |---|---|
-| `dee93ba` | docs: explain the last 16 Stage A losses -- and RETRACT a wrong refutation |
+| `dee93ba` | docs: explain the last 16 Stage A losses -- and RETRACT a wrong refutation *(previous file's own HEAD)* |
 | `c328c3c` | docs: update whats-next.md for the full HardTrack arc *(the stale version)* |
 | `a7abd39` | feat: promote the loss-attribution tool; close the CHANGELOG/STORY gap |
 | `bd25647` | docs: identify instrument fields 6, 7 and 12 -- they are the filter |
@@ -292,7 +293,7 @@ non-None series of zeroes on both sides and scores a confident 100%.
 | `bin/build_hardtrack_native_song.py` (Stage B) | **complete**, 22 tests |
 | `pyscript/hardtrack_{validate,stagea_validate,synth_validate,attribute,residual,player_xref}.py` | **complete** |
 | `docs/players/HARDTRACK.md` + `HARDTRACK_FILTER_AND_SLIDE.md` | **complete + current** |
-| ACCURACY_MATRIX / CLAUDE.md / CHANGELOG / STORY | **complete + current** at v3.25.0 |
+| ACCURACY_MATRIX / CLAUDE.md / CHANGELOG / STORY | **complete + current** at v3.25.0, all four header-stamped. The matrix header and the `## [3.25.0]` heading were **missed by the bump and caught by a review pass** — CLAUDE.md names the matrix as the file a bump must re-stamp precisely because it has drifted before |
 | Stage C | **not started** |
 | SF2II play-test + listening pass (PLAYBOOK §4 rungs 3-4) | **not started** |
 | `DriverSelector` wiring | **not done, deliberately** |
