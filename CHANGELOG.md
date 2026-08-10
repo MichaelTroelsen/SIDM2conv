@@ -69,6 +69,41 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### SF2 viewer: the Laxity driver detector matched EVERY SF2 file
+
+`_detect_laxity_driver()` tested `load_address == 0x0D7E` plus "some non-zero
+byte at $0E00". $0D7E is the SF2 CONTAINER load address -- every SF2 in this
+repo has it, Laxity and Driver 11 alike -- and any non-empty file satisfies the
+second clause. The detector therefore returned True for every file and the
+Laxity branch ran unconditionally.
+
+Genuine Laxity files parsed fine afterwards, so nothing looked wrong. Driver 11
+files fell through to a fallback and printed three
+"Voice N: invalid sequence address $0000" warnings on every export.
+
+Fixed by testing the DRIVER NAME from block 1, which the parser already parses.
+That needed one more step than expected: the name ships in two encodings, and
+the first attempt regressed genuine Laxity files because of it --
+
+    Angular.sf2   L,$01,$18,$09,$14,$19   screen codes -> LAXITY
+    Balance.sf2   "Laxity"                plain ASCII
+    HardTrack     D,$12,$09,$16,$05,$12   -> DRIVER 11.00 - THE STANDARD...
+
+so `_normalize_driver_name` folds screen codes $01-$1A to A-Z and uppercases,
+and `driver_info['name_normalized']` carries the result. The display string is
+untouched. Verified on 12 Laxity SF2s and 5 Driver 11 SF2s: 17/17 correct,
+where the old detector scored 12/17 (every Driver 11 file wrong).
+
+2 tests, in a previously EMPTY, untracked `pyscript/test_sf2_viewer_core.py`.
+
+⚠️ **This does not fix the orderlist export**, and that is a separate bug still
+open. For a Driver 11 SF2 the exporter still writes every position as `A000`
+(transpose $A0, sequence 0) because `music_data_info`'s addresses are wrong for
+that driver: `orderlist_address` ($24E0 for Love_tune_2) points at a run of
+zeros, and `sequence_data_address` reads $8023 -- outside a file that loads at
+$0D7E and ends near $4711. The detector fix removes the misleading warnings and
+nothing more; the address parsing is the real defect and is untouched here.
+
 ### HardTrack: `Instrument.hard_restart` renamed to `skip_filter_rearm`
 
 Documented as a misnomer in two places since the field identities landed, and

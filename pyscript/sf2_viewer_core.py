@@ -539,22 +539,27 @@ class SF2Parser:
         Returns:
             True if this appears to be a Laxity driver file
         """
-        # Check load address (0x0D7E is standard for Laxity driver)
+        # The DRIVER NAME from block 1, not the load address. $0D7E is the
+        # standard SF2 container load address -- every SF2 in this repo has it,
+        # Driver 11 and Laxity alike -- so the old check returned True for every
+        # file and this whole branch ran unconditionally. Genuine Laxity files
+        # then parsed fine and nobody noticed, while Driver 11 files failed into
+        # a fallback that exported all three orderlists as sequence $00.
+        # The names really do differ:
+        #   Laxity     "@X-PLAYER BY LAXITY.MUSIC BY DRAX-"
+        #   Driver 11  " 11.00 - T"
+        info = getattr(self, 'driver_info', None) or {}
+        if 'LAXITY' not in info.get('name_normalized', ''):
+            return False
+
+        # Keep the load address as a cheap sanity check rather than the test.
         if self.load_address != 0x0D7E:
             return False
 
-        # Check for relocated Laxity player code signature
-        # Laxity player typically has specific patterns at $0E00
         player_code_offset = 0x0E00 - self.load_address
         if player_code_offset + 16 > len(self.data):
             return False
-
-        # Check for Laxity-specific patterns in player code
-        # Look for common 6502 patterns in the player
-        player_bytes = self.data[player_code_offset:player_code_offset + 32]
-
-        # Laxity player should have non-zero code
-        if not any(player_bytes):
+        if not any(self.data[player_code_offset:player_code_offset + 32]):
             return False
 
         logger.info(f"Detected Laxity driver SF2 (load address 0x{self.load_address:04X})")
@@ -670,14 +675,38 @@ class SF2Parser:
         driver_name_raw = data[3:name_end].decode('latin-1')
         driver_name = self._clean_string(driver_name_raw)
 
+        # The name is stored two ways across the corpus: plain ASCII ("Laxity",
+        # "Driver 11.00") and SCREEN CODE, where A-Z are $01-$1A ("Angular.sf2"
+        # holds L,$01,$18,$09,$14,$19 = LAXITY). `name` keeps the display form;
+        # `name_normalized` folds both into uppercase ASCII so a caller can
+        # actually test it. Detecting on the display string alone silently
+        # misses every screen-code file.
         self.driver_info = {
             'type': driver_type,
             'size': driver_size,
             'name': driver_name,
+            'name_normalized': self._normalize_driver_name(driver_name_raw),
             'size_hex': f"0x{driver_size:04X}",
         }
 
         logger.info(f"Driver: {driver_name} (size: ${driver_size:04X})")
+
+    @staticmethod
+    def _normalize_driver_name(raw: str) -> str:
+        """Driver name -> uppercase ASCII, folding the screen-code encoding.
+
+        Screen codes $01-$1A are A-Z; printable ASCII passes through. Anything
+        else is dropped rather than rendered as `[0xNN]`, so a substring test
+        works on both encodings.
+        """
+        out = []
+        for ch in raw:
+            b = ord(ch)
+            if 0x01 <= b <= 0x1A:
+                out.append(chr(0x40 + b))
+            elif 0x20 <= b <= 0x7E:
+                out.append(ch.upper())
+        return ''.join(out)
 
     def _parse_driver_common_block(self):
         """Parse Block 2: Driver Common (addresses)"""
