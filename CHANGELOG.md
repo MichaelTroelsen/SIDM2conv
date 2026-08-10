@@ -69,6 +69,63 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### Stage B: the $D418 passband was never captured -- HardTrack and DMC rebuilt low-pass
+
+The rung-4 listening pass (below) measured the HardTrack Stage B render as
+consistently darker: centroid -99 Hz, rolloff -280 Hz. Following that reading
+found a real defect rather than a metric artefact.
+
+Windowed at 4 s the loss is not uniform -- flat for 12 s, then a step. Note that
+`--windowed`'s worst-window search did NOT flag it: it removes each metric's
+median and ranks the spread, so a STEP reads as spread rather than as an
+outlier. Read the per-window table, not just the verdict line.
+
+Comparing the renders register by register found it at once: **the filter
+passband matched on 0.0% of frames.** `Love_tune_2` selects low+band ($D418 mode
+3) on 100% of frames; the build wrote low-pass on 100% of them.
+
+The cause is one missing tuple element. `build_native_song` takes its traces as
+`(per_frame, filter_trace, passband_trace)` and without the third
+`_filt_set_row` defaults to `passband=1` -- low-pass. The HardTrack builder
+passed a 2-tuple.
+
+This is a KNOWN bug class that HardTrack was simply missed by; `passband_trace`'s
+own docstring names it, from the MoN work: "This was never captured, so
+`_filt_set_row` hardcoded low-pass and every MoN tune was rebuilt with a
+low-pass whatever it actually selected. Inaudible in the freq/wf/pulse columns"
+-- with `Cybernoid_II $D418 = $3F (low+band), we wrote $1F`.
+
+"Inaudible in the freq/wf/pulse columns" is why it survived here too: this
+builder's fidelity report scores FREQUENCY AND NOTHING ELSE, so no headless
+number in the docs could ever have moved. Only the listening pass could see it.
+
+    $D418 passband match     0.0%  ->  100.0%
+    RMS level (A-weighted)  +0.7   ->   -0.4 dBA
+    spectral centroid       -99.3  ->  -51.4 Hz
+    rolloff (85%)          -280.1  -> -169.6 Hz
+
+Frequency fidelity, part count and part sizes are unchanged, as they must be.
+
+**Then the same gap was checked across every native builder** -- and measured,
+not assumed, because an absent call is only a defect if that player's originals
+actually select a non-low-pass passband:
+
+    HardTrack        low+band 100%   WAS WRONG -- fixed
+    DMC Rockbuster   low+band 100%   WAS WRONG -- fixed
+    Future Composer  low 100%        default right by luck
+    SDI              low 100%        default right by luck
+    Hubbard          none 100%       no passband to get wrong
+    Sound Monitor    none 100%       no passband to get wrong
+
+DMC's fix is verified by byte-diffing the emitted SF2 against a build with the
+change reverted: exactly 8 bytes differ, all filter SET rows, every one
+`low -> low+band` with its cutoff nibble untouched.
+
+About half the brightness gap remains open: the windowed step is halved but
+still present (centroid -65/-146/-74 from 12 s on) and tracks the WAVEFORM match
+falling from ~86% to 70-79% over the same span. A different mechanism, recorded
+as the next lead.
+
 ### HardTrack: the first listening pass -- rung 4, and what it is NOT allowed to say
 
 Every fidelity figure for this player was headless, and in this repo headless has

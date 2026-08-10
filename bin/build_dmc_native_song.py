@@ -400,8 +400,14 @@ def main():
     import mon_fidelity as F
     secs = span // 50 + 4
     print(f"  tracing full song ({secs}s)...")
+    # Third element = the $D418 passband. Omitting it lets `_filt_set_row`
+    # default to low-pass: `Rockbuster` selects low+band on 100% of frames and
+    # was rebuilt low-only on 100% of them, dropping the band exactly as
+    # Cybernoid_II and HardTrack's Love_tune_2 did. Invisible to the freq/wf/
+    # pulse columns, which is why it survived here too.
     traces = (F.per_frame(SID, [f'-a0', f'-t{secs}']),
-              BM.filter_trace(SID, 0, secs))
+              BM.filter_trace(SID, 0, secs),
+              BM.passband_trace(SID, 0, secs))
 
     # EXACT emulated gate-rise onsets (1x tunes) — verify they agree with the
     # trace before trusting them (multispeed/self-IRQ variants emulate too slow).

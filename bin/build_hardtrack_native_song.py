@@ -366,8 +366,18 @@ def main():
         span = min(span, int(WARG) * 50)
     secs = span // 50 + 4
     print(f"  tracing {secs}s once...")
+    # The THIRD element is the $D418 passband. Without it `_filt_set_row`
+    # defaults to low-pass, so every render came out low-pass whatever the tune
+    # actually selected -- `Love_tune_2` uses low+band on 100% of frames and was
+    # rebuilt as low-only on 100% of them. It is inaudible to this builder's own
+    # fidelity report, which scores frequency and nothing else, and it survived
+    # until the rung-4 listening pass measured the render as consistently darker
+    # (centroid -99 Hz, rolloff -280 Hz). The identical defect was found and
+    # fixed on MoN once already -- see `passband_trace`'s docstring, which names
+    # Cybernoid_II dropping its band exactly this way.
     traces = (F.per_frame(SID, [f'-a{SUB}', f'-t{secs}']),
-              BM.filter_trace(SID, SUB, secs))
+              BM.filter_trace(SID, SUB, secs),
+              BM.passband_trace(SID, SUB, secs))
     shim.main_vol = BM.master_volume(SID, SUB, secs)
 
     parts = build_song(shim, base, traces, span)

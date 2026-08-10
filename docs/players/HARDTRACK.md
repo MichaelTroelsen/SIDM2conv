@@ -941,6 +941,73 @@ So the honest verdict is **close but measurably not identical**: the Stage B
 render is slightly darker (centroid −99 Hz, rolloff −280 Hz) and carries a small
 pitch-class shift toward D♯. Not a pass, not a failure — a baseline.
 
+**And following that "darker" reading found a real defect.** See below; it
+accounts for about half of it.
+
+### The defect rung 4 found: the passband was never captured
+
+The brightness loss was **not uniform** — windowed at 4 s it is flat for 12 s and
+then steps (centroid +1/−12/+0, then −128/−257/−152/−168). Worth noting that
+`--windowed`'s worst-window search **did not flag it**: it removes each metric's
+median and ranks the spread, so a *step* reads as spread rather than as an
+outlier. Read the per-window table, not just the verdict line.
+
+Comparing the two renders register by register found the cause immediately, and
+it was not subtle: the **filter passband matched on 0.0% of frames.** The
+original selects low+band (`$D418` mode 3) on 100% of frames; the Stage B render
+wrote low-pass on 100% of them.
+
+The cause is a missing argument. `build_native_song` takes its traces as a
+tuple, and the **third element is the `$D418` passband**; without it
+`_filt_set_row` defaults to `passband=1`, low-pass. The HardTrack builder passed
+a 2-tuple.
+
+This is a **known bug class that HardTrack was simply missed by** — the fix has
+existed since the MoN work, and `passband_trace`'s own docstring names it:
+
+> *"This was never captured, so `_filt_set_row` hardcoded low-pass and every MoN
+> tune was rebuilt with a low-pass whatever it actually selected. Inaudible in
+> the freq/wf/pulse columns, so it survived until `$D418` became a scored
+> dimension."* — with `Cybernoid_II $D418 = $3F (low+band), we wrote $1F`.
+
+"Inaudible in the freq/wf/pulse columns" is exactly why it survived here too:
+**this builder's own fidelity report scores frequency and nothing else**, so no
+headless number in this document could ever have moved. Fixed:
+
+| | before | after |
+|---|---|---|
+| `$D418` passband match | **0.0%** | **100.0%** |
+| RMS level (A-weighted) | +0.7 dBA | −0.4 dBA |
+| spectral centroid | −99.3 Hz | **−51.4 Hz** |
+| rolloff (85%) | −280.1 Hz | **−169.6 Hz** |
+| spectral flatness | −0.015 | −0.003 |
+
+Frequency fidelity, part count and part sizes are all unchanged, as they must be.
+
+**The same gap was then checked across every native builder**, and measured
+rather than assumed — an absent call is only a defect if that player's originals
+actually select a non-low-pass passband:
+
+| builder | passband its original selects | verdict |
+|---|---|---|
+| HardTrack | low+band 100% | **was wrong — fixed** |
+| DMC (`Rockbuster`) | low+band 100% | **was wrong — fixed** |
+| Future Composer | low 100% | default was right by luck |
+| SDI | low 100% | default was right by luck |
+| Hubbard | none 100% | no passband to get wrong |
+| Sound Monitor | none 100% | no passband to get wrong |
+
+DMC's fix was verified by byte-diffing the emitted SF2 against a build with the
+change reverted: **exactly 8 bytes differ, all filter SET rows, every one
+`low → low+band` with its cutoff nibble untouched.**
+
+### About half the brightness gap is still open
+
+After the fix the windowed step is roughly halved but still there (centroid
+−65/−146/−74 from 12 s on), and it tracks the **waveform** match falling from
+~86% to 70–79% over the same span. That is the next lead, and it is a different
+mechanism from the passband.
+
 ### ⚠️ Why the per-voice verdicts here are NOT quotable
 
 The per-voice sweep returns SYNTHESIS on voices 1 and 2 and SEQUENCER on voice 3,
