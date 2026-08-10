@@ -1089,11 +1089,32 @@ window and the driver never sees them. Note that the shim currently sets
 OWN hard restart, already in the capture" — that is true of bit 4 and **not** of
 this path, which is a different mechanism.
 
-⚠️ Not acted on here, deliberately. The shim's comment also warns that
-`B.HARD_RESTART` is the *Hubbard kill-ADSR engine* and would add behaviour this
-player does not have, so flipping the flag is not obviously the fix, and the
-previous item in this document is what happens when a plausible one-line change
-is shipped on one measurement.
+#### `hard_restart = 1` is provably the WRONG fix
+
+The shim's comment warns that `B.HARD_RESTART` is the *Hubbard kill-ADSR engine*
+and "would add a behaviour this player does not have". That is now measured
+rather than taken on trust, and it is exactly right:
+
+- the driver's `$7D` hard-restart row does **gate off + AD/SR = 0**
+  (`_hr_rows`: *"the `$7D` hard-restart row (driver: gate off + AD/SR=0)"*);
+- HardTrack's `$11e9` writes **`$D406` only** — `$D405` is never touched.
+
+Over all 1,397 frames of part 1, at the render's real offset:
+
+| voice | AD differs | SR differs | of SR misses, "orig SR=0, driver ≠ 0" |
+|---|---|---|---|
+| 0 | **0** (0.00%) | 92 (6.6%) | **100%** |
+| 1 | 10 (0.72%) | 98 (7.0%) | 92% |
+| 2 | 20 (1.43%) | 148 (10.6%) | 88% |
+
+**AD already matches on 98.6–100% of frames.** Enabling the driver's hard
+restart would zero AD as well and *introduce* errors into the one half of the
+register that is currently right, in order to fix the other half. A correct fix
+needs an **SR-only** variant of the `$7D` row — an asm change in
+`drivers_src/mon/`, in a driver shared by seven players — and its audible value
+is **unproven**: the cutoff-alignment episode above is a fresh example of a large
+register gain buying nothing audible. Scoped and left open rather than guessed
+at.
 
 ### ⚠️ Why the per-voice verdicts here are NOT quotable
 
