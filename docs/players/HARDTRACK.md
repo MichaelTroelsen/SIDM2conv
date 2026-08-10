@@ -915,10 +915,63 @@ refused".
 - **It windows.** Song length is bounded by the SF2II caps (`sidm2/sf2_caps.py`),
   and a dense tune becomes many parts; part count is a **density** measure, not
   an accuracy one.
-- **No SF2II play-test yet** (rung 3). Every part is checked by the emitter's own
-  parse (`parse=OK`). Rung 4, the listening pass, has now been run once — see
-  below.
+- **Rung 3 has now been run** — see *Rung 3* below. It is **inconclusive**, and
+  the reason is a property of the tool rather than of this build.
 - **`DriverSelector` is untouched**, deliberately, exactly as for Stage A.
+
+---
+
+## Rung 3: the instrumented SF2II capture (v3.25.0) — INCONCLUSIVE
+
+`bin/sf2ii_vs_real.py` runs a patched SF2II (`bin/SIDFactoryII_dbg.exe`) that
+dumps its SID registers every frame, so this is what the **editor's own driver
+actually plays**, not what our wrapper renders. Run on `Love_tune_2` part 1,
+20 s, three times:
+
+| | freq | waveform | pulse | AD/SR |
+|---|---|---|---|---|
+| osc1 | 66% | 92% | 96% | 96% |
+| osc2 | **21%** | 94% | 96% | 96% |
+| osc3 | 61% | 95% | 100% | 95% |
+| filter | cutoff 72% | | res/route **100%** | |
+
+**Reproducible to the frame across all three runs**, so this is not the editor
+flakiness the repo warns about.
+
+### ⚠️ Why the frequency column cannot be read as fidelity
+
+The tool was calibrated against two controls before any of the above was
+believed:
+
+| control | freq | waveform | AD/SR |
+|---|---|---|---|
+| `Action_Biker` (Hubbard) | **100% / 100%** | 96–99% | 93–98% |
+| `Cybernoid_II` (MoN) | **0% / 0% / 0%** | 92–99% | 96–99% |
+
+`Action_Biker` proves the metric is not floored — it can and does report 100%.
+But **`Cybernoid_II` is documented byte-exact on freq/wf/pulse/cutoff** and
+scores **0% frequency** here while its waveform reads 99%. "Frequency near zero
+alongside a high waveform score" is therefore a known *tool* failure signature,
+and it is exactly the shape HardTrack shows.
+
+So the honest reading is:
+
+- **usable signal** — waveform 92–95%, pulse 96–100%, AD/SR 95–96%, filter
+  res/routing 100%. These agree with the headless results and say the editor is
+  executing our tables broadly as intended.
+- **not usable** — the frequency column, and the cutoff 72% that rides on the
+  same alignment. A control that should be 100% reads 0%.
+
+The tool picks one global offset by maximising frequency match and then reports
+each metric at its **own** best offset within ±8. That is the same per-register
+alignment hazard documented above under the retracted filter fix; a freq-vs-pulse
+offset gap on one voice means the two were aligned independently, not that the
+envelopes disagree.
+
+**Rung 3 is therefore run but not passed.** Making it conclusive means fixing
+`sf2ii_vs_real.py`'s alignment — most likely per-file multispeed/subtune
+handling, since `Cybernoid_II` fails the same way — which is tooling work
+benefiting Galway and MoN as much as HardTrack.
 
 ---
 

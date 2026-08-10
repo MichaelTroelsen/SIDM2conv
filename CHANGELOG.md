@@ -69,6 +69,48 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### HardTrack rung 3: the instrumented SF2II capture RAN -- and is inconclusive
+
+`bin/sf2ii_vs_real.py` drives a patched SF2II (bin/SIDFactoryII_dbg.exe) that
+dumps its SID registers every frame, so this measures what the EDITOR'S OWN
+DRIVER plays rather than what our wrapper renders. First time it has been
+pointed at this player. Love_tune_2 part 1, 20 s, three runs:
+
+              freq   waveform   pulse   AD/SR
+    osc1       66%      92%      96%     96%
+    osc2       21%      94%      96%     96%
+    osc3       61%      95%     100%     95%
+    filter  cutoff 72%          res/route 100%
+
+Reproducible to the frame across all three runs, so this is not the editor
+flakiness the repo warns about.
+
+THE FREQUENCY COLUMN CANNOT BE READ AS FIDELITY, and two controls establish why
+before any of it was believed:
+
+    Action_Biker (Hubbard)   freq 100%/100%    waveform 96-99%   AD/SR 93-98%
+    Cybernoid_II (MoN)       freq 0%/0%/0%     waveform 92-99%   AD/SR 96-99%
+
+Action_Biker proves the metric is not floored -- it reports a clean 100%. But
+Cybernoid_II is documented BYTE-EXACT on freq/wf/pulse/cutoff and scores 0%
+frequency while its waveform reads 99%. "Frequency near zero alongside a high
+waveform score" is therefore a known TOOL failure signature, and it is exactly
+the shape HardTrack shows.
+
+Usable signal: waveform 92-95%, pulse 96-100%, AD/SR 95-96%, filter res/routing
+100% -- all agreeing with the headless results, i.e. the editor is executing our
+tables broadly as intended. Not usable: the frequency column and the cutoff 72%
+that rides on the same alignment.
+
+The tool picks ONE global offset by maximising frequency match, then reports
+each metric at its OWN best offset within +-8. That is the same per-register
+alignment hazard that produced the retracted filter "fix" earlier this cycle.
+
+Rung 3 is run but NOT PASSED. Making it conclusive means fixing
+sf2ii_vs_real.py's alignment -- most likely per-file multispeed/subtune
+handling, since Cybernoid_II fails the same way -- which is tooling work that
+benefits Galway and MoN as much as HardTrack.
+
 ### HardTrack: the out-of-range arp read is fixed -- the seeded population is now EXACTLY 100%
 
 Recorded two commits ago as needing "a real memory array rather than an image
