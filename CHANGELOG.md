@@ -69,6 +69,35 @@ itself, see the entry below.
   its output at all — without it, "the second build is now seeded" could be true
   of the code and false of the result.
 
+### Doc audit: a retired lead was still live in two of the three places it appears
+
+An audit of everything published this cycle, because this repo has a documented
+history of exactly this drift and it caught one instance already (the
+ACCURACY_MATRIX version stamp).
+
+**Every headline figure re-ran and reproduces exactly.** Seeded population
+frequency 99.98%, waveform/pulse 100%, cutoff and $D417 100% on 17,982 frames;
+second build 99.81% and 100%/100% on 14,985. The derived numbers cross-check:
+17,982 + 14,985 = 32,967 cutoff frames as published, 6,993 + 2,997 = 9,990
+$D418 frames (~10 files x 999), and 13 + 84 = 97 misses of 53,569 + 44,237 =
+97,806 voice-frames -- the "97 of 97,806 (0.099%)" figure lands on the nose.
+
+**One real inconsistency found and fixed.** CLAUDE.md and ACCURACY_MATRIX.md
+both still described the remaining brightness gap as "a 12 s step tracking the
+waveform match falling ~86% -> 70-79%". That lead was RETIRED later the same
+cycle: those per-register figures were measured at shift 0, the whole part
+render sits at -3, and re-measured correctly the waveform is essentially exact
+(100.0/100.0/99.8%) with the symmetric mismatch pairs being the offset itself.
+HARDTRACK.md had been updated; the other two had not. Both now carry the
+corrected reading -- ADSR (88-94%) is the weakest register, its residual is
+HardTrack's pre-note-on SR-zeroing, and `hard_restart = 1` is provably the wrong
+fix for it.
+
+**Stale counts fixed.** CLAUDE.md carried TWO "runs all" figures and only one
+had been maintained (~2,295 and ~2,065); both now read ~2,300 against 2,307
+collected. ACCURACY_MATRIX's HardTrack test count said 118 (parser 31) where the
+parser file now has 32 -- 119.
+
 ### SF2 viewer: Driver 11 orderlists were read from a hardcoded Laxity file offset
 
 Every Driver 11 orderlist position exported as `A000` -- transpose $A0,
