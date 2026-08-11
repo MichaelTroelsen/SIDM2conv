@@ -23,6 +23,10 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+---
+
+## [3.26.0] - 2026-08-11
+
 ### SF2 viewer: Laxity orderlists came from a hardcoded file offset — 67.9% of exported positions were phantom
 
 `_parse_music_data` read Laxity's orderlist from `load_address + (0x1766 - 4)`.

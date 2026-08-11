@@ -1,9 +1,9 @@
 # SIDM2 Conversion Accuracy Matrix
 **Single Source of Truth for Accuracy Data**
 
-**Version**: 3.25.0
+**Version**: 3.26.0
 **Last Updated**: 2026-08-10
-**Figures last re-measured**: v3.22.0 — unchanged in v3.23.0/v3.24.0/v3.25.0 for every pre-existing row, and verified rather than assumed. The **HardTrack Composer** row is newly measured in v3.24.0, and its filter figures in **v3.25.0**; its **Stage B** figures were measured on the 33-file corpus at a 60 s window and ship stamped in **v3.25.0** (they sat under `[Unreleased]` until that bump).
+**Figures last re-measured**: v3.22.0 — unchanged in v3.23.0/v3.24.0/v3.25.0/v3.26.0 for every pre-existing row **except HardTrack's second-build register figure, which v3.26.0 re-measured to 99.96% (was 99.89%)** after the last load+constant seed was replaced by a consumer-recovered address; v3.26.0 also changed no conversion path — its other changes are an SF2-viewer parse fix (Laxity orderlists) and tooling, and verified rather than assumed. The **HardTrack Composer** row is newly measured in v3.24.0, and its filter figures in **v3.25.0**; its **Stage B** figures were measured on the 33-file corpus at a 60 s window and ship stamped in **v3.25.0** (they sat under `[Unreleased]` until that bump).
 Neither release altered a conversion path. v3.23.0: `git diff 3e42a8c..0498d05 -- bin/ drivers_src/
 sidm2/ scripts/` touched only measurement/rendering code plus two pure additions to
 `scripts/sid_to_sf2.py` and `sidm2/conversion_pipeline.py`, both wholly inside opt-in
