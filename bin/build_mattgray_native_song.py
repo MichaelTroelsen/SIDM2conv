@@ -172,6 +172,66 @@ class MattGrayShim:
                     (ins.waveform or 0x41) & 0xFE)}
 
 
+def merge_sounding_rests(shim, per_frame):
+    """Absorb a REST into the preceding note while the original is still SOUNDING.
+
+    A rest is emitted as bare GATE-OFF rows carrying no wave, pulse or FM
+    program (`build_mon_native_song`, the `ev.rest` branch), so the pitch
+    FREEZES on whatever the previous note left in the register. Matt Gray's
+    arpeggio does not stop at the gate fall -- it keeps stepping through the
+    release, an octave cycle on a still-ringing triangle.
+
+    Measured on Last_Ninja_2 sub 0, splitting every sounding gate-off run by
+    the event that owns it: all 313 runs that live inside a NOTE's own span are
+    byte-exact, and all 276 that land in a REST are wrong -- ours frozen on one
+    constant, the original cycling (79% of the wrong frames are an exact x2,
+    x4, /2 or /4 of the original). The per-note capture already reproduces the
+    313; this puts the other 276 back inside it instead of adding an engine.
+
+    Only rests the original actually sounds through are merged, and only while
+    the note stays inside FM_CAP -- past that `fm_program_for` freezes anyway,
+    so the merge would buy nothing and still cost the program space.
+    """
+    from dataclasses import replace
+    merged = span = 0
+    for v in range(3):
+        out, starts, tk = [], [], 0
+        for ev in shim.voices[v]:
+            if ev.rest and out and not out[-1].rest:
+                p_tk = starts[-1]
+                comb = out[-1].dur + ev.dur
+                dur_f = (shim.tick_to_frame(p_tk + comb)
+                         - shim.tick_to_frame(p_tk))
+                if dur_f <= BM.FM_CAP and _rest_sounds(shim, per_frame, v,
+                                                       tk, ev.dur):
+                    out[-1] = replace(out[-1], dur=comb)
+                    tk += ev.dur
+                    merged += 1
+                    span += ev.dur
+                    continue
+            out.append(ev)
+            starts.append(tk)
+            tk += ev.dur
+        shim.voices[v] = out
+    return merged, span
+
+
+def _rest_sounds(shim, per_frame, v, tk, dur):
+    """True iff the original has a gated-OFF but still audible frame in this
+    rest -- waveform bits set (the oscillator has a shape) and a non-zero
+    frequency (it is advancing). A rest the player silences with $00 is left
+    alone: nothing is heard through it, so a capture would only cost space."""
+    f0 = shim.tick_to_frame(tk) + shim.onset_delay
+    f1 = shim.tick_to_frame(tk + dur) + shim.onset_delay
+    for f in range(f0, min(f1, len(per_frame))):
+        st = per_frame[f][0][v]
+        if st['wf'] is None or (st['wf'] & 1):
+            continue
+        if (st['wf'] & 0xF0) and st['freq']:
+            return True
+    return False
+
+
 def release_waveforms(shim, per_frame):
     """{instrument: release waveform byte}, measured from the original's trace.
 
@@ -260,9 +320,17 @@ def measure_voices(parts, traces):
 
     Reuses the HardTrack builder's metric verbatim -- same two columns, same
     best-delay alignment, same refusal to score an empty comparison as 100%.
-    Quote BOTH: `raw` counts every frame either side has a frequency on,
-    including gate-off frames nothing can hear; `audible` counts only frames
-    where the ORIGINAL's gate was on.
+    Quote BOTH: `raw` counts every frame either side has a frequency on;
+    `audible` counts only frames where the ORIGINAL's gate was on.
+
+    ** `audible` is the WRONG name on this player, and believing it cost a
+    release.** A gate-off frame is only inaudible when the waveform has no bits
+    set; Matt Gray releases with $10/$40/$80 still selected, so a voice in
+    RELEASE is sounding and its pitch is heard. Scoring gate-on frames only,
+    this column read 99.5-100% on sub 0 while the release tails of 236 rests
+    played a frozen note against the original's arpeggio -- see the rung-4
+    section of docs/players/MATTGRAY.md. The defect lived entirely in the
+    column this one discards.
     """
     import build_hardtrack_native_song as HT
     return HT.measure_voices(parts, traces)
@@ -319,6 +387,12 @@ def main():
               BM.passband_trace(SID, SUB, secs))
     shim.main_vol = BM.master_volume(SID, SUB, secs)
     shim._relwf = release_waveforms(shim, traces[0])
+    if os.environ.get('MG_NO_REST_MERGE') != '1':
+        nm, ns = merge_sounding_rests(shim, traces[0])
+        if nm:
+            print(f"  merged {nm} sounding rest(s) into the preceding note "
+                  f"({ns} ticks) -- the arpeggio keeps running through the "
+                  f"release, and a bare rest row would freeze it")
     if shim._relwf:
         import collections as _c
         dist = _c.Counter(f"${w:02x}" for w in shim._relwf.values())

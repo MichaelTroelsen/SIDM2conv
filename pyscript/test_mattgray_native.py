@@ -109,3 +109,82 @@ def test_the_shim_does_not_model_the_synth_engine():
         assert banned not in src, (
             f"{banned} appears in the Stage B shim -- the synth side is "
             f"captured per frame, not modelled")
+
+
+# -- the rest merge (the rung-4 gate-off defect) ---------------------------
+
+class _FakeShim:
+    """The three things merge_sounding_rests touches, and nothing else."""
+    onset_delay = 0
+
+    def __init__(self, voices, fpt=6):
+        self.voices = voices
+        self._fpt = fpt
+
+    def tick_to_frame(self, t):
+        return t * self._fpt
+
+
+def _ev(dur, rest, note=48):
+    from sidm2.mon_parser import MONEvent
+    return MONEvent(note=(0 if rest else note), dur=dur, instr=1,
+                    retrig=not rest, rest=rest)
+
+
+def _frames(n, wf, freq):
+    """n frames of one fill-forwarded state on every voice."""
+    return [({v: {'freq': freq, 'wf': wf, 'pul': 0} for v in range(3)}, None)
+            for _ in range(n)]
+
+
+def test_a_rest_the_original_sounds_through_is_merged():
+    """A rest emits bare gate-off rows with no wave/pulse/FM program, so the
+    pitch FREEZES; Matt Gray's arpeggio keeps stepping through the release.
+    Measured on Last_Ninja_2 sub 0: all 313 sounding gate-off runs inside a
+    NOTE were byte-exact and all 276 inside a REST were wrong."""
+    import build_mattgray_native_song as MG
+    sh = _FakeShim([[_ev(4, False), _ev(2, False)] for _ in range(3)])
+    sh.voices[0] = [_ev(4, False), _ev(2, True)]
+    # gate off ($10 = triangle, bit0 clear) and advancing -> audible release
+    n, s = MG.merge_sounding_rests(sh, _frames(64, 0x10, 0x2000))
+    assert n == 1 and s == 2
+    assert len(sh.voices[0]) == 1
+    assert sh.voices[0][0].dur == 6            # 4 + the rest's 2
+    assert sh.voices[0][0].rest is False
+
+
+def test_a_rest_the_player_silences_is_left_alone():
+    """$00 = no waveform bits at all, so the oscillator is silent: nothing is
+    heard through the rest and a capture would only cost program space."""
+    import build_mattgray_native_song as MG
+    sh = _FakeShim([[_ev(4, False), _ev(2, True)] for _ in range(3)])
+    n, _ = MG.merge_sounding_rests(sh, _frames(64, 0x00, 0x2000))
+    assert n == 0
+    assert [e.rest for e in sh.voices[0]] == [False, True]
+
+
+def test_a_sounding_but_frequency_zero_rest_is_left_alone():
+    """Waveform bits set but freq 0 = the oscillator is not advancing."""
+    import build_mattgray_native_song as MG
+    sh = _FakeShim([[_ev(4, False), _ev(2, True)] for _ in range(3)])
+    n, _ = MG.merge_sounding_rests(sh, _frames(64, 0x10, 0x0000))
+    assert n == 0
+
+
+def test_the_merge_stops_at_the_fm_capture_cap():
+    """Past FM_CAP frames `fm_program_for` freezes anyway, so the merge would
+    buy nothing and still cost the program space."""
+    import build_mattgray_native_song as MG
+    import build_mon_native_song as BM
+    long_rest = (BM.FM_CAP // 6) + 4           # pushes the note past the cap
+    sh = _FakeShim([[_ev(4, False), _ev(long_rest, True)] for _ in range(3)])
+    n, _ = MG.merge_sounding_rests(sh, _frames(BM.FM_CAP * 2, 0x10, 0x2000))
+    assert n == 0
+
+
+def test_a_leading_rest_has_no_note_to_merge_into():
+    import build_mattgray_native_song as MG
+    sh = _FakeShim([[_ev(2, True), _ev(4, False)] for _ in range(3)])
+    n, _ = MG.merge_sounding_rests(sh, _frames(64, 0x10, 0x2000))
+    assert n == 0
+    assert sh.voices[0][0].rest is True

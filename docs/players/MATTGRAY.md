@@ -506,6 +506,152 @@ compares *write patterns* rather than state — siddump prints `...` for a
 register not written that frame, and our driver writes a different set each
 frame. Fill-forward state is the fidelity measure; raw-row equality is not.
 
+### Rung 4, part 2 — the gate-off freq/pulse test
+
+#### The named candidate was WRONG, and the real cause is the REST row
+
+The candidate above ("a voice in RELEASE is still sounding — our render writes
+freq `$010C` and pulse `180` against the original's `0000`/`000`") is
+**falsified**. Those frames carry waveform **`$00` on BOTH sides** once
+`release_wf` lands: no waveform bits, so the oscillator is silent and a
+frequency written to it cannot be heard. Counting the frames where our
+oscillator sounds while the original's is silent gives **0 on all three
+voices** — the thing the last commit went looking for is not there.
+
+What *is* there appears as soon as every sounding gate-off run is attributed to
+the event that owns it. Both builds are scored over **one common 2,780-frame
+window** below, because the merge moves the part split — "part 1" is a
+different span on each side and the two cannot be compared as such:
+
+| the run lives inside | before | after |
+|---|---|---|
+| a NOTE's own span | 138 exact, 0 wrong | 138 exact, 0 wrong |
+| a REST | **0 exact, 236 wrong** | **236 exact, 0 wrong** |
+
+Before, every wrong run was ours **frozen on one constant**, and the wrong
+frames are not scatter: **76% are an exact octave relation** to the original
+(`x2` 347 frames, `/2` 290, `x4` 172, `/4` 116). The original is
+**arpeggiating through the release**; ours held a single value.
+
+One line of the shared builder explains it. `build_mon_native_song` emits a
+rest as bare GATE-OFF rows carrying **no wave, pulse or FM program**, so the
+pitch freezes at whatever the previous note left in the register — correct for
+an engine whose release is quiet, wrong for one whose arpeggio keeps stepping.
+
+#### The fix: merge a sounding rest into the note before it
+
+`merge_sounding_rests()` — a **shim-layer** change: no driver change, no new
+engine, and nothing added to the four synth engines Stage B deliberately does
+not model. A rest the original still sounds through is absorbed into the
+preceding note, which puts its frames back inside the per-note capture that is
+already reproducing every note-internal run exactly.
+
+Two guards, both of which cost nothing and prevent a wrong merge:
+
+- only rests the original **actually sounds through** — waveform bits set AND a
+  non-zero frequency. A rest the player silences with `$00` is left alone;
+  nothing is heard through it, so a capture would only cost program space.
+- only while the note stays inside **`FM_CAP`**. Past that `fm_program_for`
+  freezes anyway, so the merge would buy nothing and still cost the space.
+
+`MG_NO_REST_MERGE=1` restores the old behaviour for anyone re-checking.
+
+**Every register, all frames** (sub 0, the same common window, 2,790 frames,
+best whole-render offset -1 on both sides):
+
+| | v0 freq | v1 freq | v2 freq | v0 pulse | v1 pulse | v2 pulse |
+|---|---|---|---|---|---|---|
+| before | 89.24 | 82.57 | 70.17 | 82.57 | 75.26 | 85.59 |
+| after | **92.69** | **92.90** | **100.00** | **84.08** | **88.60** | **100.00** |
+
+Waveform, AD/SR, `$D416`/`$D417` and `$D418` are **100.00% on both sides**, and
+the whole remaining freq residual is the inaudible class above — 192 frames
+each on voices 0 and 1 where both sides carry waveform `$00`. Voice 2 has none
+of them, which is why it lands on an exact 100.00%. Scored the way that matters,
+**audible** gate-off frames carrying the wrong frequency go
+**93 / 288 / 832 → 0 / 0 / 0** over the common window. Not "almost none": none.
+
+#### The whole corpus, built both ways
+
+Judged on every tune that builds, not on the one it was developed against --
+17 files (sub 7 still refused), 51 voices, **719 rests merged**:
+
+| column | up | down | unchanged | frame-weighted mean |
+|---|---|---|---|---|
+| `raw` (includes gate-off frames) | **13** | 2 | 36 | **+1.50 pp** |
+| `audible` (gate-on frames only) | 1 | 5 | 45 | -0.011 pp |
+
+Largest `raw` gains: sub 2 v0 **+28.4**, sub 4 v1 +13.9, sub 0 v2 +13.7, sub 2
+v2 +9.4, sub 9 v1 +5.8. The two `raw` losses are -0.3 and -0.1. The five
+`audible` losses are -0.1 or -0.2 each, second-order: a longer note changes
+which canonical program the instrument-cap optimizer picks and where the part
+boundary falls, not what the driver plays on a gated-on frame.
+
+**The merge is a strict no-op on Driller and Tusker sub 0** -- neither has a
+rest the original sounds through, so their weak voice 2 (89.4 / 89.6) is a
+*different, still-unexplained* defect and this fix does not touch it.
+
+⚠️ **Cost, stated rather than buried: `Last_Ninja_2` sub 2 and `Tusker` sub 1
+now need 2 parts where they needed 1.** That is the price of carrying the
+release contours, and it is not waste: a tighter guard (merge only where
+freezing would actually be *wrong* -- the original's freq/pulse during the rest
+differs from the value we would freeze at) was tried and keeps **100%** of the
+merges on all three files, 277/277, 325/325 and 31/31. There is no cheaper
+version of this fix.
+
+#### ⚠️ The 0.579 correlation was never evidence — measure the floor first
+
+The previous commit read a 0.579 waveform correlation as proof that "the audio
+really does differ". **It is not.** Rendering the ORIGINAL against ITSELF at a
+different sidplayfp power-on delay — byte-identical registers, only a different
+oscillator/CPU phase — scores:
+
+| orig vs itself, `--delay` | raw samples | RMS envelope | magnitude spectrogram |
+|---|---|---|---|
+| 1000 cy | 0.5811 | 0.9712 | 0.9742 |
+| 4000 cy | 0.7439 | 0.9934 | 0.9819 |
+| 12000 cy | 0.6291 | 0.9735 | 0.9745 |
+
+**0.579 is indistinguishable from what identical material scores** — it sits at
+the bottom edge of that 0.58-0.74 spread, and the spread itself is set by
+nothing but the start cycle. (The exact 0.579 cannot be re-derived: the script
+that produced it was never committed. That is the second reason to distrust
+it.) A raw-sample correlation is dominated by SID oscillator phase, which no
+register-exact build controls and which a different write cycle re-rolls, so it
+has almost no dynamic range left to spend on fidelity. The phase-invariant
+measures do have some — they sit at 0.97-0.99 for identical material — so those
+are the ones to quote. Read against them (25 s, sub 0, every measure validated at 1.0000 against the identity and
+recovering a planted one-frame delay exactly):
+
+| | raw samples | RMS envelope | magnitude spectrogram | chroma L1 |
+|---|---|---|---|---|
+| floor (orig vs itself) | 0.58-0.74 | 0.971-0.993 | 0.974-0.982 | 0.0026 |
+| before | 0.4982 | 0.8141 | 0.8740 | 0.0690 |
+| after | 0.4942 | **0.8172** | **0.9152** | **0.0586** |
+
+The spectrogram — the phase-invariant measure with real range — closes about a
+third of its gap to the floor. Onset match moves 63.6% → 66.0%. The envelope
+barely moves, which is consistent rather than disappointing: this was a **pitch**
+defect, and amplitude-domain measures are nearly blind to one. That is the
+calibration doc's own finding (`docs/AUDIO_LISTENING_CALIBRATION.md`: which
+feature is informative is defect-dependent) holding on a fourth case.
+
+#### What is still open, stated plainly
+
+The audio gap is **narrowed, not closed**. Per 2-second window, with each
+window independently aligned, identical material correlates at **0.98** and our
+render at **0.78** — and that deficit is **uniform across the song**, not
+localized. (A fixed-offset view made it look concentrated at 18-24 s; per-window
+alignment dissolved that, so do not chase the section.)
+
+That sits against per-frame register state now being essentially exact. The
+leading candidate is therefore something the per-frame model **cannot see**:
+siddump reports one value per register per frame, so a playroutine that writes a
+register **twice within a frame** (a gate-off/gate-on hard-restart blip, an ADSR
+poke) is invisible to every number in this document, while changing the envelope
+on every note. The envelope measure being the one furthest below its floor
+(0.817 vs 0.971-0.993) is what points there. **Not attempted, and not claimed.**
+
 ### Two decisions made by measuring
 
 - **`snap_gate` is OFF**, against HardTrack's ON. Chosen on the corpus, not on
@@ -533,15 +679,21 @@ sense `MATTGRAY.md` uses everywhere else; the builder prints that on every run.
 
 ## Next
 
-1. Play-test the Stage B parts in real SID Factory II (PLAYBOOK §4 rung 3) —
-   use `pyscript/sf2ii_vs_wrapper.py`, which compares the editor against our
-   own wrapper render rather than against the original.
-2. A listening pass (rung 4) — no Matt Gray build has ever had one.
-3. Extend Stage B past Last Ninja 2: Driller (2 subtunes) and Tusker (4) parse
-   today and should need nothing but a run.
-4. Generalise the locator past Driller — the other 54 files are per-game
-   builds; `verify()` will refuse them loudly rather than mis-parse.
-5. Subtune 7's truncated pattern: recover the missing bytes from the
+Rungs 3 and 4 are done and Stage B covers all three games; what is left:
+
+1. **The uniform audio deficit** — 0.78 per-window spectrogram against a 0.98
+   floor, with per-frame registers essentially exact. Leading candidate:
+   register writes that happen **twice within one frame**, which siddump's
+   per-frame model cannot see and which would move the envelope on every note.
+   The cheapest first probe is a cycle-accurate trace (`tools/sidm2-sid-trace.exe`
+   or the VICE wrapper) counting `$D404`/`$D405`/`$D406` writes per frame in
+   the original. See the rung-4 section for why the envelope measure is what
+   points there.
+2. Generalise the locator past Driller — the other 54 files are per-game
+   builds; `verify()` will refuse them loudly rather than mis-parse. Every Last
+   Ninja 2 subtune still decodes via `layout='signature'`, so all 16 built
+   tunes are unverified in the sense this doc uses everywhere else.
+3. Subtune 7's truncated pattern: recover the missing bytes from the
    relocating copy, or confirm the rip itself is short.
 
 ## Sources
