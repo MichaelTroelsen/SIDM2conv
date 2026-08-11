@@ -57,8 +57,8 @@ Frame|Voice|Freq|Pulse|Waveform|ADSR|Filter
 
 ### See Also
 
-- `docs/SIDDUMP_ANALYSIS.md` - Complete source code analysis
-- `docs/SIDDUMP_DEEP_DIVE.md` - Deep dive into internals
+- `docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md` - source-code analysis and internals
+  (both `SIDDUMP_ANALYSIS.md` and `SIDDUMP_DEEP_DIVE.md` were consolidated into it)
 
 ---
 
@@ -518,4 +518,4 @@ class RetroDebuggerValidator:
 - `CLAUDE.md` - Quick reference and usage
 - `docs/COMPONENTS_REFERENCE.md` - Python module documentation
 - `docs/ARCHITECTURE.md` - System architecture details
-- `docs/VALIDATION_SYSTEM.md` - Validation architecture
+- `docs/guides/VALIDATION_GUIDE.md` - Validation architecture (was `VALIDATION_SYSTEM.md`)

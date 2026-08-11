@@ -2,7 +2,17 @@
 
 **Version**: 1.0.0
 **Date**: 2025-12-24
-**Status**: Identification of current tools and missing components
+**Status**: ⚠️ **HISTORICAL — describes the pipeline as of 2025-12-24, not today.**
+
+> Several files named below under *Current Tools* with "Status: ✓ Active" **no longer
+> exist**: `sidm2/sid_format.py`, `sidm2/sf2_format.py` and `sidm2/driver11_converter.py`.
+> They were verified absent from the tree on 2026-08-11. Equivalent functionality lives in
+> `sidm2/sid_parser.py`, `sidm2/sf2_parser.py` and the `driver11_*` / `galway_to_driver11`
+> modules, but this document has **not** been re-mapped onto them — the mapping was not
+> verified, and a guessed one would be worse than none.
+>
+> For the current pipeline use `docs/ARCHITECTURE.md`, `docs/COMPONENTS_REFERENCE.md` and
+> `docs/FILE_INVENTORY.md`, which are the maintained sources of truth.
 
 ---
 
