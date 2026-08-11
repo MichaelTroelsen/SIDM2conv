@@ -22,16 +22,29 @@ from sidm2.sid_parser import SIDParser
 from sidm2 import galway_trace_extract as T
 
 DBG_SRC = r"C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\x64\Release\SIDFactoryII.exe"
+# The TRACKED fallback, so a fresh clone can still run this. It is never written
+# to: a freshly built editor is copied alongside it under a gitignored name
+# instead. Overwriting the tracked binary left the working tree dirty after
+# every run, which is how "is the newer build the one to commit?" became a
+# standing open question -- the tool, not a person, had decided to stage a 1 MB
+# binary.
 DBG = os.path.join(ROOT, "bin", "SIDFactoryII_dbg.exe")
+# Same directory on purpose: SF2II is launched with cwd=bin/ and finds its own
+# resources from there, so the local copy must not move.
+DBG_LOCAL = os.path.join(ROOT, "bin", "SIDFactoryII_dbg.local.exe")
 
 
 def capture_sf2ii(sf2, seconds):
     import shutil
+    dbg = DBG
     if os.path.exists(DBG_SRC):
-        shutil.copyfile(DBG_SRC, DBG)
+        shutil.copyfile(DBG_SRC, DBG_LOCAL)
+        dbg = DBG_LOCAL
+    elif not os.path.exists(DBG):
+        raise SystemExit("no instrumented SF2II available")
     errf = os.path.join(ROOT, "out", "sf2ii_listen.err")
     fh = open(errf, "w", encoding="utf-8", errors="replace")
-    p = subprocess.Popen([DBG, os.path.abspath(sf2), "--skip-intro"],
+    p = subprocess.Popen([dbg, os.path.abspath(sf2), "--skip-intro"],
                          cwd=os.path.join(ROOT, "bin"),
                          stdout=subprocess.DEVNULL, stderr=fh)
     time.sleep(seconds)

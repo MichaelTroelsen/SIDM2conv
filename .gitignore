@@ -232,3 +232,6 @@ bin/_c1_smoke/
 
 # CLAP audio-embedding venv (optional tooling, multi-GB -- pyscript/install_clap.py)
 tools/clap_venv/
+# freshly built instrumented SF2II (bin/sf2ii_vs_real.py); the tracked
+# bin/SIDFactoryII_dbg.exe is the fresh-clone fallback and stays untouched
+bin/SIDFactoryII_dbg.local.exe

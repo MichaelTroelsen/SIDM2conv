@@ -705,10 +705,21 @@ Untracked build scratch, safe to delete: `out/hardtrack_native/`, `out/mon/`, `o
 `output/*_export/`.
 
 ## Open questions
-1. Should the newer `bin/SIDFactoryII_dbg.exe` (1,029,120 bytes) be committed, or restored?
-2. Is the concurrent "instrument map" work expected to land before Stage C starts? It gates items 1
-   and 3 in Work Remaining.
-3. Promote `/tmp/sf2ii_vs_wrapper.py` into `pyscript/`? It is the comparison rung 3 actually needs
-   and nothing in the repo does it.
+1. ~~Should the newer `bin/SIDFactoryII_dbg.exe` be committed, or restored?~~ **Settled**: the
+   user's call is **do not commit it**, and the root cause is fixed so the question cannot recur.
+   `bin/sf2ii_vs_real.py` used to copy a freshly built editor OVER the tracked binary on every
+   run, so every rung-3 run left a 1 MB binary modified -- the tool, not a person, was deciding to
+   stage it. It now copies to `bin/SIDFactoryII_dbg.local.exe` (gitignored, same directory because
+   SF2II runs with `cwd=bin/` and finds its resources there); the tracked copy is the fresh-clone
+   fallback and is never written to. Verified: a full capture run leaves the tree clean. Pinned by
+   `test_the_tracked_editor_binary_is_never_written_to`.
+2. ~~Is the concurrent "instrument map" work expected to land before Stage C starts?~~ It landed
+   as `3e4948b` on branch `instrument-map`. This session's work is on `sf2ii-offset-fix`, branched
+   from `master`, so the two do not interact.
+3. ~~Promote `/tmp/sf2ii_vs_wrapper.py` into `pyscript/`?~~ **Done** -- `pyscript/sf2ii_vs_wrapper.py`
+   plus `pyscript/test_sf2ii_vs_wrapper.py` (5 tests). Reproduces rung 3 exactly: 100/100/100 on
+   all three voices at offset 0, n=294/286/82. It carries the fixed offset search (negative
+   offsets reachable, ranked by rate not raw hits) and its tests pin both properties, since each
+   caused a retracted conclusion.
 
 </current_state>

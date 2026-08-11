@@ -1005,6 +1005,17 @@ At offset 0, exactly. **SF2II plays our Stage B SF2 identically to our own
 render.** There is no SF2II-only hazard in these builds, which is precisely what
 rung 3 was there to establish.
 
+Reproduce it with `pyscript/sf2ii_vs_wrapper.py` (v3.25.0), which is this
+comparison rather than the editor-vs-original one:
+
+```
+py -3 pyscript/sf2ii_vs_wrapper.py out/hardtrack_native/Love_tune_2_part01.sf2                                    out/hardtrack_native/Love_tune_2_part01.sid 18
+```
+
+It lived in a scratch file until now, which is why the two retractions below
+were possible at all -- the only thing in the repo was `sf2ii_vs_real.py`, and
+that answers a different question.
+
 ### ⚠️ Two retracted readings, both from the same tool
 
 This section previously said rung 3 was *inconclusive* (tool unreliable), then
