@@ -517,10 +517,29 @@ keyed by `BlockType`, not `int` (I briefly concluded the Laxity block had no wor
 image bytes as `data[addr - load + 4]` disagrees with `self.memory[addr]` — the first made `$1fcb`
 look like `fe ff ff`, the second shows the real `a0 00 fe`. **Use `parser.memory`.**
 
-### 6. Remaining rung-4 brightness gap
-About half is unexplained after the passband fix (windowed step from 12 s on, centroid
-−58/−144/−70). ADSR/SR (item 3) is the best candidate. Note: the waveform lead was **retired** — see
-Attempted Approaches.
+### 6. Rung-4 brightness gap — **two leads FALSIFIED**, the third unprovable on this tune
+Re-measured at the render's real −3 alignment (`Love_tune_2` part 1, 28 s, 1,396 frames). Baseline
+reproduces exactly: centroid **−51.4 Hz**.
+
+- **Cutoff is NOT the cause — retired.** On the 757 frames where the original actually routes a
+  voice through the filter, cutoff is **100.0% byte-exact**. All 418 mismatches are on frames where
+  the routing nibble is 0 and the filter is out of circuit. ⚠️ The "cutoff 94.6%" figure on record
+  was measured over all frames and does not describe an audible defect.
+- **Frequency is NOT the cause.** All 206 mismatches carry the SID TEST bit or have the gate off —
+  the known structural note-on frame. 0 audible.
+- That leaves **SR (336 frames, all gate-off) + AD (28) + waveform (4)** as the only audible
+  register differences.
+- **The SR-tail hypothesis is not supported by the energy measurement.** Ringing tails predict our
+  render is LOUDER near those frames, locally. Measured per-frame RMS: **−0.84 dB** in the 1–8
+  frames after an SR mismatch vs **−1.17 dB** elsewhere — uniformly ~1.1 dB **quieter**, wrong sign
+  and no locality.
+- ⚠️ Not a clean falsification: this tune has an SR mismatch at every note-on across three voices,
+  so 1,055 of 1,400 frames sit within 8 frames of one and only **3** are clear. **No within-render
+  control exists on this material** — a tune with sparser note-ons would give one.
+
+**Next step, and it is now a weaker bet than the docs implied**: build the `HRC` per-note lookahead
+(item 3 explains why a row type cannot express it) and A/B the audio. That is the only decisive
+experiment left, but the register it targets does not move the energy in the predicted direction.
 
 </work_remaining>
 

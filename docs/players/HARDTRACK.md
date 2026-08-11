@@ -1084,6 +1084,64 @@ where the old search was already right. Galway and MoN use the same tool.
 
 ---
 
+## Rung 4's residual brightness gap: two leads FALSIFIED, one unprovable here
+
+"About half the brightness gap is still open" with ADSR named as the best
+candidate. Re-measured at the render's real −3 alignment over `Love_tune_2`
+part 1 (28 s, 1,396 frames), the picture is much narrower than that.
+
+**Baseline reproduces exactly**: centroid **−51.4 Hz**, rolloff −169.6 Hz,
+level −0.4 dBA — the documented post-passband figures.
+
+### Every register difference, and whether it can be heard
+
+| register | mismatching frames | audible? |
+|---|---|---|
+| cutoff `$D416` | 418 | **none** — 0 of 757 filter-routed frames differ; all 418 are on frames where `$D417`'s routing nibble is 0, i.e. the filter is out of circuit |
+| frequency | 206 | **none** — all 206 carry the SID **TEST** bit or have the gate off |
+| SR `$D406` | 336 | the only substantial one; every frame is gate-off (release tails) |
+| AD `$D405` | 28 | negligible |
+| waveform | 4 | negligible |
+
+⚠️ **The "cutoff 94.6%" figure quoted above does not describe an audible
+defect.** Restricted to the frames where the original actually routes a voice
+through the filter, the cutoff is **100.0% byte-exact (757/757)**. That lead is
+retired: it was measured over all frames, and the filter is not in circuit for
+most of them.
+
+Frequency is likewise exonerated for this purpose — its residual is entirely the
+known structural note-on frame, which carries TEST and is silent.
+
+### The SR-tail hypothesis is NOT supported by the energy measurement
+
+If the gap were our release tails ringing where HardTrack cuts them dead, our
+render would be **louder** than the original near those frames, and locally so.
+Rendered both with sidplayfp and measured per-frame RMS:
+
+| frames | level delta (ours − original) |
+|---|---|
+| 1–8 frames after an SR mismatch | **−0.84 dB** |
+| all other frames | −1.17 dB |
+| whole render | −1.08 dB |
+
+Our render is **uniformly quieter**, by about the same amount everywhere. Extra
+ringing tails predict the opposite sign and a local effect; neither appears.
+
+⚠️ **This is not a clean falsification, and the reason is worth recording**:
+`Love_tune_2` has an SR mismatch at every note-on across three voices, so 1,055
+of 1,400 frames sit within 8 frames of one and only **3 frames** are clear of
+all of them. There is no within-render control on this material, so the contrast
+above is between "very near a mismatch" and "slightly less near". A tune with
+sparser note-ons would give a real control.
+
+**What would settle it**: build the `HRC` per-note lookahead (see the SR-only
+row section below for why a row type cannot) and A/B the audio directly. That
+remains the only decisive experiment — but it is now a **less** promising one
+than the doc previously implied, because the register that was supposed to be
+the cause does not move the energy in the predicted direction.
+
+---
+
 ## The ADSR residual: an SR-only row was BUILT and REVERTED (v3.25.0)
 
 ADSR is the weakest register in the audible window (88–94%). The residual was
