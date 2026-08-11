@@ -915,8 +915,8 @@ refused".
 - **It windows.** Song length is bounded by the SF2II caps (`sidm2/sf2_caps.py`),
   and a dense tune becomes many parts; part count is a **density** measure, not
   an accuracy one.
-- **Rung 3 has now been run** — see *Rung 3* below. It is **inconclusive**, and
-  the reason is a property of the tool rather than of this build.
+- **Rung 3 has now been run and PASSES** — see *Rung 3* below. SF2II plays our
+  Stage B SF2 identically to our own render.
 - **`DriverSelector` is untouched**, deliberately, exactly as for Stage A.
 
 ---
@@ -955,11 +955,9 @@ that Stage B *failed* it. Both are wrong and both came from
    refers to. The native build (`out/mon/`) scores **100% on every register of
    every voice** (890/890, 863/863, 114/114), so the tool is sound.
 2. **"Stage B fails rung 3"** — the tool's `Love_tune_2` figures (freq
-   66/21/61%) are an alignment artifact. It picks ONE global offset by
-   maximising the summed frequency match across all three voices, which is a
-   compromise when the voices need different alignments. The same
-   wrapper-vs-original comparison, same 20 s window, same gating, same
-   1-semitone tolerance, done per voice:
+   66/21/61%) are an alignment artifact. The same wrapper-vs-original
+   comparison, same 20 s window, same gating, same 1-semitone tolerance, done
+   per voice:
 
    | voice | at offset 0 | at shift −3 | tool reported |
    |---|---|---|---|
@@ -975,8 +973,42 @@ per-voice best-offset is meaningful only against the render's *global* offset,
 and this render sits at −3 (`measure_voices` uses a best-delay alignment for
 exactly this reason). The retracted filter fix above failed the same way.
 
-`sf2ii_vs_real.py` would be more trustworthy with a per-voice offset rather than
-one summed global one — worthwhile tooling work, since Galway and MoN use it too.
+### The tool is FIXED (v3.25.0) — and the diagnosis above was wrong
+
+This section previously blamed the compromise on *one global offset where the
+voices need different alignments*, and recommended a per-voice search. **That
+was the wrong reading, and implementing it made things worse** (it picked
+offsets 5 / 317 / 147 for three voices that in fact share −3, because a
+repetitive tune has many spurious alignment peaks). The offset is genuinely
+global — it is one startup delay. Two real defects, both now fixed in
+`bin/sf2ii_vs_real.py`:
+
+1. **The search range was `range(0, 400)` — it could not express a negative
+   offset at all.** Our render *leads* the original by 3 frames, so the true
+   answer was never in the search space. The tool reported the offset-0 value as
+   though it were the build's fidelity.
+2. **It ranked offsets by raw hit count, not match rate.** Hits are confounded
+   by how many captured frames an offset leaves inside the trace window: offset
+   157 beat −3 on hits (208+43+52) purely by comparing more frames, at a far
+   worse rate (67/14/62%). Coverage is now a fairness *filter* — an offset that
+   can only compare half the frames is a smaller experiment, not a better
+   alignment — and rate is maximised within it.
+
+Re-measured with the fix, `Love_tune_2` part 1 vs the original, 20 s:
+
+| | offset | freq | waveform | pulse | AD/SR |
+|---|---|---|---|---|---|
+| osc1 | −3 | 91% (353/387) | **100%** | **100%** | **100%** |
+| osc2 | −3 | 93% (354/379) | **100%** | 98% | **100%** |
+| osc3 | −3 | 64% (59/92) | **100%** | **100%** | **100%** |
+| filter | −3 | cutoff **100%** (359/359) | | route **100%** | |
+
+The tool now finds −3 by itself and reproduces the hand-derived 91.2/93.4/64.1
+above. Waveform and AD/SR read 100% on all three voices where the bogus offset
+had shown 79/86/57. **Control**: MoN native `out/mon/Cybernoid_II_sub0_part01.sf2`
+still resolves to offset 0 with every per-metric figure byte-identical to the
+pre-fix run (984/987, 945/948, 126/126, cutoff 1000/1002) — the fix is a no-op
+where the old search was already right. Galway and MoN use the same tool.
 
 ---
 
@@ -1267,6 +1299,10 @@ never as pass/fail.
    previous session's program. Compare a few bytes at the load address against
    the file before believing a load happened.
 6. **Stage C: emit HardTrack's own programs instead of unrolled captures.**
+   ⛔ **The FM prong of this was implemented and REVERTED in v3.25.0** — the
+   8-program collapse is real and so is the 6 → 4 part win, but only at a
+   7–19 point frequency cost; guarded losslessly it accepts 1.7% and buys
+   nothing. See the boxed result below before restarting it.
    Stage B's part count is pure capture density, and `hardtrack_synth`'s
    register model now predicts what those captures contain. Emitting the
    player's looping wave/pulse programs directly is the lossless way to collapse
@@ -1332,6 +1368,55 @@ never as pass/fail.
    settles it. `ARP_STRUCT` is also still env-gated for MoN pending its sibling
    prongs ("all three caps must drop for the part count to fall"), so this
    remains a project across a builder shared by seven players, not a flag flip.
+
+   ### ⛔ IMPLEMENTED AND REVERTED (v3.25.0) — the prize is real, the trade is not
+
+   The prong above was built and measured end to end, and it **does not pay**.
+   Not reverted for difficulty: it works, and the collapse is exactly as
+   predicted. It was reverted because the collapse is only available at a price
+   this player's Stage B may not pay.
+
+   The structural program was emitted from the wave program's arp column with
+   semantics taken from `hardtrack_synth`'s `$1454` stepper (**not** from the
+   table bytes — three readings taken from the bytes were all wrong: `$FE` is a
+   stepper **FREEZE**, not a jump; `$FF` is the jump, target in the arp column;
+   and an arp byte with bit 7 set is an **absolute note**, which is how every
+   program in `Love_tune_2` opens — `$81`/`$cc`, a one-frame noise burst at note
+   76). Emitted that way, **1,028 of 1,327 note events collapse to exactly 8
+   distinct programs**, confirming the table above from the builder rather than
+   from a static count.
+
+   | build | parts | freq raw (v0/v1/v2) | audible |
+   |---|---|---|---|
+   | baseline (capture) | 6 | 92.8 / 92.9 / 95.1 | 88.2 / 77.3 / 91.5 |
+   | structural, existing `tol` guard | **4** | **84.7 / 85.8 / 88.1** | 78.8 / 58.5 / 82.0 |
+   | structural, exact guard (`tol = 0`) | 6 | 92.8 / 92.9 / 95.1 | 88.2 / 77.3 / 91.5 |
+
+   The middle row is the whole finding. The part-count win is genuine — 6 → 4,
+   with the binding cap moving off bundles onto instruments (32/32 in part 2) —
+   but it costs **7–8 points of raw frequency and up to 19 of audible**, and
+   per-voice misses roughly double (421 → 897, 412 → 832, 285 → 695). Those
+   extra misses are **not** on the driver's note-on frame, so they are not the
+   known unavoidable one; they are real. Two note-on phasings were tried (the
+   absolute prologue held as base, and dropped) and both regress — **the phase
+   is not the cost**, the substitution is.
+
+   Guarded losslessly the trade disappears in the other direction: with
+   `tol = 0` the fidelity is baseline to the frame, and the part count is
+   **still 6**, because only **148 of 8,526** candidate substitutions survive
+   the exact guard (**1.7%**). HardTrack's captured pitch almost never follows
+   the pure table arp, since vibrato, `$63`/`$64` slides and detune ride on
+   essentially every note — **which is the reason Stage B captures the synth
+   engine instead of modelling it in the first place.** The prong asks this
+   builder to go back to modelling the one dimension it deliberately stopped
+   modelling.
+
+   What would have to change first, for anyone picking this up: the structural
+   arp needs to compose with the per-note modulation rather than replace it (a
+   semitone arp *plus* the captured residual), because the residual is not
+   noise — it is most of the pitch signal. The 8-program collapse is available
+   the moment that exists. Until then a `tol`-guarded substitution is a
+   fidelity regression wearing a part-count win.
 7. **Rung 3 only now** (PLAYBOOK §4): an instrumented SF2II capture. ~~The
    listening pass~~ was run in v3.25.0 — see *Rung 4* above; it found no gross
    defect and a small real brightness/pitch-class difference, and is recorded as
