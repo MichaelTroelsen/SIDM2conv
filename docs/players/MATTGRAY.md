@@ -1,7 +1,10 @@
 # Matt Gray — player RE + Stage A
 
 **Status:** RE complete and Stage A shipped for **Driller, Last Ninja 2 (13 subtunes) and Tusker (4 subtunes)** — 18 tunes, all at 100% onset / 100% pitch on plain instruments.
-Native Stage B: TODO. Not wired into `DriverSelector`. Current headline figures:
+**Native Stage B: SHIPPED for Last Ninja 2** (`bin/build_mattgray_native_song.py`) —
+12 of 13 subtunes build, **98.16% audible per-frame frequency** (n=172,745),
+**16 of 36 voice-scores at exactly 100.0%**; subtune 7 is refused, not mis-built.
+See *Stage B* below. Not wired into `DriverSelector`. Current headline figures:
 `docs/reference/ACCURACY_MATRIX.md` (canonical; verified to match this doc 2026-08-09).
 
 Matt Gray wrote his own driver from scratch — it is **not** derived from
@@ -339,14 +342,77 @@ of table bytes), collects every `LDA abs,y`, then matches:
 | `bin/mattgray_to_sf2.py` | Stage A → Driver 11 SF2, with part windowing |
 | `pyscript/test_mattgray_parser.py` | 14 tests (skip cleanly without HVSC) |
 
+## Stage B — native, trace-driven (v3.26.0)
+
+`bin/build_mattgray_native_song.py`. **No new driver**: a MON-compatible shim
+feeds `build_mon_native_song.build_native_song`, the same engine behind
+Hawkeye / Hubbard / DMC / Sound Monitor / SDI / FC / HardTrack.
+
+### The four engines this did NOT have to reverse-engineer
+
+The old *Next* list called Stage B "the slide engine (`$fb`/`$fc` +
+A1[0]/A1[4]), the arpeggio table, the A0[4] pulse sweep, and the A0[7] bit0
+drum path" — four more engines to RE. **None was needed.** Stage B CAPTURES the
+synth side per frame from the original's own siddump, so whatever those engines
+did is what the driver replays. Only the SEQUENCER crosses the shim boundary —
+notes, durations, instrument indices — which is exactly the part Stage A had
+already validated to 100%. Pinned by
+`test_the_shim_does_not_model_the_synth_engine`.
+
+### Result — Last Ninja 2, 12 of 13 subtunes, full song length
+
+Per-frame frequency vs the original, **audible** column (frames where the
+ORIGINAL's gate is on); `raw` includes gate-off frames nothing can hear.
+
+| sub | v0 | v1 | v2 | | sub | v0 | v1 | v2 |
+|---|---|---|---|---|---|---|---|---|
+| 0 | **100.0** | 99.5 | 99.8 | | 6 | 98.7 | 98.5 | 97.4 |
+| 1 | 96.7 | 99.9 | 95.0 | | 8 | **100.0** | **100.0** | 99.9 |
+| 2 | **100.0** | **100.0** | **100.0** | | 9 | **100.0** | **100.0** | **100.0** |
+| 3 | 94.6 | 98.8 | **100.0** | | 10 | **100.0** | **100.0** | **100.0** |
+| 4 | 98.4 | **100.0** | 98.7 | | 11 | 98.7 | 94.9 | **100.0** |
+| 5 | 99.2 | **100.0** | 92.4 | | 12 | 97.4 | 85.8 | 98.0 |
+
+**n-weighted mean 98.16%** over 172,745 audible frames; **16 of 36 voice-scores
+at exactly 100.0%**. Quote raw AND audible, never one alone.
+
+### Two decisions made by measuring
+
+- **`snap_gate` is OFF**, against HardTrack's ON. Chosen on the corpus, not on
+  one file: `False` scores **98.16%** vs `True`'s 97.87%, is better on **5**
+  voices and worse on **none**, and moves exactly-100.0% voices from 15/36 to
+  16/36. Strictly dominant. `MG_SNAP=1` restores the other setting.
+- **Subtune 7 is REFUSED, not built.** It is the only one of the 13 whose final
+  pattern the relocating copy truncates (`song.truncated_patterns == 1`), and
+  the only one that renders catastrophically — voice 0 at **1.9%** audible
+  against 92-100% everywhere else. A 1:1 correlation with a named cause is not
+  a residual for a table; it is a file we cannot build, and the builder says so
+  rather than emitting a plausible-looking SF2. `MG_ALLOW_TRUNCATED=1`
+  overrides for investigation.
+
+### Verified, not assumed
+
+`filter=0` on every part is **correct**, not a missing capture: the filter and
+passband traces are one constant value across the whole tune, so Last Ninja 2
+genuinely never filters. (Checked because a silently-absent `passband_trace`
+had already rebuilt HardTrack and DMC low-pass — see `HARDTRACK.md` rung 4.)
+
+⚠️ The locator reports `layout='signature'`, not the validated `driller` fast
+path, for every Last Ninja 2 subtune. The decode is therefore unverified in the
+sense `MATTGRAY.md` uses everywhere else; the builder prints that on every run.
+
 ## Next
 
-1. Play-test the Stage A parts in real SID Factory II (the only thing that
-   catches SF2II-only hazards).
-2. Generalise the locator past Driller — the other 54 files are per-game
+1. Play-test the Stage B parts in real SID Factory II (PLAYBOOK §4 rung 3) —
+   use `pyscript/sf2ii_vs_wrapper.py`, which compares the editor against our
+   own wrapper render rather than against the original.
+2. A listening pass (rung 4) — no Matt Gray build has ever had one.
+3. Extend Stage B past Last Ninja 2: Driller (2 subtunes) and Tusker (4) parse
+   today and should need nothing but a run.
+4. Generalise the locator past Driller — the other 54 files are per-game
    builds; `verify()` will refuse them loudly rather than mis-parse.
-3. Stage B native driver: the slide engine ($fb/$fc + A1[0]/A1[4]), the
-   arpeggio table, the A0[4] pulse sweep, and the A0[7] bit0 drum path.
+5. Subtune 7's truncated pattern: recover the missing bytes from the
+   relocating copy, or confirm the rip itself is short.
 
 ## Sources
 
