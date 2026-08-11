@@ -415,6 +415,60 @@ our build faithfully, so it should pass regardless of fidelity — and it does,
 which places subtune 12's residual on the conversion side, not the editor's.
 The first Matt Gray build ever to clear rung 3.
 
+### Rung 4 — the first listening pass, and the defect it found
+
+No Matt Gray build had ever had one. `Last_Ninja_2` subtune 0, 25 s, original
+vs the Stage B render.
+
+**Whole-file features are very close** — level identical (−17.8 dBFS both,
++0.2 dBA), centroid **+10.3 Hz**, rolloff +33.7 Hz, flatness −0.009, pitch
+classes essentially unchanged (largest shift 0.020). For scale, HardTrack's
+first pass was −99 Hz on centroid.
+
+**But the onset match is 62.1%** (157 of 253) — and here that number is
+interpretable, because the floor was measured properly rather than assumed:
+
+| comparison | matched |
+|---|---|
+| original vs **itself** | 100.0% (trivially — same file) |
+| original vs **itself delayed exactly one frame** | **100.0%**, 0 missing, 0 extra |
+| original vs **Stage B** | **62.1%**, 96 missing, 69 extra |
+
+The middle row is the one that matters. The render sits one frame late, and the
+tool's offset removal handles that perfectly, so **the 38-point gap is not
+alignment** — it is real.
+
+#### The defect: the voice-off waveform is not reproduced
+
+Every per-voice register is byte-exact over **gate-on** frames — waveform,
+pulse, frequency **100.0% on all three voices** (n=2,636), and AD/SR 100.0% on
+all 1,248 frames. Which is exactly why this was invisible: the builder's
+fidelity report scores **frequency on gate-on frames and nothing else**.
+
+Scored over **all** frames instead:
+
+| voice | waveform | pulse | freq |
+|---|---|---|---|
+| 0 | **84.6%** | 100.0% | 84.6% |
+| 1 | **84.6%** | 100.0% | 83.6% |
+| 2 | 100.0% | 100.0% | 66.7% |
+
+The whole waveform residual is one substitution: the original writes **`$00`**
+— no waveform bits at all, so the oscillator is silent — on **192 frames per
+voice**, and the render writes **`$40`** (pulse, gate off) instead. The
+original goes quiet; ours keeps releasing a tone.
+
+Corroborated independently by the feature summary, which measures the same
+thing from the audio without knowing about registers: **silence fraction 0.2%
+(original) → 0.0% (ours)**. Our render never falls fully silent.
+
+This is the same *class* as HardTrack's `$D418` passband defect — a real
+audible difference that no headless number in this builder's own report could
+move, found only by listening. The likely fix is the shared driver's existing
+`RELEASE_WF` path (a per-instrument release waveform written verbatim on
+gate-off frames, instead of `program & $fe`), which Sound Monitor already uses;
+it is **not** attempted here.
+
 ### Two decisions made by measuring
 
 - **`snap_gate` is OFF**, against HardTrack's ON. Chosen on the corpus, not on
