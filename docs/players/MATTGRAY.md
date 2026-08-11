@@ -636,21 +636,68 @@ defect, and amplitude-domain measures are nearly blind to one. That is the
 calibration doc's own finding (`docs/AUDIO_LISTENING_CALIBRATION.md`: which
 feature is informative is defect-dependent) holding on a fourth case.
 
-#### What is still open, stated plainly
+#### What is still open — and a retraction of the candidate above
 
-The audio gap is **narrowed, not closed**. Per 2-second window, with each
-window independently aligned, identical material correlates at **0.98** and our
-render at **0.78** — and that deficit is **uniform across the song**, not
-localized. (A fixed-offset view made it look concentrated at 18-24 s; per-window
-alignment dissolved that, so do not chase the section.)
+**Correction to the numbers first published here.** The per-window figure was
+quoted as "0.78 against a 0.98 floor". The 0.78 was an artifact: the alignment
+search stepped in 441-sample (10 ms) hops, which is coarser than a 1024-sample
+FFT window is sensitive to, and the *same* comparison scored 0.98 in one run
+and 0.87 in another. With a coarse pass plus a 32-sample refine the measurement
+is stable and both floors agree:
 
-That sits against per-frame register state now being essentially exact. The
-leading candidate is therefore something the per-frame model **cannot see**:
-siddump reports one value per register per frame, so a playroutine that writes a
-register **twice within a frame** (a gate-off/gate-on hard-restart blip, an ADSR
-poke) is invisible to every number in this document, while changing the envelope
-on every note. The envelope measure being the one furthest below its floor
-(0.817 vs 0.971-0.993) is what points there. **Not attempted, and not claimed.**
+| per-window magnitude spectrogram, mean over 4 s+ | |
+|---|---|
+| floor, orig vs itself @ delay 1000 / 4000 cy | **0.9810 / 0.9828** |
+| before | 0.8457 |
+| after | **0.8545** |
+
+So the gap is ~0.13, not ~0.20. It is still **uniform** — 0.83-0.85 in every
+window from 4 s on, at a stable -63 ms offset with no drift — and the first two
+windows are where the rest fix shows most (0-2 s: 0.552 → 0.735; 2-4 s: 0.768 →
+0.953). Per band, the residual is **broadband**, worst in 3-8 kHz:
+
+| band | floor | before | after |
+|---|---|---|---|
+| 0-400 Hz | 0.960 | 0.691 | 0.694 |
+| 400-1200 | 0.808 | 0.529 | **0.572** |
+| 1200-3000 | 0.836 | 0.528 | **0.591** |
+| 3000-8000 | 0.932 | 0.481 | 0.506 |
+| 8000+ | 0.966 | 0.558 | 0.574 |
+
+**The "register written twice within one frame" candidate is FALSIFIED.** A
+cycle-accurate VICE trace of both sides (1,250 frames each; the original's
+reconstructed state validates at **100.00%** against siddump over 3,570
+comparisons) says our driver already reproduces it:
+
+| within one play call | original | ours |
+|---|---|---|
+| control-register gate blips (v2 / v0 / v1) | 104 / 20 / 16 | **105 / 21 / 16** |
+| note-ons writing freq BEFORE gate-on | 107 | **108** |
+| mid-call value changes, total | 157 | 142 |
+
+Our driver issues 16.5 writes per call against the original's 7.2, but the
+excess is **536 same-value re-writes**, which change nothing. The writes must be
+grouped by **play call, not by the tracer's frame window** — the tracer's
+boundary does not coincide with the player's IRQ, so a frame holds the tail of
+one call and the head of the next, and counting those together invents
+mid-frame changes that never happened. That confound produced a 764-vs-161
+reading that was wrong.
+
+One real difference survives and is far too small to be the cause: the original
+makes **16 mid-call frequency changes** (v0 freq_lo 9, v1 freq_lo 6, v2 freq_hi
+1 over 1,249 calls) that we never make.
+
+**So the cause of the remaining gap is unidentified.** Per-frame register state
+is essentially exact, within-call write pattern and order are reproduced, and
+the audio still sits 0.13 below a floor measured on the same tune. Naming a
+fourth candidate without testing one would be guessing.
+
+⚠️ **Tooling note for whoever picks this up**: `tools/sidm2-sid-trace.exe`
+**cannot trace this file** — 0 writes at 400 frames on subtunes 0, 1 and 2,
+while exiting 0. Use the VICE wrapper
+(`sid-reference-project/scripts/dev/vsid-trace.js --frames N --song 1 --json`),
+which validated at 100.00% here, and validate it against siddump again before
+reading anything into it.
 
 ### Two decisions made by measuring
 
@@ -681,14 +728,13 @@ sense `MATTGRAY.md` uses everywhere else; the builder prints that on every run.
 
 Rungs 3 and 4 are done and Stage B covers all three games; what is left:
 
-1. **The uniform audio deficit** — 0.78 per-window spectrogram against a 0.98
-   floor, with per-frame registers essentially exact. Leading candidate:
-   register writes that happen **twice within one frame**, which siddump's
-   per-frame model cannot see and which would move the envelope on every note.
-   The cheapest first probe is a cycle-accurate trace (`tools/sidm2-sid-trace.exe`
-   or the VICE wrapper) counting `$D404`/`$D405`/`$D406` writes per frame in
-   the original. See the rung-4 section for why the envelope measure is what
-   points there.
+1. **The uniform audio deficit** — 0.855 per-window spectrogram against a
+   0.981-0.983 floor, broadband, with per-frame registers essentially exact
+   AND within-call write pattern/order already reproduced. The within-frame
+   candidate has been falsified (see above), so there is **no standing
+   hypothesis**. Do not start by proposing one: start by finding a *single*
+   window and voice where the two renders audibly differ and the registers do
+   not, and work from that instance.
 2. Generalise the locator past Driller — the other 54 files are per-game
    builds; `verify()` will refuse them loudly rather than mis-parse. Every Last
    Ninja 2 subtune still decodes via `layout='signature'`, so all 16 built
