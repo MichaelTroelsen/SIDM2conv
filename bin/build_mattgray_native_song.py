@@ -68,6 +68,15 @@ class MattGrayShim:
     # same reason; leaving it on freezes such a note at the wrong absolute
     # frequency for its whole tail while its waveform stays byte-exact.
     no_fm_scale = 1
+    # Gate-off frames write this instrument's RELEASE waveform verbatim instead
+    # of the driver's default `program & $fe`. Matt Gray needs it: the player
+    # writes $00 -- no waveform bits at all, so the oscillator is SILENT -- on
+    # the gate-off frames of some instruments, while others really do keep
+    # `waveform & $fe`. Measured on Last_Ninja_2 sub 0, gate-off frames:
+    # voice 0 is $00 x193, voice 1 is $00 x193 + $40 x97, voice 2 is $10 x624.
+    # A single constant cannot express that; a per-instrument byte can.
+    # Derived from the trace by `release_waveforms()`, never from a flag bit.
+    release_wf = 1
 
     def __init__(self, song, frames=SCAN_FRAMES):
         self.song = song
@@ -155,7 +164,51 @@ class MattGrayShim:
         return {'ad': ins.ad, 'sr': ins.sr,
                 'waveform': ins.waveform or 0x41,
                 'pw': ins.pulse_width or 0x800, 'pulseval': 0, 'fx': 0,
-                'wave_prog': 0, 'flags': ins.flags, 'raw': list(ins.raw)}
+                'wave_prog': 0, 'flags': ins.flags, 'raw': list(ins.raw),
+                # falls back to the driver's default when the trace never showed
+                # this instrument releasing (see release_waveforms)
+                'release_wf': getattr(self, '_relwf', {}).get(
+                    idx % max(1, len(self.song.instruments)),
+                    (ins.waveform or 0x41) & 0xFE)}
+
+
+def release_waveforms(shim, per_frame):
+    """{instrument: release waveform byte}, measured from the original's trace.
+
+    Stage B captures rather than models, and this is the same idea one level
+    up: instead of hunting for the instrument-record bit that decides whether a
+    voice is silenced on release, look at what the player ACTUALLY wrote to
+    $D404 while each instrument was ringing out.
+
+    For every note the sequencer decoded, walk the frames from its gate fall to
+    the next note on that voice and take the modal gate-off waveform. A voice
+    that is never released under an instrument contributes nothing, and that
+    instrument keeps the driver's default (`waveform & $fe`) rather than being
+    assigned a guessed byte.
+    """
+    import collections
+    votes = collections.defaultdict(collections.Counter)
+    for v in range(3):
+        evs = shim.events[v]
+        for i, e in enumerate(evs):
+            if e.is_rest:
+                continue
+            start = e.frame
+            end = evs[i + 1].frame if i + 1 < len(evs) else start + 200
+            for f in range(start, min(end, len(per_frame))):
+                wf = per_frame[f][0][v]['wf']
+                if wf is None or (wf & 1):
+                    continue                 # still gated on -- not a release
+                votes[e.instrument][wf] += 1
+    out = {}
+    for instr, c in votes.items():
+        wf, n = c.most_common(1)[0]
+        # only accept a byte the instrument actually spends its releases on;
+        # a near-tie means the release depends on something this does not
+        # model, and the default is safer than a coin flip.
+        if n >= 0.6 * sum(c.values()):
+            out[instr] = wf
+    return out
 
 
 def song_span_frames(shim):
@@ -265,6 +318,12 @@ def main():
               BM.filter_trace(SID, SUB, secs),
               BM.passband_trace(SID, SUB, secs))
     shim.main_vol = BM.master_volume(SID, SUB, secs)
+    shim._relwf = release_waveforms(shim, traces[0])
+    if shim._relwf:
+        import collections as _c
+        dist = _c.Counter(f"${w:02x}" for w in shim._relwf.values())
+        print(f"  release waveforms: {len(shim._relwf)} instrument(s) "
+              f"{dict(dist)}")
 
     parts = build_song(shim, base, traces, span)
 

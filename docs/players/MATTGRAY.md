@@ -469,6 +469,43 @@ move, found only by listening. The likely fix is the shared driver's existing
 gate-off frames, instead of `program & $fe`), which Sound Monitor already uses;
 it is **not** attempted here.
 
+#### The waveform half is FIXED (`release_wf`)
+
+The driver already had the mechanism — `RELEASE_WF`, a per-instrument release
+waveform written verbatim on gate-off frames instead of `program & $fe`, which
+Sound Monitor uses. It is a **shim flag, not a driver change**.
+
+The release byte is **derived from the trace, not from a flag bit**
+(`release_waveforms()`): for every decoded note, walk from its gate fall to the
+next note on that voice and take the modal gate-off waveform. An instrument
+whose releases are never observed keeps the driver's default rather than being
+assigned a guess, and a near-tie (< 60%) is rejected for the same reason. It is
+genuinely per-instrument — sub 0 derives `$40`/`$80`, sub 12 derives `$00`.
+
+**Waveform over ALL frames: 84.6% → 100.0% byte-exact on all three voices.**
+No headline regression on the three subtunes re-checked (0, 9, 12).
+
+#### ⚠️ The audio gap is NOT closed, and the cause is not established
+
+Onset match moved only **62.1% → 63.6%**, and silence fraction is still
+0.2% → 0.0%. A direct waveform correlation of the two renders — with the
+correlator validated first (1.0000 against itself, 0.9759 against a one-frame
+delayed copy, recovering the offset exactly) — gives **0.579** at a stable
+−2.18 frame offset, with no drift across 11 windows. So the audio really does
+differ, and it is not a timing artifact.
+
+That sits against gate-on frames being byte-exact on **every** register:
+waveform, pulse, frequency, AD, SR, and the global filter/volume. The
+difference is confined to **gate-off frames**, where our render writes freq
+`$010C` and pulse `180` against the original's `0000`/`000` — a voice in
+RELEASE is still sounding, so that is the leading candidate and the next thing
+to test.
+
+One metric to distrust on the way: raw siddump rows agree only 37.7%, but that
+compares *write patterns* rather than state — siddump prints `...` for a
+register not written that frame, and our driver writes a different set each
+frame. Fill-forward state is the fidelity measure; raw-row equality is not.
+
 ### Two decisions made by measuring
 
 - **`snap_gate` is OFF**, against HardTrack's ON. Chosen on the corpus, not on
