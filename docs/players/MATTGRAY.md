@@ -1,7 +1,8 @@
 # Matt Gray — player RE + Stage A
 
 **Status:** RE complete and Stage A shipped for **Driller, Last Ninja 2 (13 subtunes) and Tusker (4 subtunes)** — 18 tunes, all at 100% onset / 100% pitch on plain instruments.
-**Native Stage B: SHIPPED for Last Ninja 2** (`bin/build_mattgray_native_song.py`) —
+**Native Stage B: SHIPPED** (`bin/build_mattgray_native_song.py`) — **16 tunes across
+Last Ninja 2, Driller and Tusker**; for Last Ninja 2 —
 12 of 13 subtunes build, **98.16% audible per-frame frequency** (n=172,745),
 **16 of 36 voice-scores at exactly 100.0%**; subtune 7 is refused, not mis-built.
 See *Stage B* below. Not wired into `DriverSelector`. Current headline figures:
@@ -375,6 +376,44 @@ ORIGINAL's gate is on); `raw` includes gate-off frames nothing can hear.
 
 **n-weighted mean 98.16%** over 172,745 audible frames; **16 of 36 voice-scores
 at exactly 100.0%**. Quote raw AND audible, never one alone.
+
+### Driller and Tusker build too (v3.26.0)
+
+The shim is not Last-Ninja-specific -- the other two games needed nothing but a
+run. Every one of these fits its **full ~120 s in a single part**.
+
+| tune | v0 | v1 | v2 |
+|---|---|---|---|
+| Driller sub 1 | **100.0** | 96.0 | 89.4 |
+| Tusker sub 0 | 99.2 | 97.7 | 89.6 |
+| Tusker sub 1 | 99.8 | 99.3 | 88.7 |
+| Tusker sub 2 | **100.0** | 99.9 | 95.5 |
+| Tusker sub 3 | 99.2 | 98.0 | 99.0 |
+
+Driller subtune 0 is refused by the parser (`address $0000 outside image`),
+which is consistent with the documented gotcha that its PSID declares 2
+subtunes while `init` forces tune 1 for both. **16 tunes build across the three
+games.**
+
+⚠️ Voice 2 is the weak voice on Driller and Tusker (88.7-95.5) where it is not
+on Last Ninja 2. Unexplained, and recorded as such rather than averaged away.
+
+### Rung 3 — the instrumented SF2II capture: **PASSES**
+
+`pyscript/sf2ii_vs_wrapper.py`, comparing the editor against **our own wrapper
+render** (both carry the same driver and data, so this isolates editor-vs-us
+from conversion-vs-original):
+
+| build | freq | waveform | pulse | n |
+|---|---|---|---|---|
+| `Last_Ninja_2_sub09_part01` | **100.0%** | **100.0%** | **100.0%** | 900 / 788 / 255 |
+| `Last_Ninja_2_sub12_part01` | **100.0%** | **100.0%** | **100.0%** | 516 / 708 / 900 |
+
+At offset 0, both. The second is deliberately the **weakest** subtune (voice 1
+scores 85.8% against the original): rung 3 tests whether the editor executes
+our build faithfully, so it should pass regardless of fidelity — and it does,
+which places subtune 12's residual on the conversion side, not the editor's.
+The first Matt Gray build ever to clear rung 3.
 
 ### Two decisions made by measuring
 
