@@ -1073,6 +1073,71 @@ where the old search was already right. Galway and MoN use the same tool.
 
 ---
 
+## The ADSR residual: an SR-only row was BUILT and REVERTED (v3.25.0)
+
+ADSR is the weakest register in the audible window (88–94%). The residual was
+recorded as "systematic — HardTrack's pre-note-on SR-zeroing on frames that
+precede the capture window", with the fix given as an **SR-only `$7D` variant**
+and its audible value marked unproven. The mechanism is confirmed, the fix as
+specified does not work, and the reason is structural rather than a detail.
+
+### What was confirmed
+
+Measured on `Love_tune_2`, 996 frames per voice at the render's −3 alignment:
+
+| | voice 0 | voice 1 | voice 2 |
+|---|---|---|---|
+| AD `$D405` differs | **0** | 9 | 19 |
+| SR `$D406` differs | 68 | 67 | 107 |
+| dominant mismatch | `ours=$3a → orig=$00` | same | same |
+
+So `hard_restart = 1` really is the wrong fix — the `$7D` row zeroes AD as well,
+and AD is already essentially right. Two further facts, both measured:
+
+- **Every** SR-mismatch frame has the original's gate **OFF** — 68/68, 67/67,
+  107/107. The difference can only ever affect a *release tail*, never a
+  sounding note's attack or body.
+- The original writes `SR=$00` on frames ≡ 1 (mod 5) with `frames_per_tick = 5`,
+  i.e. at **row dispatch**, `onset_delay − 1` frames before the note reaches the
+  SID, staggered per voice. 68 ≈ 2 × 35 note-ons: **exactly two frames per
+  note**. (An intermediate reading called this "periodic, not pre-note-on" and
+  was wrong — the periodicity *is* the note cadence.)
+
+This is the classic hard restart, and it is the same mechanism that turned out
+to be genuinely audible on Blackbird (the "drums aren't tight" root cause was a
+pre-restart SR/gate blip), so "audible value unproven" is weaker than it looks.
+
+### What was built, and why it was reverted
+
+A `$7C` **SR-only kill row** — `lda #$00 / sta SID+6,y`, leaving AD, the gate and
+the waveform alone — gated behind a new `SR_KILL` driver flag and a shim flag
+`sr_restart`, emitted one row before each note in the manner of `_hr_rows`.
+
+It assembles, builds all six parts, and **changes nothing**: SR mismatches stay
+at exactly 68/67/107 and frequency is unchanged at 92.8/92.9/95.1.
+
+The reason is structural. Stage B **folds gate-offs into the preceding note** (a
+deliberate decision documented above — emitting a rest there idles the voice and
+throws away the arpeggiated release tail), so the whole song contains just **90
+rest rows out of 30,477**, of which only **30** precede a note. The original
+zeroes SR before *every* note — 112 note-ons in 20 s alone. Notes are
+back-to-back, and converting a note row to `$7C` would delete music, which the
+emitter correctly refuses.
+
+**A row type cannot express this.** The write has to land between row dispatch
+and note-on, which in this driver is not a row boundary at all — it needs a
+per-note lookahead. The driver already has the shape of one: `HRC`, the
+HARD_RESTART re-arm countdown, whose own comment records that the "1-frame-early
+HRC write was the dump diff's adsr residual" and that it is deliberately left at
+0. That is where a correct fix would go, and it is a materially bigger change
+than a new row — in a driver shared by seven players, for an effect bounded to
+release tails on gate-off frames.
+
+Reverted; the driver and both builders are byte-identical to before, and the
+rebuilt part 1 reproduces 92.8/92.9/95.1 exactly.
+
+---
+
 ## Rung 4: the first listening pass (v3.25.0)
 
 Every fidelity number in this document above is **headless**. PLAYBOOK §4 rung 4

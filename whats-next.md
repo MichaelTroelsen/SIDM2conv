@@ -440,15 +440,27 @@ AD/SR **100%** on all three voices (79/86/57% at the bogus offset), filter cutof
 Control: MoN `out/mon/Cybernoid_II_sub0_part01.sf2` still resolves to offset 0 with every
 per-metric figure byte-identical to the pre-fix run (984/987, 945/948, 126/126, cutoff 1000/1002).
 
-### 3. SR-only `$7D` row (asm, shared driver)
-ADSR is the weakest register in the audible window (88–94%) and the residual is systematic: AD
-always agrees while the original writes SR = `$00` — HardTrack's pre-note-on hard restart, on frames
-that **precede** the per-note capture window.
-- ⚠️ `hard_restart = 1` is **provably wrong**: `_hr_rows` makes the driver's `$7D` row zero **AD and
-  SR**, while HardTrack never touches `$D405` (AD differs on **0 / 10 / 20** of 1,397 frames).
-- A correct fix needs an **SR-only** `$7D` variant in `drivers_src/mon/`, shared by seven players.
-  Audible value **unproven** — the cutoff-alignment episode is a live example of a large register
-  gain buying nothing audible.
+### 3. ~~SR-only `$7D` row~~ — **BUILT and REVERTED**; a row type cannot express it
+The mechanism is confirmed and the `$7D`-is-wrong finding holds (AD differs on 0/9/19 frames,
+SR on 68/67/107). Two new measured facts:
+- **Every** SR-mismatch frame has the original's gate **OFF** (68/68, 67/67, 107/107), so the
+  effect is bounded to *release tails* — it can never touch a sounding note's attack or body.
+- The original writes `SR=$00` at **row dispatch**, `onset_delay − 1` frames before the note
+  reaches the SID: frames ≡1 mod 5 with `frames_per_tick=5`, and 68 ≈ 2×35 note-ons =
+  **exactly 2 frames per note**. (An intermediate reading called this "periodic, not
+  pre-note-on" — wrong; the periodicity *is* the note cadence.)
+
+A `$7C` SR-only row (`lda #$00 / sta SID+6,y`, leaving AD/gate/waveform alone) behind a new
+`SR_KILL` flag was implemented, assembled and built — and **changed nothing**: SR stays
+68/67/107, frequency unchanged. Stage B folds gate-offs into the preceding note, so the song has
+**90 rest rows of 30,477** and only **30** precede a note, against 112 note-ons in 20 s. Notes are
+back-to-back and converting a note row would delete music.
+
+**What a correct fix needs**: the write lands between row dispatch and note-on, which is not a row
+boundary — it needs a per-note lookahead. The driver already has the shape: `HRC`, the
+HARD_RESTART re-arm countdown, deliberately left at 0 because "the 1-frame-early HRC write was the
+dump diff's adsr residual". Bigger than a row type, in a driver shared by seven players, for an
+effect bounded to release tails. Reverted byte-identical; rebuild reproduces 92.8/92.9/95.1.
 
 ### 4. ~~Second build's remaining 47 frames~~ — **DONE**, 47 → 18 (and it was not a mapping gap)
 The premise was wrong. They were not "the variables the second build's layout does not expose":
