@@ -283,6 +283,58 @@ python pyscript/accuracy_heatmap_tool.py file_a.sid file_b.sid -f 500
 
 ---
 
+### Instrument Map ⭐ NEW
+
+Which instrument is sounding on each siddump frame — the join that turns a
+per-*voice* fidelity number into a per-*instrument* one.
+
+Note onsets are keyed by **ADSR**: in many players `$D405`/`$D406` is a verbatim
+per-instrument copy of the instrument record, so it identifies an instrument
+where waveform cannot (several instruments share one) and pulse cannot (a swept
+width has no single value). That is not a general law — the tool's **first**
+output is always a verdict on whether the key holds in this file at all, and it
+emits no table when it does not.
+
+**Usage**:
+```bash
+# Map a conversion against its original
+instrument-map.bat SID\Angular.sid SF2\Angular.sf2
+
+# ...and append Ins1/Ins2/Ins3 columns to siddump's own table
+instrument-map.bat SID\Angular.sid SF2\Angular.sf2 --annotate dump.txt
+
+# Just the key verdict + per-instrument profile of the original
+instrument-map.bat SID\Angular.sid
+
+# Grade the ADSR key across a spread of players
+python pyscript/instrument_map_sweep.py -n 2
+```
+
+**What it reports**:
+1. **Key verdict** — `reliable` / `degenerate` / `suspect` / `insufficient-data`
+   / `no-trace` / `unusable`, with the numbers behind it.
+2. **Where the instrument table is** — found by **search**, never by a constant
+   (reading `SF2/Angular.sf2` at Driver 11's documented `$1A03` matches 0 of 10
+   sounded envelopes; that file is Laxity, at `$1A6B`). Both row-major and
+   column-major layouts.
+3. **Mapping** — per record: the original's modal waveform and note count
+   against ours, plus envelopes the original sounds that no record declares.
+4. **Profile from the original** — waveform per frame, pulse band at onset *and*
+   over the whole note, pitch fall, gate-off frame.
+
+`sidm2.instrument_map.InstrumentScores` splits any existing per-frame comparison
+by record and sums back to the caller's own total; it is wired into HardTrack
+Stage B, where voice 0's 95.9% resolves to records 7 / 4-5 / 8 (77.8-88.5%)
+against records 0 and 1 (96.4-97.2%).
+
+**Caveat**: a register comparison, not a sound comparison. It sees a wrong
+sustain or an invented hard restart; it cannot see an envelope that is right but
+arrives three frames late. A register trace localises — it does not adjudicate.
+
+**See**: [docs/plans/INSTRUMENT_MAP_PLAN.md](docs/plans/INSTRUMENT_MAP_PLAN.md)
+
+---
+
 ### Batch Analysis Tool ⭐ NEW
 
 Multi-pair SID comparison engine with aggregate reporting and validation integration.

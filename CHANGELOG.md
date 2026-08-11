@@ -23,6 +23,66 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+### Instrument map: which instrument is sounding on each siddump frame
+
+Every fidelity number in this repo was per voice and per register. A HardTrack
+Stage B run said "voice 0: 95.9%"; nothing could say *which instrument* lost the
+frames. This adds the join that answers it, ported from
+[h2g](https://github.com/MichaelTroelsen/h2g)'s `instrmap.py` by way of
+`sid-reference-project`'s `instrument-map.js`, and generalised again here.
+
+The key: in many players `$D405`/`$D406` is a **verbatim per-instrument copy** of
+the instrument record, so it identifies an instrument where waveform cannot
+(several share one) and pulse cannot (a swept width has no single value). h2g
+measured that at "0 of 1635 corpus records differ" — **on one player family**, so
+the first thing the tool does is decide whether the key holds at all.
+
+**Added**
+- `sidm2/instrument_map.py` — onsets sampled at the first *settled* frame, a
+  five-way verdict on the key, an instrument-table **search** (row-major and
+  column-major), the map, per-instrument profiles, siddump annotation, and
+  `InstrumentScores` for splitting any per-frame comparison by record.
+- `instrument-map.bat` / `pyscript/instrument_map_report.py` — the report, with
+  `--annotate` appending `Ins1 Ins2 Ins3` columns to siddump's own table.
+- `pyscript/instrument_map_sweep.py` — the key-verdict calibration sweep.
+- `pyscript/test_instrument_map.py` — 31 tests.
+- `bin/build_hardtrack_native_song.py` — a **PER INSTRUMENT** block under the
+  existing per-voice fidelity table, fed from the identical match result the
+  voice totals use so the split **sums back** (asserted in the run and in a test).
+
+**What it found immediately.** `Love_tune_2` voice 0's 95.9% splits into records
+1 (97.2%, n=745) and 0 (96.4%, n=640) against records 7 (77.8%, n=36), 4/5
+(86.7%) and 8 (88.5%); voice 1's residual is record 11 (78.5%, n=107). The
+residual now names a record instead of a voice.
+
+**Discipline, all of it paid for by being wrong once first**
+- The table is **located by search, never by constant**. Reading
+  `SF2/Angular.sf2` at Driver 11's documented `$1A03` matches 0 of 10 sounded
+  envelopes — that file uses the Laxity driver, at `$1A6B`. Same failure as
+  `80b5a72`.
+- **Aliases are collapsed.** A stride-N grid explains the same bytes from every
+  base N·k earlier; ranking by base renumbered every Angular instrument by +20.
+  The survivor assumes the first *sounded* record is record 0, which the report
+  states — Driver 11's own test tunes never sound slot 0, so the search reports
+  `$1D3B` where the truth is `$1D3A`.
+- **`no-trace` is not `insufficient-data`.** 0 onsets from an undriven file and 0
+  onsets from a player that never gates are separated; pooling them files a
+  tooling failure as a property of the music.
+- **`incomplete` is not `layout-wrong`.** A minority miss does not falsify an
+  address the majority independently confirms. `SID/Angular.sid` sounds `$0028`
+  50 times and **neither** the conversion **nor the original** declares it — both
+  sides reproduce it byte for byte, so the orphan table gained an `our notes`
+  column to tell a blind spot in the key from a conversion gap.
+- The unsettled-ratio test runs **before** the distinct-value tests: a hard
+  restart produces exactly the small tidy value set those tests reward.
+  `Tel_Jeroen/05-09-87.sid` is `unusable` on 372 of 372 unsettled onsets.
+- `--annotate` round-trips **byte for byte**, CRLF included — `splitlines()` eats
+  the carriage return and a `str` comparison still passes.
+
+Key-verdict spread over 27 files / 13 player directories: 16 reliable, 6
+insufficient-data, 2 no-trace, 2 degenerate, 1 unusable.
+
+Plan, acceptance criteria and findings: `docs/plans/INSTRUMENT_MAP_PLAN.md`.
 ---
 
 ## [3.26.0] - 2026-08-11
