@@ -62,14 +62,17 @@ def main():
 
     h = SIDParser(sid).parse_header()
     subtune = sub_arg if sub_arg is not None else (h.start_song or 1) - 1
-    reg = T.run_trace(sid, nframes * ms + 8, h.init_address, h.play_address, subtune)
+    # MAXLEAD frames of headroom so the search can express a render that LEADS
+    # the original (a negative offset) without running off the end of the trace.
+    MAXLEAD = 32
+    n = (nframes + MAXLEAD + 8) * ms + 8
+    reg = T.run_trace(sid, n, h.init_address, h.play_address, subtune)
 
     from sidm2.fidelity_common import fill_forward
 
     def rser(vi, fld, n):
         return fill_forward(reg.get((vi, fld), {}), n)
 
-    n = nframes * ms + 8
     real = {}
     for v in range(3):
         real[v] = {
@@ -93,29 +96,63 @@ def main():
             "ad": b[base + 5], "sr": b[base + 6],
         }
 
-    # The dbg frame counter includes SF2II's startup (silent) before playback,
-    # so dbg-frame != song-frame. Find the alignment offset that maximises the
-    # voice-0..2 frequency match (search a window of leading offsets).
+    # The dbg frame counter need not agree with the song frame, so find the
+    # alignment offset that maximises the voice-0..2 frequency match.
+    #
+    # TWO properties this search has to have, each of which it lacked and each
+    # of which produced a retracted HardTrack conclusion (docs/players/HARDTRACK.md):
+    #
+    #  1. The offset CAN BE NEGATIVE. Our render may LEAD the original -- Stage B
+    #     HardTrack sits at -3 -- and a search over range(0, 400) simply cannot
+    #     say so. It then reports the offset-0 value (23.8/13.2/4.0% on
+    #     Love_tune_2) as though it were the build's fidelity; at -3 the same
+    #     comparison gives 91.7/93.8/63.0%.
+    #
+    #  2. It ranks by per-voice match RATE, not by raw hit count. Hits are
+    #     confounded by how many captured frames a given offset leaves inside
+    #     the trace window: on that same file, offset 157 beat -3 on raw hits
+    #     (208+43+52) purely by comparing more frames, at a far worse rate
+    #     (67/14/62%). Coverage is handled as a fairness FILTER instead -- an
+    #     offset that can only compare half the frames is a smaller experiment,
+    #     not a better alignment -- and rate is maximised within it.
+    #
+    # The offset is GLOBAL on purpose: it is one startup delay, and a per-voice
+    # search over the same range overfits a repetitive tune (it picked 5/317/147
+    # for three voices that in fact share -3).
     import math as _m
     have = sorted(ours)
 
-    def score(off):
-        s = 0
+    def vhits(v, off):
+        """(hits, gated total) for voice v's frequency at this offset."""
+        hit = tot = 0
         for f in have:
             sf = f - off
-            if sf < 0 or sf * ms + ms - 1 >= n:
+            if sf < 0:
                 continue
-            for v in range(3):
-                ov = o(f, v)
-                pc = sf * ms + ms - 1
-                rf = real[v]["freq"][pc]
-                if (real[v]["ctl"][pc] & 1 and ov and ov["freq"] > 0 and rf > 0
-                        and abs(_m.log2(ov["freq"] / rf)) <= 1.0 / 12):
-                    s += 1
-        return s
-    import math as _m
-    off = max(range(0, 400), key=score)
+            pc = sf * ms + ms - 1
+            if pc >= n:
+                continue
+            ov = o(f, v)
+            if ov is None or not (real[v]["ctl"][pc] & 1):
+                continue
+            tot += 1
+            rf = real[v]["freq"][pc]
+            if ov["freq"] > 0 and rf > 0 and abs(_m.log2(ov["freq"] / rf)) <= 1.0 / 12:
+                hit += 1
+        return hit, tot
+
+    SEARCH = range(-MAXLEAD, 400)
+    cand = {d: [vhits(v, d) for v in range(3)] for d in SEARCH}
+    cov = {d: sum(t for _, t in hs) for d, hs in cand.items()}
+    covmax = max(cov.values()) or 1
+    # a voice needs enough gated frames for its rate to mean anything
+    ratesum = lambda d: sum(h / t for h, t in cand[d] if t >= 20)
+    ok = [d for d in SEARCH if cov[d] >= 0.5 * covmax] or list(SEARCH)
+    off = max(ok, key=ratesum)
     print(f"\nglobal dbg->song offset = {off} frames; comparing (multispeed={ms}):")
+    print("  freq match at that offset: " + "  ".join(
+        f"osc{v + 1} {100 * cand[off][v][0] // cand[off][v][1] if cand[off][v][1] else 0}%"
+        f" ({cand[off][v][0]}/{cand[off][v][1]})" for v in range(3)))
     print("(each metric reported at its OWN best offset in +-8 frames; a freq vs")
     print(" pulse offset gap on one voice = the two envelopes are desynced.)")
     fr_list = [f for f in have if 0 <= f - off < nframes]
