@@ -52,7 +52,7 @@ Active tracking documents for improvements and task management:
 | Document | Purpose |
 |----------|---------|
 | [AI_TOOLING.md](AI_TOOLING.md) | **DESIGN (not built)** - proposed `.claude/` skills/subagents/workflows; the fidelity-falsifier's named-trap list |
-| [IMPROVEMENTS_TODO.md](../IMPROVEMENTS_TODO.md) | **Active TODO tracking** - All improvement suggestions, bugs, features (v1.0) |
+| [IMPROVEMENTS_TODO.md](IMPROVEMENTS_TODO.md) | **Active TODO tracking** - All improvement suggestions, bugs, features (v1.0) |
 | [UX_IMPROVEMENT_PLAN.md](../UX_IMPROVEMENT_PLAN.md) | **UX enhancement plan** - User experience improvements and priorities |
 | [ALL_FIXES_SUMMARY.md](../ALL_FIXES_SUMMARY.md) | **Consolidated fixes** - Summary of all bug fixes and improvements |
 | [TEST_FIX_SUMMARY.md](../TEST_FIX_SUMMARY.md) | **Test fixes** - Test suite corrections and improvements |
@@ -391,7 +391,7 @@ Historical reports, completed work, and consolidated documentation:
 → Follow the checklist in [players/PLAYBOOK.md §6](players/PLAYBOOK.md)
 
 **...track project improvements**
-→ See [IMPROVEMENTS_TODO.md](../IMPROVEMENTS_TODO.md) (active task tracking)
+→ See [IMPROVEMENTS_TODO.md](IMPROVEMENTS_TODO.md) (active task tracking)
 
 **...understand Batch History feature**
 → See [BATCH_HISTORY_FEATURE.md](BATCH_HISTORY_FEATURE.md) (save/load configs)
