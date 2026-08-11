@@ -453,6 +453,57 @@ class HardTrackModule:
                 'freq_hi': _word(self.data, f[0] + 17),
                 'freq_lo': _word(self.data, f[0] + 23)}
 
+    def vibrato_var_addrs(self) -> dict:
+        """`slide_amt` and `vib_depth`, recovered from the legs that READ them.
+
+        `vib_depth` is not in the `_RAM` layout on either build, so it was the
+        one per-voice variable still placed by a constant (`load + $1C`). That
+        constant is right on the 18 first-build files and WRONG on the other 15
+        -- there the variable lives in the per-voice block ($16bb) -- and being
+        wrong costs the first note of every voice one vibrato tick of phase.
+        It was masked on the first build only because that build's other
+        vibrato state is seeded and blocks the vibrato before the first note.
+
+        The player computes both pitch modulations the same way -- load the
+        voice's `freq_lo`, then add or subtract the amount -- so both variables
+        can be read off their own consumers:
+
+            BD lo lo   LDA freq_lo,X
+            18/38      CLC / SEC
+            7D/FD aa aa   ADC/SBC <amount>,X
+
+        There are exactly four such legs, in address order the SLIDE pair
+        (`$14af`/`$14c7` unrelocated) then the VIBRATO pair (`$14ef`/`$153b`),
+        because the play routine tests `slide_cmd` before falling through to
+        the vibrato. Each pair shares one operand, and requiring that -- four
+        hits, two operands, two hits each -- is what makes this self-checking
+        rather than a byte pattern that merely looks right. Unique in 33/33
+        decodable files, and it AGREES with the old constant on all 18 where
+        the constant was correct.
+
+        Returns {} when the shape does not hold, so a variant seeds from zero
+        rather than from an address this guessed.
+        """
+        lo = self.voice_var_addrs().get('freq_lo')
+        if lo is None:
+            return {}
+        want = bytes((lo & 0xFF, (lo >> 8) & 0xFF))
+        hits = []
+        for i in range(len(self.data) - 8):
+            if self.data[i] != 0xBD or bytes(self.data[i + 1:i + 3]) != want:
+                continue
+            for k in (3, 4, 5):                     # past CLC/SEC
+                if i + k + 2 >= len(self.data):
+                    break
+                if self.data[i + k] in (0x7D, 0xFD):        # ADC/SBC abs,X
+                    hits.append(_word(self.data, i + k + 1))
+                    break
+        if len(hits) != 4 or hits[0] != hits[1] or hits[2] != hits[3]:
+            return {}
+        if hits[0] == hits[2]:                      # one operand, not two
+            return {}
+        return {'slide_amt': hits[0], 'vib_depth': hits[2]}
+
     def filter_program(self, cursor: int, limit: int = 64):
         """[(delta, frames)] cutoff-sweep steps from `cursor`.
 

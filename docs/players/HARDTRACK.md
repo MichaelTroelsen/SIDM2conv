@@ -321,7 +321,7 @@ scored over frames rather than voice-frames, because there is one of it.
 | &nbsp;&nbsp;• **program-driven** instruments (bit 7) | 6,129 | **100.00%** |
 | **waveform** `$D404` — seeded | 53,569 | **100.00%** |
 | **pulse width** `$D402/$D403` — seeded | 53,569 | **100.00%** |
-| frequency — second-build files (15) | 44,237 | 99.89% |
+| frequency — second-build files (15) | 44,237 | 99.96% |
 | waveform — second build | 44,237 | **100.00%** |
 
 **16 of the 18 seeded files are exactly 100.0% on all three registers.** The
@@ -422,8 +422,69 @@ exactly as before.
 
 **The split is the evidence.** The fully-mapped population goes to *exactly*
 100.00% while the partially-mapped one keeps a proportional remainder — which is
-what the mechanism predicts and coincidence does not. The 47 left are the
-variables the second build's layout does not expose.
+what the mechanism predicts and coincidence does not.
+
+### The 47 were mostly ONE variable seeded from a constant (v3.25.0) — 47 → 18
+
+Those 47 were assumed to be "the variables the second build's layout does not
+expose". Measured, they were not a broad seeding gap at all: **every one of the
+15 second-build files lost exactly 3 frames** (Griffin_Score 5), all on **frame
+3, one per voice** — the last note-on pipeline frame, where the register still
+carries the power-on value from the module image.
+
+`vib_depth` is in **no** layout on either build, so it was the last variable
+still placed by a constant, `load + $1C` — the pattern this player breaks by
+construction. The bytes there were literally the error: `Shogoon-Rave` holds
+`$42 $23 $0b` at `$101c` and its three voices were wrong by exactly
+**+66 / +35 / +11**. The fake depth is applied as a downward vibrato during the
+pipeline frames. It never showed on the first build because *that* build's other
+vibrato state is seeded and blocks the vibrato before the first note — the
+constant was wrong on 15 files and masked on the other 18.
+
+Recovered from the leg that reads it instead (`HardTrackModule.vibrato_var_addrs`).
+The player computes both pitch modulations identically —
+
+```
+BD lo lo      LDA freq_lo,X
+18 / 38       CLC / SEC
+7D/FD aa aa   ADC/SBC <amount>,X
+```
+
+— and there are exactly **four** such legs forming two pairs that share one
+operand each: the SLIDE pair first (the routine tests `slide_cmd` before falling
+through), then the VIBRATO pair. That shape holds on **33/33** decodable files
+and is self-checking, which is what separates it from a byte pattern that merely
+looks right. It resolves to `$101c` on all 18 first-build files — *the old
+constant, so they are unchanged* — and to `$16bb` (`$46bb`/`$a6bb` relocated,
+`$16ef` on `Tribute_to_Laxity`'s third shape) on the other 15.
+
+| population | before | after |
+|---|---|---|
+| layout-seeded (18 files) | 100.00% — 0 misses | **100.00% — 0** |
+| second build (15 files) | 99.89% — 47 misses | **99.96% — 18** |
+
+`Trance`, `Tribute_to_Laxity` and `What_Can_I_Say_Crap` are now exactly 100.00%.
+Pinned by `test_vib_depth_comes_from_its_consumer_not_a_constant`.
+
+⚠️ **An open lead, deliberately not closed by picking the better number.** On
+the second build *alone*, seeding **nothing** scores better than seeding the
+correct address — 10 misses against 18 — so the saved byte at `$16bb` is not
+quite that variable's power-on value. The address is not in doubt (unique
+33/33); the byte is. Corpus-wide the recovered address is still both the best
+and the principled option:
+
+| seeding | build-1 misses | build-2 misses | total |
+|---|---|---|---|
+| old constant `load + $1C` | 0 | 47 | **47** |
+| nothing | 13 | 10 | 23 |
+| **recovered operand** | **0** | 18 | **18** |
+
+Taking the seed that scored best on one population is exactly how the constant
+being replaced got here, so the 8-frame difference stays recorded rather than
+fitted. A clue for whoever picks it up: `$16bb` sits at **+109 from `freq_hi`**,
+which is the block offset of `vib_dir` on the first build — so the second
+build's variable ORDER may differ, and the leg may be reading a slot this model
+names something else.
 
 ### Negative controls
 

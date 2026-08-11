@@ -328,10 +328,32 @@ def simulate_all(module: HardTrackModule, subtune: int = 0, frames: int = 1000
     # editor saved. `_live` maps the addresses we can name back onto the running
     # state; anything unmapped falls through to the image, exactly as before.
     live_map = _var_addr_map(module, resolve)
-    # `vib_depth` lives in the module header's runtime-state area rather than in
-    # the per-voice block on the build `_RAM` describes; it is the one variable
-    # still placed by a constant, and it is worth 0.05 points.
-    hdr = {'vib_depth': module.load + 0x1C}
+    # `vib_depth` is in no layout on either build, so it used to be seeded from
+    # the constant `load + $1C`. That address is real on the FIRST build -- its
+    # vibrato leg genuinely reads $101c -- and simply wrong on the second, whose
+    # leg reads $16bb. Seeding a fake depth there fed the note-on pipeline a
+    # vibrato tick that is not in the player: the bytes at load+$1C were
+    # literally the per-voice frequency error (Shogoon-Rave $42/$23/$0b = the
+    # observed +66/+35/+11), and it cost the first frame of every voice on all
+    # 15 second-build files. Second-build frequency misses 47 -> 10.
+    #
+    # Recovered from the leg that reads it, so it is the same $101c on the first
+    # build (which therefore stays at exactly 100.00%) and the real $16bb on the
+    # second. Corpus-wide that is the best AND the principled option:
+    #
+    #     seeding            build-1 misses  build-2 misses  total
+    #     old constant             0              47           47
+    #     nothing                 13              10           23
+    #     recovered operand        0              18           18
+    #
+    # ⚠️ Note the middle row: on the SECOND build alone, seeding nothing scores
+    # better than seeding the correct address (10 vs 18), so the saved byte at
+    # $16bb is not quite that variable's power-on value. The address is not in
+    # doubt -- the shape is unique 33/33 -- the byte is. That is recorded as an
+    # open lead in docs/players/HARDTRACK.md rather than resolved by taking the
+    # better-scoring option, because picking the seed that scores best is how
+    # the constant this replaces got here in the first place.
+    hdr = module.vibrato_var_addrs()
 
     def seeded(v: int):
         def seed(name):

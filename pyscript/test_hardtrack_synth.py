@@ -523,6 +523,49 @@ def test_out_of_range_arp_reads_the_players_live_variables():
 
 
 @needs_corpus
+def test_vib_depth_comes_from_its_consumer_not_a_constant():
+    """`vib_depth` was the last variable placed by `load + $1C`, and that
+    constant is right on one player build and wrong on the other.
+
+    The shape is self-checking: the player computes both pitch modulations as
+    `LDA freq_lo,X` / `CLC|SEC` / `ADC|SBC <amount>,X`, there are exactly FOUR
+    such legs, and they fall into two pairs sharing one operand each -- the
+    slide pair first (the routine tests `slide_cmd` before falling through to
+    the vibrato), then the vibrato pair.
+
+    On the 18 first-build files the recovered address IS `load + $1C`, which is
+    why that constant survived; on the 15 second-build files it is the
+    per-voice block instead, and the constant's bytes were literally the
+    observed per-voice frequency error.
+    """
+    import glob
+    seen = {'layout+sig': 0, 'signature': 0}
+    for p in sorted(glob.glob(os.path.join(CORP, '*.sid'))):
+        try:
+            m = HardTrackModule.from_sid(p)
+        except HardTrackError:
+            continue
+        from sidm2.hardtrack_synth import seed_source
+        lab = seed_source(m)[1]
+        if lab not in seen:
+            continue
+        d = m.vibrato_var_addrs()
+        assert d, f'{os.path.basename(p)}: the four-leg shape did not hold'
+        assert d['slide_amt'] != d['vib_depth']
+        if lab == 'layout+sig':
+            assert d['vib_depth'] == m.load + 0x1C, (
+                f'{os.path.basename(p)}: first build should resolve to the old '
+                f'constant, got ${d["vib_depth"]:04x}')
+        else:
+            # the whole point: on this build the constant is NOT the address
+            assert d['vib_depth'] != m.load + 0x1C, (
+                f'{os.path.basename(p)}: second build should NOT resolve to '
+                f'load+$1C')
+        seen[lab] += 1
+    assert seen['layout+sig'] and seen['signature'], seen
+
+
+@needs_corpus
 def test_seeded_population_is_byte_exact_on_frequency():
     """The whole seeded population, every register, no exceptions.
 

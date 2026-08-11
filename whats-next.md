@@ -450,10 +450,32 @@ that **precede** the per-note capture window.
   Audible value **unproven** — the cutoff-alignment episode is a live example of a large register
   gain buying nothing audible.
 
-### 4. Second build's remaining 47 frames
-Map more of that build's variable layout so `_var_addr_map` covers more than the 5
-signature-recovered variables. Build 1 (43 mapped) is at exactly 100.00%; the 47 are the unmapped
-ones.
+### 4. ~~Second build's remaining 47 frames~~ — **DONE**, 47 → 18 (and it was not a mapping gap)
+The premise was wrong. They were not "the variables the second build's layout does not expose":
+every one of the 15 files lost exactly **3 frames, all on frame 3, one per voice** — the last
+note-on pipeline frame, where the register still holds the module image's power-on value.
+
+Cause: `vib_depth` is in **no** layout on either build, so it was the last variable seeded from a
+**constant** (`load + $1C`) — the pattern this player breaks. Its bytes *were* the error:
+`Shogoon-Rave` holds `$42 $23 $0b` there and its voices were wrong by exactly +66/+35/+11.
+Masked on build 1 only because that build's other vibrato state is seeded and blocks the vibrato
+before the first note.
+
+Fixed by recovering it from the leg that reads it (`HardTrackModule.vibrato_var_addrs`): four
+`LDA freq_lo,X / CLC|SEC / ADC|SBC amount,X` legs forming two operand-sharing pairs (slide, then
+vibrato), unique and self-checking on **33/33**. Resolves to `$101c` on all 18 build-1 files —
+the old constant, so they are byte-for-byte unchanged at exactly 100.00% — and to `$16bb`
+(`$46bb`/`$a6bb` relocated, `$16ef` for `Tribute_to_Laxity`) on the other 15.
+**Second build 99.89% → 99.96%**; Trance, Tribute_to_Laxity and What_Can_I_Say_Crap now exactly
+100.00%. Pinned by `test_vib_depth_comes_from_its_consumer_not_a_constant`.
+
+⚠️ **Open lead, left open on purpose.** On build 2 *alone*, seeding **nothing** scores better than
+the correct address (10 misses vs 18), so the saved byte at `$16bb` is not quite the power-on
+value — the address is unique 33/33, the byte is what is in doubt. Corpus-wide the recovered
+address is still both best and principled (0+18 vs the constant's 0+47 and nothing's 13+10), and
+taking the better-scoring seed is precisely how the constant being replaced got here. Clue:
+`$16bb` is at **+109 from `freq_hi`**, which is `vib_dir`'s block offset on build 1 — the second
+build's variable ORDER may differ.
 
 ### 5. Laxity's orderlist address in `sf2_viewer_core.py`
 The hardcoded `$1766` does not survive inspection for Laxity either — the Music Data block word at
