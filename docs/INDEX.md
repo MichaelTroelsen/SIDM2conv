@@ -65,6 +65,7 @@ Active tracking documents for improvements and task management:
 | Plan | Purpose | Version |
 |------|---------|---------|
 | [JC64_ADVANCED_FEATURES_PLAN.md](plans/JC64_ADVANCED_FEATURES_PLAN.md) | **JC64 advanced features** - SID disassembly, player detection, frequency analysis (6 phases, 30-46 hours) | v1.0.0 |
+| [INSTRUMENT_MAP_PLAN.md](plans/INSTRUMENT_MAP_PLAN.md) | **Instrument map** - joining SF2 instrument records to the siddump trace via ADSR; plan, acceptance criteria per stage, and what each stage actually found (§9). BUILT | unreleased |
 
 ---
 

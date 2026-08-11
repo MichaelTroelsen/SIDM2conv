@@ -44,7 +44,10 @@ os.chdir(ROOT)
 
 from sidm2.mon_parser import MONEvent
 from sidm2.hardtrack_parser import HardTrackModule, HardTrackError, voice_events
-from sidm2.fidelity_common import score_pct
+from sidm2.fidelity_common import score_pct, siddump_frames_full
+from sidm2.instrument_map import (
+    InstrumentScores, frame_labels, instrument_labels, key_reliability,
+    onsets_with_registers)
 from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 import build_mon_native_song as BM
 
@@ -254,7 +257,7 @@ def build_song(shim, base_name, traces, span, emit=True):
     return parts
 
 
-def measure_voices(parts, traces):
+def measure_voices(parts, traces, per_instr=None):
     """Per-voice per-frame freq% vs the original, over every part.
 
     Returns [(raw_pct, raw_n, audible_pct, audible_n, trig_miss, miss,
@@ -268,6 +271,11 @@ def measure_voices(parts, traces):
     disagrees; `audible` counts only frames where the ORIGINAL's gate was on. A
     voice with no comparable frames scores None (score_pct), never 100.0 -- an
     empty comparison is "no test ran", not a pass.
+
+    `per_instr` (an `InstrumentScores`) additionally splits the SAME comparison
+    by the instrument sounding in the ORIGINAL on each frame, so a residual can
+    name a record instead of a voice. It is fed from the identical `m` the voice
+    totals use and nothing else, which is what makes the split sum back.
 
     `trig_miss` / `miss` attribute the residual rather than explaining it away.
     A driver note-on frame CANNOT match here and it is not a decode error: the
@@ -321,6 +329,8 @@ def measure_voices(parts, traces):
                 m = bool(a and b and F._semi(a) == F._semi(b))
                 tot[v] += 1
                 ok[v] += m
+                if per_instr is not None:
+                    per_instr.add(v, j, m)
                 if (o['wf'] or 0) & 1:      # ORIGINAL's gate on == audible frame
                     atot[v] += 1
                     aok[v] += m
@@ -382,7 +392,23 @@ def main():
 
     parts = build_song(shim, base, traces, span)
 
-    res = measure_voices(parts, traces)
+    # Per-instrument attribution: label every ORIGINAL frame with the record
+    # sounding on it, keyed by ADSR against HardTrack's own instrument table.
+    # Its own trace, not `traces[0]`: `mon_fidelity.per_frame` is the PROJECTION
+    # of `siddump_frames_full` that drops $D405/$D406, which is the very pair
+    # this key is built on. Same siddump, same window, one extra run.
+    full = siddump_frames_full(SID, [f'-a{SUB}', f'-t{secs}'])
+    on = onsets_with_registers(full)
+    kv = key_reliability(on, full)
+    declared = {}
+    for i in range(mod.num_instruments):
+        ins = mod.instrument(i)
+        declared.setdefault((ins.ad << 8) | ins.sr, []).append(i)
+    per_instr = InstrumentScores(
+        frame_labels(on, instrument_labels(declared, on), len(full))[0]
+    ) if kv.usable else None
+
+    res = measure_voices(parts, traces, per_instr)
     print("  FIDELITY (per-frame freq semitone vs original, all parts):")
     print("    voice |  raw  (n)      | AUDIBLE gate-on (n) | misses on the "
           "driver's note-on frame")
@@ -391,6 +417,20 @@ def main():
         as_ = f"{aud:5.1f}%" if aud is not None else "  n/a "
         print(f"      {i}   | {rs} ({rn:5d}) | {as_} ({an:5d})     | "
               f"{tm:4d} of {ms:4d} ({ts} under the SID TEST bit)")
+    if per_instr is not None:
+        agg = per_instr.totals()
+        sums_back = all(agg.get(v, (0, 0))[1] == res[v][1] for v in range(3))
+        print(f"  PER INSTRUMENT (same comparison, split by the record sounding "
+              f"in the ORIGINAL; ADSR key: {kv.verdict})")
+        print(f"    voice instr    freq%      n     (split sums back to the "
+              f"per-voice n: {sums_back})")
+        for v, lab, pct, okn, n in per_instr.rows():
+            ps = f"{pct:5.1f}%" if pct is not None else "  n/a "
+            note = "  <- frames before the first note-on" if lab == "-" else ""
+            print(f"      {v}   {lab:>6}   {ps} {n:6d}{note}")
+        print("    a label that is a letter is an envelope HardTrack's own "
+              "instrument table does not\n    declare -- the player writes it "
+              "from somewhere else, and no record owns those frames.")
     print("    the note-on column is a driver/player structural difference, not "
           "a decode error:\n    the driver holds base pitch on its trigger "
           "frame where HardTrack still has the\n    previous note's frequency "
