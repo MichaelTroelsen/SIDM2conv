@@ -23,6 +23,112 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+### SF2 viewer: Laxity orderlists came from a hardcoded file offset — 67.9% of exported positions were phantom
+
+`_parse_music_data` read Laxity's orderlist from `load_address + (0x1766 - 4)`.
+When the Driver 11 path was fixed the Laxity path was deliberately left alone,
+"pending Laxity ground truth". That ground truth existed, three ways, and all
+three say the constant is wrong:
+
+- **Structure** — across 53 files spanning both drivers the Music Data block's
+  words are laid out identically (`word16 - word12 == $300`, three tracks of
+  `$100`; `word12 - word8 == $80`). The constant cannot be part of that layout:
+  every Laxity file here loads at `$0d7e` so it is always `$24e0`, while word12
+  moves per file, and for **42 of 47** it does not land inside
+  `[word12, word16)` at all.
+- **The invariant that settled Driver 11** — all three tracks terminate and the
+  orderlist references exactly max+1 distinct sequences: word12 **47/47**, the
+  constant **0/47**.
+- **An independent decode** — `laxity_parser` reads Angular's source SID without
+  touching the SF2; word12 matches its shape, the constant yields 253 entries of
+  sequence `$7F`.
+
+Measured end-to-end through `sf2_to_text_exporter`, across all 47 Laxity files,
+counting exported positions naming a sequence that does not exist in the file:
+
+| | invalid | of total |
+|---|---|---|
+| before | **15,589** | 22,950 (67.9%) |
+| after | **0** | 415 (0.0%) |
+
+So "Laxity has its own parse path that currently works" was wrong: it was
+reading `$7F`/`$00` filler and reporting ~22.5k phantom orderlist positions,
+silently, because nothing scored it.
+
+### HardTrack: `vib_depth` recovered from its consumer — the last load+constant is gone
+
+The second player build's 47 remaining frequency misses were recorded as
+"variables the layout does not expose". They were not a mapping gap: every one
+of the 15 files lost exactly 3 frames, all on frame 3, one per voice.
+
+`vib_depth` is in no layout on either build, so it was still seeded from
+`load + $1C` — right on the 18 first-build files and wrong on the other 15,
+where its bytes *were* the error (`Shogoon-Rave` holds `$42 $23 $0b` and its
+voices were wrong by +66/+35/+11). Now recovered from the leg that reads it
+(`LDA freq_lo,X` / `CLC|SEC` / `ADC|SBC amount,X` — four legs, two
+operand-sharing pairs, unique **33/33**), which resolves to the same `$101c` on
+build 1 and to `$16bb` on build 2.
+
+Second build frequency **99.89% → 99.96%** (47 → 18 misses); build 1 unchanged
+at exactly 100.00%. Three second-build files reach exactly 100.00%.
+⚠️ Open and deliberately not closed by taking the better number: on build 2
+alone, seeding *nothing* scores 10 misses against the correct address's 18, so
+the saved byte is not quite the power-on value. The address is not in doubt.
+
+### `sf2ii_vs_real.py`: the offset search could not express a negative offset
+
+It searched `range(0, 400)` and ranked candidates by **raw hit count**. Our
+render *leads* the original by 3 frames, so the true answer was never in the
+search space, and hits reward whichever offset simply leaves more frames inside
+the trace window (offset 157 beat −3 on hits at a far worse rate, 67/14/62%).
+Between them these produced two retracted HardTrack conclusions.
+
+Now searches negative offsets and ranks by match rate with coverage as a
+fairness filter. `Love_tune_2` resolves to −3 by itself: freq 91/93/64%, and
+waveform, pulse and AD/SR all **100%** on all three voices (79/86/57% at the
+bogus offset). Control: MoN `Cybernoid_II_sub0_part01.sf2` still resolves to
+offset 0 with every figure byte-identical to before.
+⚠️ The per-voice offset previously prescribed is the **wrong** fix — the offset
+is one startup delay, i.e. global; a free per-voice search picks 5/317/147 for
+three voices that share −3.
+
+### Added: `pyscript/sf2ii_vs_wrapper.py` — the comparison rung 3 actually needs
+
+Diffs SF2II against **our own `.sid` wrapper** rather than the original. Both
+carry the same driver and data, so it isolates editor-vs-us from
+conversion-vs-original, which `sf2ii_vs_real.py` cannot. It existed only as a
+scratch file. Reproduces the documented result exactly: 100.0% freq/waveform/
+pulse on all three voices at offset 0 (n=294/286/82). 5 tests.
+
+### Fixed: rung-3 runs no longer dirty the working tree
+
+`capture_sf2ii` copied a freshly built editor **over** the tracked
+`bin/SIDFactoryII_dbg.exe` on every run, so every run left a 1 MB binary
+modified — which is how "should the newer build be committed?" became a
+standing question. It now copies to `bin/SIDFactoryII_dbg.local.exe`
+(gitignored, same directory because SF2II runs with `cwd=bin/`); the tracked
+binary is the fresh-clone fallback and is never written to.
+
+### Investigated and reverted (recorded so they are not re-attempted)
+
+- **Stage C's FM prong.** The predicted collapse is real — 1,028 of 1,327
+  `Love_tune_2` note events reduce to **8** distinct FM programs, and parts fall
+  **6 → 4** — but it costs 7–8 points of raw frequency and up to 19 of audible,
+  with per-voice misses roughly doubling and *not* on the driver's note-on
+  frame. Guarded losslessly, only **148 of 8,526** substitutions survive (1.7%)
+  and the part count stays 6. HardTrack's captured pitch almost never follows
+  the pure table arp — vibrato, `$63`/`$64` slides and detune ride on nearly
+  every note, which is why Stage B captures rather than models.
+- **An SR-only `$7C` kill row** for the ADSR residual. Confirmed: AD differs on
+  0/9/19 frames vs SR on 68/67/107 (so `hard_restart = 1` really is wrong),
+  every SR-mismatch frame has the original's gate **off**, and the original
+  writes `SR=$00` at row dispatch — exactly two frames per note. The row was
+  built and assembles, and changes nothing: Stage B folds gate-offs into the
+  preceding note, so the song has **90 rest rows of 30,477** and only 30 precede
+  a note, against 112 note-ons in 20 s. A correct fix needs a per-note lookahead
+  (the driver's existing `HRC`), not a row type.
+
+
 ### HardTrack: the second player build is seeded per-variable, and the item it closes was the wrong shape
 
 Open item 4b asked for a second `_RAM` table so the 15 files on the other player
