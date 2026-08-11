@@ -477,11 +477,33 @@ taking the better-scoring seed is precisely how the constant being replaced got 
 `$16bb` is at **+109 from `freq_hi`**, which is `vib_dir`'s block offset on build 1 — the second
 build's variable ORDER may differ.
 
-### 5. Laxity's orderlist address in `sf2_viewer_core.py`
-The hardcoded `$1766` does not survive inspection for Laxity either — the Music Data block word at
-offset 12 disagrees with it on all five Laxity files tested (`$1FCB`, `$207F`, `$1FB0`, `$21E2`,
-`$1FB0`), and my `looks_like_orderlist` heuristic matched the block word on only 2 of 5. Needs
-Laxity ground truth. Currently pinned unchanged by a test.
+### 5. ~~Laxity's orderlist address in `sf2_viewer_core.py`~~ — **DONE**; the ground truth existed
+Recorded as needing "Laxity ground truth". It was available three ways, all agreeing that the
+hardcoded `$1766` is wrong and the Music Data block word at offset 12 is right for Laxity too:
+
+1. **Structure.** Across **53 files spanning both drivers** the block's words are laid out
+   identically: `word16 − word12 = $300` (three tracks of `$100`), `word12 − word8 = $80`,
+   `word8 − word6 = $80`. So word12 is the orderlist base and word16 its end, with no per-driver
+   variation to special-case. The constant cannot be part of that layout — every Laxity file here
+   loads at `$0d7e` so it is always `$24e0`, while word12 moves per file, and for **42 of 47** it
+   does not even land inside `[word12, word16)`.
+2. **The invariant that settled Driver 11.** All three tracks terminate and the orderlist
+   references exactly max+1 distinct sequences: word12 **47/47**, the constant **0/47**.
+3. **An independent decode.** `laxity_parser` reads Angular's source SID without touching the SF2.
+   word12 gives `[0]` / `[1]` / `[2,3]` — transpose `$A0`, small sequence numbers, `$FE`
+   terminator — against the source's `[0]` / `[2]` / `[1]`; the renumbering is the converter
+   materialising transposes into duplicate sequences, which is documented. The constant gives
+   **253 entries of sequence `$7F`**.
+
+So "Laxity has its own parse path that currently works" was **wrong** — it was reading `$7F`/`$00`
+filler and reporting a couple of hundred phantom orderlist positions. The special-case is removed;
+both drivers now take the block word. `test_laxity_orderlist_address_is_deliberately_unchanged`
+pinned the opposite and is replaced by `test_laxity_orderlist_comes_from_the_block_word_too`.
+
+⚠️ Two measurement traps on the way, both mine: `blocks.get(5)` returns None because the dict is
+keyed by `BlockType`, not `int` (I briefly concluded the Laxity block had no word 12); and reading
+image bytes as `data[addr - load + 4]` disagrees with `self.memory[addr]` — the first made `$1fcb`
+look like `fe ff ff`, the second shows the real `a0 00 fe`. **Use `parser.memory`.**
 
 ### 6. Remaining rung-4 brightness gap
 About half is unexplained after the passband fix (windowed step from 12 s on, centroid

@@ -935,15 +935,38 @@ class SF2Parser:
             # and the bytes there are an orderlist on sight
             # (`A0 00 00 00 00 01 01 02 03 ...`), while $24E0 is zeros.
             #
-            # Deliberately scoped to NON-Laxity files. The hardcoded offset does
-            # not survive inspection for Laxity either, but Laxity has its own
-            # parse path that currently works, the block word disagrees with the
-            # constant on all five Laxity files tested, and picking a winner
-            # there needs Laxity ground truth this change does not have. Left
-            # exactly as it was rather than changed on a guess.
-            info = getattr(self, 'driver_info', None) or {}
-            is_laxity = 'LAXITY' in info.get('name_normalized', '')
-            if not is_laxity and len(data) >= 14:
+            # The Laxity exception is GONE (v3.25.0): the block word is right
+            # for that driver too, and the constant was never right for it.
+            # It was left in place pending "Laxity ground truth", which turned
+            # out to be available three ways, all agreeing:
+            #
+            #  1. STRUCTURE. Across 53 files spanning both drivers the block's
+            #     words are laid out identically -- word16 - word12 == $300
+            #     (three tracks of $100), word12 - word8 == $80, word8 - word6
+            #     == $80. word12 is the orderlist base and word16 is its end;
+            #     there is no per-driver variation to special-case. The
+            #     constant cannot be part of that layout: every Laxity file
+            #     here loads at $0d7e so it is always $24e0, while word12 moves
+            #     per file, and for 42 of 47 it does not even land inside
+            #     [word12, word16).
+            #
+            #  2. THE INVARIANT that settled Driver 11. A correct orderlist
+            #     terminates on all three tracks and references exactly max+1
+            #     distinct sequences with no gaps: word12 passes on 47 of 47
+            #     Laxity files, the constant on 0 of 47.
+            #
+            #  3. AN INDEPENDENT DECODE. `laxity_parser` reads Angular's source
+            #     SID orderlists without going near this file. word12 gives
+            #     [0] / [1] / [2,3] -- transpose $A0, small sequence numbers,
+            #     $FE terminator -- against the source's [0] / [2] / [1]; the
+            #     renumbering is the converter materialising transposes into
+            #     duplicate sequences, which is documented. The constant gives
+            #     253 entries of sequence $7F.
+            #
+            # So "Laxity has its own parse path that currently works" was
+            # wrong: it was reading $7F/$00 filler and reporting a couple of
+            # hundred phantom orderlist positions.
+            if len(data) >= 14:
                 col1_addr = data[12] | (data[13] << 8)
             else:
                 col1_addr = self.load_address + (0x1766 - 4)

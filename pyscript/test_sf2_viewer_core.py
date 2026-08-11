@@ -106,22 +106,44 @@ def test_driver11_orderlist_is_not_read_from_the_laxity_offset():
 
 
 @pytest.mark.skipif(not os.path.isdir(_sf2('SF2')), reason='SF2 corpus absent')
-def test_laxity_orderlist_address_is_deliberately_unchanged():
-    """The Laxity path keeps the hardcoded offset, and that is on purpose.
+def test_laxity_orderlist_comes_from_the_block_word_too():
+    """The Laxity exception is gone: the block word is right for that driver too.
 
-    The constant does not survive inspection for Laxity either -- the block word
-    disagrees with it on every Laxity file -- but Laxity has its own parse path
-    that works today, and choosing between them needs ground truth this change
-    does not have. Pinned so the scope stays explicit rather than drifting.
+    This test previously pinned the OPPOSITE -- the hardcoded `$1766` offset --
+    on the grounds that choosing needed Laxity ground truth. That ground truth
+    exists, and all three forms agree the constant is wrong:
+
+      * the block's word layout is identical across both drivers (word16 -
+        word12 == $300, three tracks of $100), and the constant is a fixed
+        $24e0 for every Laxity file here while word12 moves per file;
+      * a correct orderlist terminates on all three tracks and references
+        exactly max+1 distinct sequences -- word12 passes 47/47, the constant
+        0/47;
+      * `laxity_parser` decodes Angular's source SID independently, and word12
+        matches its shape while the constant yields 253 entries of sequence
+        $7F.
+
+    Both assertions below are load-bearing: the address must come from the
+    block, and the resulting orderlist must satisfy the invariant.
     """
     import glob
-    from sf2_viewer_core import SF2Parser
+    from sf2_viewer_core import SF2Parser, BlockType
 
-    paths = sorted(glob.glob(_sf2('SF2', '*.sf2')))[:4]
+    paths = sorted(glob.glob(_sf2('SF2', '*.sf2')))[:6]
     if not paths:
         pytest.skip('no Laxity SF2s')
+    checked = 0
     for p in paths:
         pr = SF2Parser(p); pr.parse()
         if not pr.is_laxity_driver:
             continue
-        assert pr.music_data_info.orderlist_address == pr.load_address + (0x1766 - 4)
+        d = pr.blocks[BlockType.MUSIC_DATA][1]
+        assert pr.music_data_info.orderlist_address == d[12] | (d[13] << 8)
+        assert pr.music_data_info.orderlist_address != pr.load_address + (0x1766 - 4)
+        seqs = [e['sequence'] for tr in pr.orderlist_unpacked for e in tr]
+        assert seqs, f'{os.path.basename(p)}: no orderlist entries'
+        assert set(seqs) == set(range(max(seqs) + 1)), (
+            f'{os.path.basename(p)}: sequences {sorted(set(seqs))[:12]} not contiguous')
+        checked += 1
+    assert checked, 'no Laxity files were checked'
+
