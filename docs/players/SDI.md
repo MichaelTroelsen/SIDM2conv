@@ -257,10 +257,21 @@ Read these with three conditions attached:
   broken voice is the common case (`Onkie_Donkie` 47.7/77.2/71.1, `Lame`
   55.3/86.1/99.3, `Culture_Mix_2` 56.3/99.6/99.9 — yet `Culture_Mix_1` is
   99.7/100/100). D is 5 files; treat its median as a sample, not a verdict.
-- **These percentages carry no `n`.** The builder prints `voice N: X%` with no
-  frame count, so `underpowered()` cannot mark a short song and a 1-second sting
-  is averaged against a 400-part epic (`parts` runs 1→402 across the corpus).
-  Wiring `fmt_pct(p, n=…)` into `build_sdi_native_song.py` is open work.
+- **The `n` is the SONG LENGTH, not per-voice information.** The builder now
+  prints `voice N: X%  (n=…)` and routes through `fmt_pct(p, n=…)`, so a thin
+  comparison gets the `!` marker — but the count is **identical across all three
+  voices on every file measured** (Kirby 2144/2144/2144, Delta 7770×3,
+  Eurovision 802×3), because `measure_parts` skips a frame only when **both**
+  sides have freq 0 and siddump holds a voice's last written frequency through
+  its rests. After a voice's first note its freq is essentially never 0 again.
+  So this `n` answers *"was the song long enough?"* and **not** *"did THIS voice
+  carry enough information?"* — a voice that plays one note and falls silent
+  scores over the same `n` as one that plays throughout, and the second question
+  is the one a per-voice percentage actually needs. Still open.
+- **The marker does not fire on this corpus.** The ten smallest built files by
+  SID size run `n` = 802–7770, all far above the 250-frame (5 s PAL) floor.
+  The guard is wired in and inert here; it is insurance for a short rip, not a
+  filter that removed anything from the table above.
 - **`errored` ≠ unsupported.** `WAVE overflow: N rows > 256` (16 files, seen at
   259–305 rows) is a **builder cap**, not a property of the music — the same
   class of ceiling as Hubbard's 128-sequence cap.

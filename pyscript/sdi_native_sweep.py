@@ -55,7 +55,10 @@ LAUNCH_FAILURE_RCS = {
 }
 
 _HEAD = re.compile(r"^\S+: la=\$([0-9A-F]{4}) variant=(\S+)", re.M)
-_VOICE = re.compile(r"^\s+voice (\d): \s*([\d.]+)%", re.M)
+# The `!` and `(n=...)` are OPTIONAL: a build produced by a checkout from
+# before the underpowered guard was wired in still parses, and its record
+# simply carries `n: None` rather than a fabricated count.
+_VOICE = re.compile(r"^\s+voice (\d): \s*([\d.]+)!?%(?:\s+\(n=(\d+)\))?", re.M)
 _PARTS = re.compile(r"packed into (\d+) adaptive part")
 _ONSETS = re.compile(r"emulated onsets vs trace: (\d+)/(\d+)")
 _REFUSED = re.compile(r"REFUSING to build: ([^\n]+)")
@@ -94,7 +97,9 @@ def parse_build_output(text):
         rec["parts"] = int(p.group(1))
     v = _VOICE.findall(text)
     if len(v) == 3:
-        rec["voices"] = [float(x) for _i, x in v]
+        rec["voices"] = [float(x) for _i, x, _n in v]
+        ns = [int(n) if n else None for _i, _x, n in v]
+        rec["n"] = ns if any(n is not None for n in ns) else None
     return rec
 
 
@@ -134,6 +139,9 @@ def summarize(results):
     by_var = {}
     for name, rec in built.items():
         by_var.setdefault(rec["variant"] or "?", []).extend(rec["voices"])
+    thin = sum(1 for r in built.values() for n in (r.get("n") or [])
+               if n is not None and n < 250)
+    no_n = sum(1 for r in built.values() if not r.get("n"))
     rollup = {}
     for var, vals in sorted(by_var.items()):
         vals = sorted(vals)
@@ -143,7 +151,8 @@ def summarize(results):
                        "at_100": sum(1 for x in vals if x >= 99.95),
                        "below_90": sum(1 for x in vals if x < 90)}
     return {"built": len(built), "refused": len(refused), "errored": len(errored),
-            "unmeasured": len(infra), "by_variant": rollup,
+            "unmeasured": len(infra), "thin_voices": thin, "files_without_n": no_n,
+            "by_variant": rollup,
             "refusal_reasons": sorted({v["refused"] for v in refused.values()}),
             "errors": {k: v.get("error") for k, v in errored.items()},
             "unmeasured_files": sorted(infra)}
@@ -212,6 +221,12 @@ def main(argv=None):
     for var, r in s["by_variant"].items():
         print(f"{var:>8s} {r['voices']:7d} {r['median']:7.1f} "
               f"{r['at_100']:6d} {r['below_90']:5d}")
+    if s["files_without_n"]:
+        print(f"note: {s['files_without_n']} built file(s) reported no frame "
+              f"count -- their percentages cannot be checked for being thin")
+    if s["thin_voices"]:
+        print(f"note: {s['thin_voices']} voice(s) scored over <250 compared "
+              f"frames (5 s PAL); those are not fidelity claims")
     if a.json:
         json.dump({"results": results, "summary": s},
                   open(a.json, "w", encoding="utf-8"), indent=1)

@@ -29,7 +29,7 @@ from sidm2.dmc_parser import measure_onsets                            # noqa: E
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI              # noqa: E402
 from sidm2.fidelity_common import (                                    # noqa: E402
     freq_to_semi, siddump_per_frame, siddump_note_onsets, psid_wrap,
-    score_pct, fmt_pct)
+    score_pct, fmt_pct, underpowered, MIN_INFORMATIVE_FRAMES)
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo           # noqa: E402
 from sdi_to_sf2 import instrument_adsr                                 # noqa: E402
 from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP        # noqa: E402
@@ -311,7 +311,10 @@ def measure_parts(parts, orig):
             o, t = sc(v, boff)
             ok[v] += o
             tot[v] += t
-    return [score_pct(ok[v], tot[v]) for v in range(3)]
+    # tot[v] is the count of frames that ACTUALLY entered the comparison -- both
+    # sides silent is skipped above -- so it is the honest n for this voice, not
+    # the song length.
+    return [score_pct(ok[v], tot[v]) for v in range(3)], list(tot)
 
 
 def _fidelity(sf2_path, secs):
@@ -343,8 +346,9 @@ def _fidelity(sf2_path, secs):
     # ONE global boot offset (the native driver boots a few frames late); fit it
     # on total agreement, then report per voice at that offset.
     best = max(range(-4, 13), key=lambda o: sum(score(v, o)[0] for v in range(3)))
-    per = [score_pct(*score(v, best)) for v in range(3)]
-    return best, per
+    scored = [score(v, best) for v in range(3)]
+    per = [score_pct(*sv) for sv in scored]
+    return best, per, [sv[1] for sv in scored]
 
 
 def main():
@@ -406,7 +410,7 @@ def main():
         span = min(len(traces[0]), dec_span)
         parts = build_song(shim, base, traces, span)
         print(f"  packed into {len(parts)} adaptive part(s)")
-        per = measure_parts(parts, traces[0])
+        per, ns = measure_parts(parts, traces[0])
         label = "all parts vs original"
     else:
         t1 = min(len(traces[0]), secs * 50)
@@ -414,11 +418,15 @@ def main():
         out = os.path.join(ROOT, "out", "sdi", f"{base}_native_part01.sf2")
         BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s (SDI Stage B)")
         print(f"  emitted -> {out}")
-        _boff, per = _fidelity(out, min(secs, t1 // 50))
+        _boff, per, ns = _fidelity(out, min(secs, t1 // 50))
         label = f"single window 0-{t1 // 50}s"
     print(f"  FIDELITY (per-frame freq+wf semitone, {label}):")
     for v in range(3):
-        print(f"    voice {v}: {fmt_pct(per[v])}%")
+        print(f"    voice {v}: {fmt_pct(per[v], n=ns[v])}%  (n={ns[v]})")
+    if any(underpowered(n) for n in ns):
+        print(f"    ! = fewer than {MIN_INFORMATIVE_FRAMES} compared frames "
+              f"({MIN_INFORMATIVE_FRAMES / 50:.0f}s PAL) -- a percentage over "
+              f"that few frames is not a fidelity claim")
     return 0
 
 
