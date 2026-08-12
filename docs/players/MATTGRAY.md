@@ -720,9 +720,60 @@ passband traces are one constant value across the whole tune, so Last Ninja 2
 genuinely never filters. (Checked because a silently-absent `passband_trace`
 had already rebuilt HardTrack and DMC low-pass — see `HARDTRACK.md` rung 4.)
 
-⚠️ The locator reports `layout='signature'`, not the validated `driller` fast
-path, for every Last Ninja 2 subtune. The decode is therefore unverified in the
-sense `MATTGRAY.md` uses everywhere else; the builder prints that on every run.
+### The `signature` decode is no longer unverified
+
+The locator reports `layout='signature'`, not the validated `driller` fast
+path, for every Last Ninja 2 and Tusker subtune — so every Stage B number rests
+on a decode this doc called unverified. Two checks now stand behind it.
+
+**1. Where both paths run, they agree exactly.** `parse()` tries the fast path
+first and only falls back, so the two never meet; forcing `verify()` to raise
+sends a driller-layout file down the signature path. On **`Driller` sub 1** the
+two decodes are **identical in every field** — table addresses, all 3 tracks,
+all 42 patterns, `pattern_addrs`, all 22 instruments including raw record
+bytes, both freq tables, tempo, arp address, `duration_base`. n=1 file, which
+is all the corpus offers: it is the only file where both paths produce a
+decode.
+
+⚠️ **The signature locator is NOT a superset of the fast path.**
+`Make_My_Day.sid` parses via `driller` but the signature locator **refuses** it
+("could not locate the track-pointer tables") on both its subtunes. It fails
+closed rather than mis-parsing, which is the right behaviour — but do not
+assume `locate()` can replace the fast path.
+
+**2. The located tables are confirmed against the ORIGINAL's register trace**,
+ground truth that owes nothing to our build. In this player family
+`$D405`/`$D406` at a note-on is a verbatim copy of the instrument record, so
+every sounded AD/SR pair should appear in the located instrument table. Against
+a null — the same table read 16 bytes off the located base:
+
+| file | sub | onsets | AD/SR in located table | AD/SR in NULL table |
+|---|---|---|---|---|
+| Last Ninja 2 | 0 | 749 | **100.0%** | 0.0% |
+| Last Ninja 2 | 9 | 487 | **100.0%** | 0.0% |
+| Last Ninja 2 | 12 | 140 | **100.0%** | 0.7% |
+| Tusker | 1 | 596 | **100.0%** | 0.0% |
+| Tusker | 3 | 409 | **100.0%** | 0.0% |
+
+100.0% on **all 8** signature-located subtunes tested, null 0.0-0.7%. The
+instrument table location is carrying that result; it is not something any
+address would score.
+
+**The frequency table cannot be tested the same way, and its low scores are a
+property of the MUSIC, not the decode.** A note-on frequency is only a table
+entry when the note is not pitch-modulated at onset. Tusker scores 99.5-100%,
+Last Ninja 2 sub 0 scores 100% on voices 0 and 2 — but **6 of 134** on voice 1,
+the pitch-modulated one, and sub 12 scores 1.4%. That is not a mis-location:
+sub 0's voice 1 renders at **99.3% audible** with the same table, and its
+misses sit within 1% of a table entry (a detuned slide entry), not at random.
+Read the freq column as confirmation when it fires and as uninformative when it
+does not; the null is 0.0% either way.
+
+⚠️ Two limits of the check itself. The onset detector keys on a **gate rise**,
+so it under-counts legato voices — `Driller` sub 1 yields only 4 onsets in
+120 s, and its freq null scores a meaningless 100% at that n. And this
+validates the **tables**, not the sequencer walk: a correct table read by a
+wrong orderlist would still pass.
 
 ## Next
 
@@ -735,10 +786,11 @@ Rungs 3 and 4 are done and Stage B covers all three games; what is left:
    hypothesis**. Do not start by proposing one: start by finding a *single*
    window and voice where the two renders audibly differ and the registers do
    not, and work from that instance.
-2. Generalise the locator past Driller — the other 54 files are per-game
-   builds; `verify()` will refuse them loudly rather than mis-parse. Every Last
-   Ninja 2 subtune still decodes via `layout='signature'`, so all 16 built
-   tunes are unverified in the sense this doc uses everywhere else.
+2. Generalise the locator past the 6 files that parse — 49 of the 55 are
+   refused, and `Make_My_Day` shows `locate()` is not a superset of the fast
+   path (it refuses a file the fast path decodes). The `signature` decode
+   itself is no longer unverified (see above), so this is coverage work, not
+   a correctness risk.
 3. Subtune 7's truncated pattern: recover the missing bytes from the
    relocating copy, or confirm the rip itself is short.
 

@@ -188,3 +188,104 @@ def test_a_leading_rest_has_no_note_to_merge_into():
     n, _ = MG.merge_sounding_rests(sh, _frames(64, 0x10, 0x2000))
     assert n == 0
     assert sh.voices[0][0].rest is True
+
+
+# -- the signature locator, cross-validated against the fast path ----------
+
+DRILLER = os.path.join(ROOT, "SID", "Gray_Matt", "Driller.sid")
+needs_driller = pytest.mark.skipif(not os.path.exists(DRILLER),
+                                   reason="HVSC file absent")
+
+
+@needs_driller
+def test_signature_locator_agrees_with_the_validated_fast_path():
+    """parse() tries the driller fast path first and only falls back, so the
+    two paths never meet in normal use. Forcing verify() to raise sends a
+    driller-layout file down the signature path -- and on Driller sub 1 the two
+    decodes agree in EVERY field. That is the whole evidence that the 16 Stage
+    B tunes, all of which decode by signature, are not being mis-parsed."""
+    from sidm2 import mattgray_parser as MP
+    from sidm2.mattgray_parser import parse_sid, MattGrayError
+
+    fast = parse_sid(DRILLER, subtune=1)
+    assert fast.layout == "driller", "test premise: this file uses the fast path"
+
+    real = MP.MattGrayParser.verify
+    try:
+        MP.MattGrayParser.verify = lambda self: (_ for _ in ()).throw(
+            MattGrayError("forced onto the signature path"))
+        sig = parse_sid(DRILLER, subtune=1)
+    finally:
+        MP.MattGrayParser.verify = real
+
+    assert sig.layout == "signature"
+    assert sig.table_addrs == fast.table_addrs
+    for f in ("tracks", "patterns", "pattern_addrs", "freq_lo", "freq_hi",
+              "tempo", "arp_table_addr", "duration_base", "truncated_patterns"):
+        assert getattr(sig, f) == getattr(fast, f), f"{f} differs between paths"
+    key = lambda s: [(i.ad, i.sr, i.waveform, i.pulse_width, i.flags,
+                      bytes(i.raw)) for i in s.instruments]
+    assert key(sig) == key(fast)
+
+
+@needs_sid
+def test_the_located_instrument_table_explains_every_sounded_adsr():
+    """$D405/$D406 at a note-on is a verbatim copy of the instrument record in
+    this player family, so a correctly located table explains every sounded
+    pair -- 100.0% on all 8 signature subtunes measured. Ground truth is the
+    ORIGINAL's own trace, which owes nothing to our build.
+
+    The NULL is asserted alongside, because a hit rate with nothing to compare
+    it against proves nothing: the same records read 16 bytes off the located
+    base must NOT explain the onsets.
+
+    What this does NOT catch, stated because it was mutation-tested and found
+    wanting: shifting the base by a whole record (+8) still passes, since set
+    membership survives losing one never-sounded record. The cross-validation
+    test above is what catches that. Sub 0 only here; the sweep is in the doc.
+    """
+    from sidm2.fidelity_common import siddump_frames_full
+    from sidm2.mattgray_parser import parse_sid
+
+    song = parse_sid(LN2, subtune=0)
+    assert song.layout == "signature", "test premise: this file locates by signature"
+    good = {(i.ad, i.sr) for i in song.instruments}
+
+    # the null: the same span of bytes, 16 off the located base
+    raw = open(LN2, "rb").read()
+    body = raw[raw[7] | (raw[6] << 8):]
+    load, data = body[0] | (body[1] << 8), body[2:]
+    base = song.table_addrs["instr_a0"] + 16 - load
+    STRIDE = 8
+    null = {(data[base + k * STRIDE + 1], data[base + k * STRIDE + 2])
+            for k in range(len(song.instruments))
+            if 0 <= base + k * STRIDE + 2 < len(data)}
+
+    prev, n, hit = [0, 0, 0], 0, 0
+    for fr in siddump_frames_full(LN2, ['-a0', '-t20']):
+        for v in range(3):
+            st = fr[0][v]
+            if st['wf'] is None:
+                continue
+            on = (st['wf'] & 1) and not (prev[v] & 1)
+            prev[v] = st['wf']
+            if on and st['adsr'] is not None:
+                n += 1
+                hit += ((st['adsr'] >> 8) & 0xFF, st['adsr'] & 0xFF) in good
+    prev, nn, nhit = [0, 0, 0], 0, 0
+    for fr in siddump_frames_full(LN2, ['-a0', '-t20']):
+        for v in range(3):
+            st = fr[0][v]
+            if st['wf'] is None:
+                continue
+            on = (st['wf'] & 1) and not (prev[v] & 1)
+            prev[v] = st['wf']
+            if on and st['adsr'] is not None:
+                nn += 1
+                nhit += ((st['adsr'] >> 8) & 0xFF, st['adsr'] & 0xFF) in null
+
+    assert n >= 20, f"too few onsets ({n}) to conclude anything"
+    assert hit == n, f"located instrument table explains only {hit}/{n} onsets"
+    assert nhit <= 0.05 * n, (
+        f"the NULL table explains {nhit}/{nn} onsets -- this test has no "
+        f"discriminating power, so its 100% means nothing")
