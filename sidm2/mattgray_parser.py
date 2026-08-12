@@ -244,6 +244,12 @@ class MattGraySong:
     # value (byte - D), sticky; only bytes < D are notes.
     duration_base: Optional[int] = None
     truncated_patterns: int = 0   # patterns cut short by the relocating copy   # 'driller' = validated fast path, 'signature' = located but UNVALIDATED
+    # The PSID song index for this subtune -- what siddump's `-a` wants.
+    # NOT the same number as `subtune`: `subtune` indexes the track-pointer
+    # TABLE, whose entry 0 is null on most builds, while `-a` counts the songs
+    # that actually exist from 0. Passing `subtune` straight to siddump traces
+    # the WRONG TUNE on every such file (see docs/players/MATTGRAY.md).
+    psid_song: int = 0
 
     @property
     def frames_per_tick(self) -> int:
@@ -648,6 +654,20 @@ class MattGrayParser:
         if n_instr <= 0:
             raise MattGrayError("could not size the instrument table")
 
+        # --- the PSID song index for this subtune.
+        # An entry whose voice-1 pointer is null/out-of-image is not a tune --
+        # `subtune` indexes the TABLE, siddump's `-a` indexes the tunes that
+        # exist. The k-th valid entry is song k, which is right whether the
+        # table starts at 0 (Last Ninja 2, Tusker) or at 1 (every other build
+        # located so far). Derived, not assumed to be an offset of one:
+        # `Driller` declares 2 songs for 1 valid entry, so a blind -1 is wrong.
+        lo0, hi0 = trk_tabs[0]
+        psid_song = 0
+        for k in range(subtune):
+            b = self.byte(lo0 + k) | (self.byte(hi0 + k) << 8)
+            if b and self.load <= b < self.load + len(self.data):
+                psid_song += 1
+
         # --- tracks (orderlists), one per voice
         tracks: List[List[int]] = []
         for lo_tab, hi_tab in trk_tabs:
@@ -675,6 +695,7 @@ class MattGrayParser:
             play_addr=self.play,
             play_voice=self.play_voice,
             subtune=subtune,
+            psid_song=psid_song,
             tempo=self.byte(tempo_tab + subtune),
             tracks=tracks,
             patterns=patterns,
@@ -996,5 +1017,11 @@ def parse_sid(path: str, subtune: int = 1) -> MattGraySong:
                 f"subtune {subtune} out of range (file has {len(blobs)})")
         blob, dst = blobs[subtune]
         # each blob is a self-contained tune; its own tune index is 1
-        return MattGrayParser(blob, dst, dst, dst + 2).parse(subtune=1)
+        song = MattGrayParser(blob, dst, dst, dst + 2).parse(subtune=1)
+        # On this path `subtune` selects the BLOB, so it already is the PSID
+        # song index -- the inner parse only ever sees its own index 1 and
+        # would otherwise report song 0 for every subtune.
+        song.subtune = subtune
+        song.psid_song = subtune
+        return song
     return MattGrayParser(body, load, init, play).parse(subtune=subtune)

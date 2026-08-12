@@ -382,10 +382,20 @@ def main():
     # every render low-pass whatever the tune selected -- the defect the
     # rung-4 listening pass caught on HardTrack, and that MoN's Cybernoid_II
     # had before it.
-    traces = (F.per_frame(SID, [f'-a{SUB}', f'-t{secs}']),
-              BM.filter_trace(SID, SUB, secs),
-              BM.passband_trace(SID, SUB, secs))
-    shim.main_vol = BM.master_volume(SID, SUB, secs)
+    # siddump's `-a` indexes the songs that EXIST; SUB indexes the track-pointer
+    # TABLE, whose entry 0 is null on most builds. They agree on Last Ninja 2 and
+    # Tusker and differ by one everywhere else, so passing SUB straight through
+    # traced the WRONG TUNE on every newly-located file -- Motocross scored
+    # 30.6%/62.0% against a tune it was not playing. Derived by the parser
+    # (`psid_song`), never assumed to be an offset.
+    a = song.psid_song
+    if a != SUB:
+        print(f"  NOTE: subtune {SUB} is PSID song {a} "
+              f"(track-table entry 0 is not a tune) -- tracing -a{a}")
+    traces = (F.per_frame(SID, [f'-a{a}', f'-t{secs}']),
+              BM.filter_trace(SID, a, secs),
+              BM.passband_trace(SID, a, secs))
+    shim.main_vol = BM.master_volume(SID, a, secs)
     shim._relwf = release_waveforms(shim, traces[0])
     if os.environ.get('MG_NO_REST_MERGE') != '1':
         nm, ns = merge_sounding_rests(shim, traces[0])

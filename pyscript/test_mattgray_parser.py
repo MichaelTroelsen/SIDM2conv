@@ -408,3 +408,55 @@ def test_relaxing_the_stride_did_not_cost_any_previously_parsing_file():
             continue
         song = parse_sid(p, subtune=sub)
         assert song.instruments, f"{name} sub {sub} lost its decode"
+
+
+# -- psid_song: the track-table index is NOT the siddump song index ----------
+
+def test_psid_song_is_derived_not_assumed_to_be_an_offset():
+    """`subtune` indexes the track-pointer TABLE; siddump's `-a` counts the
+    songs that exist. They differ whenever table entry 0 is null.
+
+    The rule is "the k-th VALID entry is song k", which is right whether the
+    table starts at 0 or 1. A blind -1 would be wrong: `Driller` declares 2
+    songs for 1 valid entry.
+    """
+    import sidm2.mattgray_parser as mp
+    src = open(mp.__file__, encoding="utf-8").read()
+    assert "psid_song" in src
+    assert "psid_song=psid_song" in src
+
+
+def test_psid_song_on_both_table_conventions():
+    from sidm2.mattgray_parser import parse_sid
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cases = [
+        # relocating compilation: subtune selects the BLOB, so it already is
+        # the song index (the inner parse only ever sees its own index 1)
+        ("Last_Ninja_2", 0, 0), ("Last_Ninja_2", 9, 9), ("Last_Ninja_2", 12, 12),
+        ("Tusker", 0, 0), ("Tusker", 2, 2),
+        # plain layout whose table entry 0 is null -> shifted by one
+        ("Motocross", 1, 0), ("Motocross", 3, 2),
+        ("KGB_Superspy", 1, 0), ("Maze_Mania", 1, 0),
+        # declares 2 songs, has 1 valid entry: a blind -1 would still give 0
+        # here, but only by luck -- pinned so the derivation is what is tested
+        ("Driller", 1, 0),
+    ]
+    for name, sub, want in cases:
+        p = os.path.join(repo, "SID", "Gray_Matt", f"{name}.sid")
+        if not os.path.exists(p):
+            continue
+        song = parse_sid(p, subtune=sub)
+        assert song.psid_song == want, (
+            f"{name} subtune {sub}: psid_song {song.psid_song}, expected {want}")
+
+
+def test_the_builder_traces_the_psid_song_not_the_subtune():
+    """Passing `subtune` to siddump traced the wrong tune on every file whose
+    table entry 0 is null -- Motocross scored 30.6%/62.0% against a tune it was
+    not playing (docs/players/MATTGRAY.md)."""
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(repo, "bin", "build_mattgray_native_song.py"),
+               encoding="utf-8").read()
+    assert "f'-a{SUB}'" not in src, (
+        "the builder still traces -a{SUB}; it must trace the derived psid_song")
+    assert "song.psid_song" in src

@@ -874,14 +874,10 @@ Rungs 3 and 4 are done and Stage B covers all three games; what is left:
    level / harmonics / per-octave energy / envelope, which are already at the
    floor, and always measure the floor **per voice** (they range 0.937-0.999
    on this tune).
-2. **Fix the subtune offset** (see *The track-table stride*): builds whose
-   track-table entry 0 is null need siddump `-a{SUB-1}`, and the builder passes
-   `-a{SUB}`. It makes every fidelity number for the 5 newly-parsing files
-   meaningless. Derive the offset from the decode; do not just subtract one.
-3. Generalise the locator further — **6 → 11 of 55 files now parse**, 3 of the
+2. Generalise the locator further — **6 → 11 of 55 files now parse**, 3 of the
    5 new ones with confirmed instrument tables. `Make_My_Day` still shows
    `locate()` is not a superset of the fast path.
-4. Subtune 7's truncated pattern: recover the missing bytes from the
+3. Subtune 7's truncated pattern: recover the missing bytes from the
    relocating copy, or confirm the rip itself is short.
 
 ### The track-table stride was hard-coded, and it is per-build
@@ -935,14 +931,42 @@ tables**, not 1, and none is known to be wrong. `Motocross`'s 30.6% / 62.0%
 audible figures measured a comparison against the wrong tune and should be
 discarded, not quoted.
 
-⚠️ **The subtune offset is a real builder bug, and it is not fixed here.** For
-any build whose track-table entry 0 is null, `bin/build_mattgray_native_song.py`
-traces `-a{SUB}` where it needs `-a{SUB-1}`, so it will compare against the
-wrong tune and report a meaningless number. It does not affect the 16 shipped
-tunes (Last Ninja 2 and Tusker have a real entry 0 and were validated at
-`-a{SUB}`), which is why it went unnoticed. Fixing it means deriving the offset
-from the decode rather than assuming either convention — do not simply subtract
-one.
+#### The subtune offset — FIXED (`psid_song`)
+
+`subtune` indexes the track-pointer **table**; siddump's `-a` counts the songs
+that **exist**. The parser now derives the second from the first
+(`MattGraySong.psid_song`) and the builder traces that.
+
+The rule is **"the k-th valid entry is song k"**, which is right under both
+conventions and is not an offset: `Driller` declares 2 songs for 1 valid entry,
+so a blind `-1` is wrong reasoning that happens to give the right answer there.
+Two code paths, because they differ:
+
+- **relocating compilation** (Last Ninja 2): `subtune` selects the blob, so it
+  already *is* the song index — the inner parse only ever sees its own index 1
+  and would otherwise report song 0 for all 13.
+- **plain layout**: count the non-null entries below `subtune`.
+
+Verified on both: LN2 0/9/12 → `-a0/-a9/-a12`, Tusker 2 → `-a2`, Motocross 1/3
+→ `-a0/-a2`, KGB_Superspy and Maze_Mania 1 → `-a0`.
+
+**What it changes.** `Motocross` sub 1, rebuilt against the tune it is actually
+playing:
+
+| | raw | audible | n |
+|---|---|---|---|
+| before (wrong tune) | 90.0 / 89.1 / 90.7 | 99.2 / **30.6** / **62.0** | 120 / 108 / 108 |
+| after | 93.7 / 98.6 / 84.3 | **92.5 / 100.0 / 82.2** | 5057 / 2747 / 4797 |
+
+The `n` column is the point: the old comparison scored ~110 frames of a tune
+the build was not playing. Nothing about the build changed.
+
+**What it does not change.** The 16 shipped tunes are untouched — Last Ninja 2
+and Tusker have a real entry 0, so `psid_song == subtune` for every one of
+them. `Driller` *does* change index (`-a1` → `-a0`) and rebuilds
+**byte-identically** (100.0 / 96.7 / 74.5 raw, 100.0 / 96.0 / 89.4 audible),
+because its PSID declares two songs for one tune and `init` forces the same one
+either way — the documented gotcha, now confirmed from the other direction.
 
 **The lesson, since it cost a published claim twice in one file:** a fidelity
 number is only as good as the trace it is compared against, and "the original
