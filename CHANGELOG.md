@@ -146,12 +146,49 @@ before 0.8457, after **0.8545**. The gap is ~0.13, not ~0.20.
   frames on subtunes 0, 1 and 2, while exiting 0. The VICE wrapper works; both
   were validated against siddump before anything was read into them.
 
-**Still open, stated plainly:** per-frame register state is essentially exact,
-within-call write pattern and order are reproduced, and the audio still sits
-0.13 below a floor measured on the same tune — broadband, worst in 3-8 kHz —
-with **no standing hypothesis**. All 16 tunes decode via `layout='signature'`,
-not the validated `driller` fast path, so the decode is unverified in the sense
-`MATTGRAY.md` uses everywhere else; 1 of 55 HVSC files is properly located.
+**The `signature` decode is no longer unverified.** Every Stage B number rests
+on a decode reported as `layout='signature'` rather than the validated `driller`
+fast path, and two independent checks now stand behind it. **Where both paths
+run they agree exactly** — forcing `verify()` to raise sends a driller-layout
+file down the signature path, and on `Driller` sub 1 the two decodes are
+identical in every field (table addresses, all 3 tracks, all 42 patterns, all 22
+instruments including raw record bytes, both freq tables, tempo, arp address,
+`duration_base`); n=1, because it is the only file where both paths produce a
+decode. And **the located tables are confirmed against the original's own
+register trace**, ground truth that owes nothing to our build: `$D405`/`$D406`
+at a note-on is a verbatim per-instrument copy in this family, so a correctly
+located table explains every sounded AD/SR pair — **100.0% on all 8
+signature-located subtunes** (n=140-749 onsets each) against a null of 0.0-0.7%.
+Recorded rather than smoothed over: the signature locator is **not a superset**
+of the fast path (`Make_My_Day.sid` parses via `driller` but `locate()` refuses
+it — failing closed, which is right, but it cannot replace the fast path);
+the frequency table cannot be tested the same way, because a note-on frequency
+is only a table entry when the note is not pitch-modulated at onset; and this
+validates the **tables**, not the sequencer walk.
+
+**And then the audio deficit was explained: it is sub-millisecond register-write
+PHASE, and it is inaudible.** Per-voice isolation against **per-voice** floors
+(0.9366-0.9993 — a single tune-level floor is misleading) localized it to voice
+0, 14-16 s: floor 0.9993, ours 0.9322. In that window the registers are **not**
+the explanation (1 frame of 100 differs, by 0.02 semitone) and every physical
+measure says the two are the same audio — RMS level identical to 0.01 dB, all 8
+top harmonic peaks within 0.1 dB, per-octave energy within 0.03 dB across six
+bands, envelope 0.9794 against a 0.9848 floor. Imposing per-frame integer-sample
+jitter on the original (controls: identity and constant shift both exactly
+1.0000) reproduces our score from timing alone: **23 microseconds costs 0.035**,
+and 0.5 ms scores 0.9269 against our 0.9283. The original writes a voice's
+registers within 0.027-0.045 ms; ours spreads them over ~0.87 ms. So the
+per-window spectrogram is a proxy for sub-millisecond write timing, **not an
+audio-fidelity figure**, and must never be quoted as one.
+
+Recorded rather than smoothed over: a corroboration **failed** — the rank order
+of extra spread (0,2,1) does not match the rank order of deficit (0,1,2), so
+this holds on absolute scores and is consistency, **not proof**; the decisive
+test (issuing writes at the original's cycle offsets) is not attempted. And a
+trap fired first: the initial jitter test used linear interpolation, whose
+half-sample low-pass alone costs 0.07 — the same size as the effect — and would
+have "confirmed" the hypothesis for the wrong reason. Only the control caught
+it. 1 of 55 HVSC files is located by the fast path.
 
 Detail: `docs/players/MATTGRAY.md`.
 
@@ -210,7 +247,17 @@ was given a test rather than another checklist item.
   size note now measures itself in **bytes**.
 - `CLAUDE.md`'s Matt Gray row still said "Stage A only / Driller build only"
   after Stage B shipped; re-written with the caveats needed to quote its numbers
-  correctly.
+  correctly. `ACCURACY_MATRIX.md`'s row had the same defect — "that is a
+  Stage B claim, not yet started" — and is rewritten in this release.
+- **Three built players were missing from both conversion indexes.** Matt Gray,
+  Future Composer and (in the conversion index) HardTrack were absent while
+  `out/mattgray_native/` held 25 SF2s — `grep -ci matt` returned 0 from both
+  files. Both generators carry a **hand-maintained** player-to-directory
+  mapping, so a new player appears in the docs only when someone remembers to
+  edit the list, and three in a row were missed. Regenerated: 619 → 675
+  songs, 2,227 → 2,533 SF2 files, 10 → 13 player directories. The two
+  lists are still kept in sync by hand — that is the mechanism that failed,
+  and it is worth replacing with a single shared mapping.
 
 ### Instrument map: which instrument is sounding on each siddump frame
 
