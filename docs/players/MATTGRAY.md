@@ -1,8 +1,12 @@
 # Matt Gray — player RE + Stage A
 
 **Status:** RE complete and Stage A shipped for **Driller, Last Ninja 2 (13 subtunes) and Tusker (4 subtunes)** — 18 tunes, all at 100% onset / 100% pitch on plain instruments.
-**Native Stage B: SHIPPED** (`bin/build_mattgray_native_song.py`) — **16 tunes across
-Last Ninja 2, Driller and Tusker**; for Last Ninja 2 —
+**Native Stage B: SHIPPED** (`bin/build_mattgray_native_song.py`) — **36 tunes
+across 8 games**: Last Ninja 2, Driller, Tusker, and (after the stride and
+`psid_song` fixes) Maze_Mania, Motocross, KGB_Superspy, Hyperion_2 and
+Hunters_Moon_Remastered. **6 of the 36 are 1-3 second jingles** whose
+percentages carry almost no information, and **`Motocross` sub 4 fails
+outright** — see *The corpus after the fix*. For Last Ninja 2 —
 12 of 13 subtunes build, **98.16% audible per-frame frequency** (n=172,745),
 **16 of 36 voice-scores at exactly 100.0%**; subtune 7 is refused, not mis-built.
 See *Stage B* below. Not wired into `DriverSelector`. Current headline figures:
@@ -973,6 +977,46 @@ number is only as good as the trace it is compared against, and "the original
 is nearly silent here" is a statement about the *trace selection*, not about
 the music. Check what the original actually sounds before concluding anything
 from a small `n`.
+
+### The corpus after the fix: 8 games, and one bad build named
+
+With `psid_song` tracing the right tune, every valid subtune of the five
+newly-parsing files was built. **20 build**, taking Stage B from 3 games to
+**8**. Audible (gate-on) fidelity, with `n` beside every number because four of
+these are short jingles where a percentage carries almost no information:
+
+| game | subtunes | audible v0/v1/v2 | note |
+|---|---|---|---|
+| `Maze_Mania` | 1-3 | 100/100/98.6, 100/93.5/100, 99.3/99.9/100 | n 1580-6045 |
+| `Maze_Mania` | 4, 5 | 100/100/100 | **n=105, 128** — jingles |
+| `Motocross` | 1 | 92.5/100/82.2 | n 2747-5057 |
+| `Motocross` | 2, 3 | 100/100/100 | **n=72-136** — jingles |
+| `Motocross` | 4 | **0.0/10.9/0.0** | **n=46-58 — BROKEN, see below** |
+| `KGB_Superspy` | 1, 3, 4 | 99.9/100/99.4, 100/99.4/99.5, 100/100/100 | n 4032-6045 |
+| `KGB_Superspy` | 2 | 99.0/100/100 | n=114-420 |
+| `Hyperion_2` | 1-3 | 99.9/99.0/96.7, 97.8/100/88.6, 100/100/98.7 | n 5461-6133 |
+| `Hunters_Moon_Remastered` | 1-4 | 99.1/100/82.9 … 100/99.7/80.6 | n 3420-6333 |
+
+**`Motocross` sub 4 is a real failure and is not averaged away**: 0.0% on two
+voices. It is the only build of the 20 that fails, and unlike the retracted
+claim above this one is measured against the correct tune. Unexplained; recorded
+rather than dropped.
+
+⚠️ **A percentage on n≈50-130 frames is not a fidelity claim.** Six of the 20
+are jingles of one to three seconds. They are listed because omitting them would
+inflate the corpus count without saying so, not because 100.0% on 46 frames
+means anything.
+
+#### What this says about the AD/SR check
+
+`Maze_Mania` sub 1 scored **80.2/92.0/88.0** before the fix and
+**100.0/100.0/98.6** after — yet the AD/SR cross-validation had "confirmed" it
+at the **wrong** subtune index (354/354 against `-a1`, where the truth is
+`-a0`). No contradiction: the instrument table is shared across a file's
+subtunes, so it explains onsets in *any* of them. This is a live demonstration
+of the limit that check already states — **it validates the tables, not the
+sequencer walk, and it cannot discriminate a subtune at all.** Anyone using it
+as a decode gate should read it that narrowly.
 
 ## Sources
 

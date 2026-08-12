@@ -36,10 +36,27 @@ from sidm2.mattgray_parser import MattGrayError, parse_sid, simulate
 from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 import build_mon_native_song as BM
 
-SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-    "SID", "Gray_Matt", "Last_Ninja_2.sid")
-WARG = sys.argv[2] if len(sys.argv) > 2 else "auto"
-SUB = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+def _argv(i, default, cast=str):
+    """argv element i, or `default` if absent OR not parseable.
+
+    These are read at IMPORT time, so anything that imports this module
+    inherits whatever argv it happens to be running under. `int(sys.argv[3])`
+    raised ValueError under pytest (argv[3] is a test path), which took out
+    every test that imports the builder -- including tests about entirely
+    unrelated things. Falling back to the default keeps import a pure
+    operation; the real CLI path passes proper values.
+    """
+    if len(sys.argv) <= i:
+        return default
+    try:
+        return cast(sys.argv[i])
+    except (TypeError, ValueError):
+        return default
+
+
+SID = _argv(1, os.path.join("SID", "Gray_Matt", "Last_Ninja_2.sid"))
+WARG = _argv(2, "auto")
+SUB = _argv(3, 0, int)
 
 SCAN_FRAMES = 6000
 OUT_DIR = os.path.join(ROOT, "out", "mattgray_native")
