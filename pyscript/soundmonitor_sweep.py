@@ -35,6 +35,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 from sidm2.fidelity_common import siddump_per_frame as per_frame
+from sidm2.fidelity_common import launch_failure
 from sidm2.fidelity_common import freq_to_semi as _semi
 from sidm2.fidelity_common import psid_wrap as _psid
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
@@ -150,6 +151,10 @@ def build_one(name, env=None):
     text = r.stdout + r.stderr
     parts = parse_parts(text)
     if not parts:
+        # A silent child that never started is not this song failing to build.
+        infra = launch_failure(r.returncode, text)
+        if infra:
+            return {"unmeasured": infra, "rc": r.returncode}
         return {"error": "no part line in build output", "rc": r.returncode}
     maxs = max(p[2] for p in parts) // 50 + 2
     orig = per_frame(sid, ["-a0", f"-t{maxs}"])

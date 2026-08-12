@@ -36,23 +36,17 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sidm2.fidelity_common import launch_failure  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_DIR = os.path.join(ROOT, "SID", "Gallefoss_Glenn")
 BUILDER = os.path.join(ROOT, "bin", "build_sdi_native_song.py")
 
-# A SWEEP THAT CANNOT LAUNCH A PROCESS IS NOT A SWEEP THAT MEASURED A FILE.
-# The first full-corpus run of this script returned these codes for every file
-# from #275 of 441 onward -- ~5 h in, the long-lived parent could no longer spawn
-# a child -- and the summary counted all 167 as "errored", i.e. reported an
-# infrastructure collapse in the same column as `not an SDI play+3 rip`. Three of
-# them built cleanly on a fresh invocation, so the run had fabricated 167 results
-# and its own per-variant medians silently became an A-O sample. These codes are
-# therefore quarantined from the result classes and abort the run by default.
-LAUNCH_FAILURE_RCS = {
-    3221225794: "STATUS_DLL_INIT_FAILED (0xC0000142)",
-    3221225495: "STATUS_NO_MEMORY (0xC0000017)",
-    3221225781: "STATUS_DLL_NOT_FOUND (0xC0000135)",
-}
+# The launch-failure classifier lives in the shared harness -- this sweep is
+# where the failure was FOUND, not where it belongs. See
+# `fidelity_common.launch_failure` for what it is and why it is not `errored`.
 
 _HEAD = re.compile(r"^\S+: la=\$([0-9A-F]{4}) variant=(\S+)", re.M)
 # The `!` and `(n=...)` are OPTIONAL: a build produced by a checkout from
@@ -119,8 +113,9 @@ def build_one(name, timeout=1800):
         tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if l.strip()]
         rec["error"] = tail[-1][:160] if tail else f"no output (rc={r.returncode})"
         # The child never got far enough to have an opinion about this file.
-        if not tail and r.returncode in LAUNCH_FAILURE_RCS:
-            rec["infra"] = LAUNCH_FAILURE_RCS[r.returncode]
+        infra = launch_failure(r.returncode, r.stdout + r.stderr)
+        if infra:
+            rec["infra"] = infra
     return rec
 
 

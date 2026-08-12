@@ -111,3 +111,41 @@ def test_the_headline_states_the_real_denominator(monkeypatch, capsys):
     sw.main(["--files", "a", "b", "c", "d", "e", "--infra-abort", "3"])
     out = capsys.readouterr().out
     assert "cover 2 files, NOT 5" in out, out
+
+
+# --------------------------------------------------------------------------
+# The classifier is shared plumbing, not an SDI detail.
+#
+# CLAUDE.md: fidelity_common is "the shared measurement plumbing every scorer
+# should route through -- do not write a new one", written after five
+# independent copies of one weighted-accuracy scheme were each found broken.
+# `soundmonitor_sweep` and `blackbird_sweep` have this sweep's exact shape --
+# run the builder, look for the line carrying the numbers, record an error when
+# it is absent -- so a silent child lands in their BUILD FAILED column too.
+
+def test_the_classifier_lives_in_the_shared_harness():
+    from sidm2.fidelity_common import LAUNCH_FAILURE_RCS, launch_failure
+    assert launch_failure(3221225794) == "STATUS_DLL_INIT_FAILED (0xC0000142)"
+    assert launch_failure(0) is None
+    assert launch_failure(1) is None, "an ordinary non-zero exit is a result"
+    assert 3221225495 in LAUNCH_FAILURE_RCS
+
+
+def test_a_child_that_spoke_is_always_a_result():
+    """However it exited. It ran, it had an opinion about the file, and
+    suppressing that would hide a genuine failure."""
+    from sidm2.fidelity_common import launch_failure
+    assert launch_failure(3221225794, "ValueError: WAVE overflow") is None
+    assert launch_failure(3221225794, "   \n  ") is not None, "whitespace is silence"
+
+
+def test_every_sweep_routes_through_it():
+    """Mutation this pins: a sweep reintroducing its own rc table, or dropping
+    the check, goes back to reporting a host collapse as failed builds."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("sdi_native_sweep.py", "soundmonitor_sweep.py", "blackbird_sweep.py"):
+        src = open(os.path.join(root, "pyscript", name), encoding="utf-8").read()
+        assert "launch_failure" in src, f"{name} does not classify launch failures"
+        assert "LAUNCH_FAILURE_RCS = {" not in src, \
+            f"{name} declares its own copy of the rc table"

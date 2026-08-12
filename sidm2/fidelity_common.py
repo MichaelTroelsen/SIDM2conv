@@ -98,6 +98,41 @@ def exercised(a_vals, b_vals):
 MIN_INFORMATIVE_FRAMES = 250
 
 
+# A CORPUS SWEEP THAT CANNOT LAUNCH A PROCESS HAS STOPPED MEASURING.
+# The first full-corpus SDI sweep returned these codes for every file from #275
+# of 441 onward -- about 5 h in, the long-lived parent could no longer spawn a
+# child. Nothing noticed: all 167 were counted in the same `errored` column as
+# real per-file failures, and the published per-variant medians silently became
+# an alphabetical A-O sample of a corpus the headline claimed was complete.
+# Three of those files build cleanly on a fresh invocation.
+#
+# This lives here rather than in one sweep because `soundmonitor_sweep.py` and
+# `blackbird_sweep.py` have the identical shape -- `subprocess.run`, then "the
+# line I wanted is missing, record an error" -- so a launch failure is
+# indistinguishable from a genuine build failure in all three.
+LAUNCH_FAILURE_RCS = {
+    3221225794: "STATUS_DLL_INIT_FAILED (0xC0000142)",
+    3221225495: "STATUS_NO_MEMORY (0xC0000017)",
+    3221225781: "STATUS_DLL_NOT_FOUND (0xC0000135)",
+}
+
+
+def launch_failure(rc, output=""):
+    """Name the infrastructure failure behind `rc`, or None if this is a result.
+
+    `errored` means *we asked and the tool could not*. `unmeasured` means *we
+    never asked*. Pooling the second into the first turns a host collapse into a
+    claim about the corpus, so the two must not share a column.
+
+    A child that produced OUTPUT is never classified here however it exited: it
+    ran, it had an opinion about the file, and suppressing that would hide a
+    genuine failure. Only a silent child with one of these codes qualifies.
+    """
+    if output and output.strip():
+        return None
+    return LAUNCH_FAILURE_RCS.get(rc)
+
+
 def underpowered(tot, min_n=MIN_INFORMATIVE_FRAMES):
     """True when a percentage over `tot` comparisons is too small to quote.
 

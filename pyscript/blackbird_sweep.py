@@ -27,6 +27,9 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from sidm2.fidelity_common import launch_failure  # noqa: E402
 
 # The v1.2-exact corpus: the files the native Blackbird driver is validated on.
 CORPUS = [
@@ -91,8 +94,13 @@ def build_one(name, env=None):
     r = subprocess.run(
         [sys.executable, os.path.join(ROOT, "bin", "build_blackbird_native_song.py"), sid],
         capture_output=True, text=True, cwd=ROOT, env=env or dict(os.environ))
-    rec = parse_build_output(r.stdout + r.stderr)
+    text = r.stdout + r.stderr
+    rec = parse_build_output(text)
     if rec is None:
+        # A silent child that never started is not this file failing to build.
+        infra = launch_failure(r.returncode, text)
+        if infra:
+            return {"unmeasured": infra, "rc": r.returncode}
         return {"error": "no WEIGHTED AVERAGE line", "rc": r.returncode}
     sf2 = os.path.join(ROOT, "out", "blackbird", f"{name}_native_part01.sf2")
     rec["bytes"] = os.path.getsize(sf2) if os.path.exists(sf2) else None
