@@ -40,6 +40,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_DIR = os.path.join(ROOT, "SID", "Gallefoss_Glenn")
 BUILDER = os.path.join(ROOT, "bin", "build_sdi_native_song.py")
 
+# A SWEEP THAT CANNOT LAUNCH A PROCESS IS NOT A SWEEP THAT MEASURED A FILE.
+# The first full-corpus run of this script returned these codes for every file
+# from #275 of 441 onward -- ~5 h in, the long-lived parent could no longer spawn
+# a child -- and the summary counted all 167 as "errored", i.e. reported an
+# infrastructure collapse in the same column as `not an SDI play+3 rip`. Three of
+# them built cleanly on a fresh invocation, so the run had fabricated 167 results
+# and its own per-variant medians silently became an A-O sample. These codes are
+# therefore quarantined from the result classes and abort the run by default.
+LAUNCH_FAILURE_RCS = {
+    3221225794: "STATUS_DLL_INIT_FAILED (0xC0000142)",
+    3221225495: "STATUS_NO_MEMORY (0xC0000017)",
+    3221225781: "STATUS_DLL_NOT_FOUND (0xC0000135)",
+}
+
 _HEAD = re.compile(r"^\S+: la=\$([0-9A-F]{4}) variant=(\S+)", re.M)
 _VOICE = re.compile(r"^\s+voice (\d): \s*([\d.]+)%", re.M)
 _PARTS = re.compile(r"packed into (\d+) adaptive part")
@@ -99,6 +113,9 @@ def build_one(name, timeout=1800):
     if rec["voices"] is None and rec["refused"] is None:
         tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if l.strip()]
         rec["error"] = tail[-1][:160] if tail else f"no output (rc={r.returncode})"
+        # The child never got far enough to have an opinion about this file.
+        if not tail and r.returncode in LAUNCH_FAILURE_RCS:
+            rec["infra"] = LAUNCH_FAILURE_RCS[r.returncode]
     return rec
 
 
@@ -108,8 +125,12 @@ def summarize(results):
     should, and this repo quotes medians for SDI Stage A already."""
     built = {k: v for k, v in results.items() if v.get("voices")}
     refused = {k: v for k, v in results.items() if v.get("refused")}
+    # `infra` is NOT an outcome for the file -- it is the sweep failing to ask.
+    # Keeping it out of `errored` is the whole point: pooled into that column it
+    # reads as 167 unsupported files instead of 167 unmeasured ones.
+    infra = {k: v for k, v in results.items() if v.get("infra")}
     errored = {k: v for k, v in results.items()
-               if not v.get("voices") and not v.get("refused")}
+               if not v.get("voices") and not v.get("refused") and not v.get("infra")}
     by_var = {}
     for name, rec in built.items():
         by_var.setdefault(rec["variant"] or "?", []).extend(rec["voices"])
@@ -122,9 +143,10 @@ def summarize(results):
                        "at_100": sum(1 for x in vals if x >= 99.95),
                        "below_90": sum(1 for x in vals if x < 90)}
     return {"built": len(built), "refused": len(refused), "errored": len(errored),
-            "by_variant": rollup,
+            "unmeasured": len(infra), "by_variant": rollup,
             "refusal_reasons": sorted({v["refused"] for v in refused.values()}),
-            "errors": {k: v.get("error") for k, v in errored.items()}}
+            "errors": {k: v.get("error") for k, v in errored.items()},
+            "unmeasured_files": sorted(infra)}
 
 
 def main(argv=None):
@@ -134,14 +156,38 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, help="first N corpus files only")
     ap.add_argument("--timeout", type=int, default=1800, help="per-file seconds")
     ap.add_argument("--json", help="write the full per-file record here")
+    ap.add_argument("--infra-abort", type=int, default=3, metavar="N",
+                    help="stop after N consecutive process-LAUNCH failures "
+                         "(0 disables); once the host stops spawning children "
+                         "every later file is recorded as a failure it never had")
     a = ap.parse_args(argv)
 
     corpus = corpus_files(a.limit, a.files)
     print(f"SDI Stage B sweep -- {len(corpus)} file(s) from {CORPUS_DIR}", flush=True)
     results = {}
+    consec_infra = 0
     for i, name in enumerate(corpus, 1):
         rec = build_one(name, a.timeout)
         results[name] = rec
+        if rec.get("infra"):
+            consec_infra += 1
+            print(f"  [{i}/{len(corpus)}] {name:34s} {'?':5s} "
+                  f"LAUNCH FAILURE ({rec['infra']}) -- not a result", flush=True)
+            if a.infra_abort and consec_infra >= a.infra_abort:
+                rest = corpus[i - consec_infra:]
+                print(f"ABORTING: {consec_infra} consecutive process-launch "
+                      f"failures. The host has stopped spawning children, so "
+                      f"every remaining file would be recorded as a failure it "
+                      f"never had.", flush=True)
+                print(f"{len(rest)} file(s) UNMEASURED. Resume in a FRESH "
+                      f"process (chunk it -- the exhaustion is cumulative):",
+                      flush=True)
+                print(f"  py -3 pyscript/sdi_native_sweep.py --files "
+                      f"{' '.join(rest[:6])}{' ...' if len(rest) > 6 else ''}",
+                      flush=True)
+                break
+            continue
+        consec_infra = 0
         if rec.get("voices"):
             v = "/".join(f"{x:.1f}" for x in rec["voices"])
             tag = " [V-wrapper]" if rec.get("v_wrapper") else ""
@@ -157,6 +203,11 @@ def main(argv=None):
     s = summarize(results)
     print(f"\nbuilt {s['built']}  refused {s['refused']}  errored {s['errored']}"
           f"  of {len(corpus)}")
+    unmeasured = len(corpus) - len(results) + s["unmeasured"]
+    if unmeasured:
+        print(f"!! {unmeasured} file(s) UNMEASURED (process-launch failure) -- "
+              f"the figures below cover {len(results) - s['unmeasured']} files, "
+              f"NOT {len(corpus)}. This is not a corpus result.")
     print(f"{'variant':>8s} {'voices':>7s} {'median':>7s} {'=100':>6s} {'<90':>5s}")
     for var, r in s["by_variant"].items():
         print(f"{var:>8s} {r['voices']:7d} {r['median']:7.1f} "
