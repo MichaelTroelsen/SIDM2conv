@@ -1003,9 +1003,26 @@ these are short jingles where a percentage carries almost no information:
 | `Hunters_Moon_Remastered` | 1-4 | 99.1/100/82.9 … 100/99.7/80.6 | n 3420-6333 |
 
 **`Motocross` sub 4 is a real failure and is not averaged away**: 0.0% on two
-voices. It is the only build of the 20 that fails, and unlike the retracted
-claim above this one is measured against the correct tune. Unexplained; recorded
-rather than dropped.
+voices, the only failure of the 20, and this one *is* measured against the
+correct tune. Diagnosed rather than left as a shrug:
+
+- Voice 0 decodes **zero notes**. Its track is `[34, 2, 2, 254]`, and pattern
+  34 is `[$FA 03, $F9, $FF]` — an instrument select, a `$F9`, and the
+  terminator. **No note bytes at all.** Voices 1 and 2 reference patterns 35/36,
+  which do carry notes (3 each), and score 10.9% / 0.0%.
+- The original nonetheless sounds **64 gate-on frames on voice 0** (52 on each
+  of the others). So either the track→pattern mapping is wrong for this subtune,
+  or a control code we treat as inert produces sound.
+- `$F9` (`PC_PARAM`) consumes the following byte, so here it swallows the `$FF`
+  terminator. Checking `$FF` first would not rescue it — the pattern still holds
+  no notes either way — but it is the kind of adjacency worth knowing about.
+  **Corpus-wide it occurs exactly once**: this one pattern, in this one game
+  (the four hits below are the same shared pattern seen from four subtunes).
+
+So it is not a general decode bug, and it is not the `$F9` handling. It is one
+voice of one 1.3-second sting whose pattern contains no notes while the hardware
+plays something. Left open, scoped, and now also flagged `!` as underpowered
+(n=46-58) so it cannot be quoted as a fidelity figure in either direction.
 
 ⚠️ **A percentage on n≈50-130 frames is not a fidelity claim.** Six of the 20
 are jingles of one to three seconds. They are listed because omitting them would
