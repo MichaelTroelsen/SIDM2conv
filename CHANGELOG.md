@@ -23,6 +23,195 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+---
+
+## [3.27.0] - 2026-08-12
+
+### Matt Gray Stage B: a native build for 16 tunes, and two of its own claims retracted
+
+Stage A transpiles Matt Gray's SCORE onto stock Driver 11 and knowingly omits
+the slide/arp/PWM/drum engine, so timbre was never claimed. Stage B does not
+reverse-engineer those four engines: a MON-compatible shim feeds
+`build_mon_native_song`, which **captures** the synth side per frame from the
+original's own siddump output. Only the sequencer crosses the shim boundary —
+the part Stage A had already validated to 100%.
+
+**Added**
+- `bin/build_mattgray_native_song.py` — the Stage B shim and builder. **16 tunes
+  build across three games**: Last Ninja 2 (12 of 13 subtunes), Driller (sub 1),
+  Tusker (subs 0-3). Each Driller/Tusker tune fits its full ~120 s in one part.
+- `pyscript/test_mattgray_native.py` — 11 tests pinning the shim contract, the
+  decisions made by measuring, and the rest-merge guards.
+
+**Fidelity** (Last Ninja 2 sub 0, per-frame register state vs the original,
+2,790 frames, best whole-render offset -1): waveform, AD/SR, `$D416`/`$D417`
+and `$D418` **100.00%**; frequency **92.7 / 92.9 / 100.0** over *all* frames.
+The whole frequency residual is 192 frames each on voices 0 and 1 where **both
+sides carry waveform `$00`** — no waveform bits, so the oscillator is silent and
+it cannot be heard. Rung 3 passes: `pyscript/sf2ii_vs_wrapper.py` scores the
+real editor against our own wrapper render at 100.0% freq/waveform/pulse on two
+builds, including the weakest subtune — which places that subtune's residual on
+the conversion side, not the editor's.
+
+**Two decisions made by measuring, not by taste**
+- **`snap_gate` is OFF**, against HardTrack's ON. Chosen on the corpus: `False`
+  scores 98.16% against `True`'s 97.87%, is better on **5** voices and worse on
+  **none**, and moves exactly-100.0% voices from 15/36 to 16/36. `MG_SNAP=1`
+  restores the other setting.
+- **Subtune 7 is REFUSED, not built.** It is the only one of the 13 whose final
+  pattern the relocating copy truncates, and the only one that renders
+  catastrophically — voice 0 at 1.9% against 92-100% everywhere else. A 1:1
+  correlation with a named cause is not a residual for a table; it is a file we
+  cannot build, and the builder says so rather than emitting a plausible SF2.
+
+**Fixed — the release waveform (`release_wf`)**
+The first listening pass any Matt Gray build has ever had found the original
+writing `$00` on 192 gate-off frames per voice where our render wrote `$40`:
+the original goes quiet, ours kept releasing a tone. Corroborated from the audio
+alone by silence fraction 0.2% → 0.0%. The driver already had the mechanism —
+`RELEASE_WF`, which Sound Monitor uses — so this is a **shim flag, not a driver
+change**. The byte is **derived from the trace, not from a flag bit**: for every
+decoded note, walk from its gate fall to the next note and take the modal
+gate-off waveform; an instrument whose releases were never observed keeps the
+driver's default rather than a guess, and a near-tie (< 60%) is rejected for the
+same reason. Genuinely per-instrument — sub 0 derives `$40`/`$80`, sub 12 `$00`.
+**Waveform over all frames: 84.6% → 100.0% on all three voices.**
+
+**Fixed — the release arpeggio, frozen by the rest row**
+Attributing every sounding gate-off run to the event that owns it, over one
+common 2,780-frame window, splits cleanly: **all 138 runs inside a NOTE's own
+span were byte-exact, and all 236 inside a REST were wrong**, ours frozen on one
+constant. 76% of the wrong frames were an exact octave relation to the original
+(`x2` 347, `/2` 290, `x4` 172, `/4` 116) — the original **arpeggiates through
+the release**. One line of the shared builder explains it: `build_mon_native_song`
+emits a rest as bare gate-off rows carrying no wave, pulse or FM program, so the
+pitch freezes at whatever the previous note left. Correct for an engine whose
+release is quiet; wrong for one whose arpeggio keeps stepping.
+
+`merge_sounding_rests()` absorbs a rest the original still sounds through into
+the preceding note, putting those frames back inside the per-note capture that
+already reproduced every note-internal run exactly. Shim-layer: no driver
+change, no new engine. Guards: only rests that **actually sound** (waveform bits
+set AND non-zero frequency — a rest the player silences with `$00` is left
+alone), and only within `FM_CAP`. `MG_NO_REST_MERGE=1` restores the old
+behaviour. **Audible gate-off frames carrying the wrong frequency: 93 / 288 /
+832 → 0 / 0 / 0.**
+
+Corpus, built both ways — 17 files, 51 voices, 719 rests merged: `raw` **13
+voices up, 2 down, 36 unchanged** (+1.50 pp frame-weighted, largest +28.4);
+`audible` 1 up, 5 down, 45 unchanged (-0.011 pp, all losses -0.1 or -0.2 and
+second-order via the instrument-cap optimizer and part boundaries). A strict
+no-op on Driller and Tusker sub 0, whose weak voice 2 is a *different*
+unexplained defect. **Cost, stated rather than buried:** `Last_Ninja_2` sub 2
+and `Tusker` sub 1 now need 2 parts where they needed 1 — not waste, because a
+tighter guard (merge only where freezing would actually be wrong) keeps **100%**
+of the merges on all three affected files, 277/277, 325/325 and 31/31.
+
+**Retracted — the "register written twice within a frame" candidate.** It was
+published as the leading cause of the residual audio gap, and a cycle-accurate
+VICE trace of both sides (1,250 frames each; the original's reconstructed state
+validates at **100.00%** against siddump over 3,570 comparisons) says our driver
+already reproduces it: gate blips 104/20/16 (original) against 105/21/16 (ours),
+note-ons writing frequency before gate-on 107 against 108. Our driver issues
+16.5 writes per call against 7.2, but the excess is **536 same-value re-writes**,
+which change nothing. One real difference survives and is far too small to be the
+cause: 16 mid-call frequency changes the original makes and we never do, over
+1,249 calls. A confound nearly published a wrong number on the way — writes must
+be grouped by **play call, not by the tracer's frame window**, because the
+tracer's boundary does not coincide with the player's IRQ, so a frame holds the
+tail of one call and the head of the next; counting those together reported 764
+mid-frame changes against 161, the opposite conclusion.
+
+**Retracted — the 0.78 per-window audio figure.** The alignment search stepped
+in 441-sample (10 ms) hops, coarser than a 1024-sample FFT window is sensitive
+to, and the *same* comparison scored 0.98 in one run and 0.87 in another, which
+is how it was caught. With a coarse pass plus a 32-sample refine the measurement
+is stable and two independent floors agree to 0.002: floor **0.9810 / 0.9828**,
+before 0.8457, after **0.8545**. The gap is ~0.13, not ~0.20.
+
+**The measurement discipline this arc paid for twice**
+- A **raw waveform correlation is never evidence.** Rendering the original
+  against *itself* at a different sidplayfp power-on delay — byte-identical
+  registers, only a different oscillator phase — scores 0.58-0.74. The 0.579
+  once published as proof that "the audio really does differ" is
+  indistinguishable from identical material. The phase-invariant measures
+  (RMS envelope, magnitude spectrogram) sit at 0.97-0.99 for identical material
+  and are the ones to quote.
+- The builder's **`audible` column is gate-on only and is BLIND to release-tail
+  defects** — it read 99.5-100% straight through 236 wrong release runs. Its
+  docstring claimed `raw` counts "gate-off frames nothing can hear"; that is
+  false on this player, which releases with `$10`/`$40`/`$80` still selected,
+  and that sentence is what hid the defect. Corrected in place.
+- `tools/sidm2-sid-trace.exe` **cannot trace this file** — 0 writes at 400
+  frames on subtunes 0, 1 and 2, while exiting 0. The VICE wrapper works; both
+  were validated against siddump before anything was read into them.
+
+**Still open, stated plainly:** per-frame register state is essentially exact,
+within-call write pattern and order are reproduced, and the audio still sits
+0.13 below a floor measured on the same tune — broadband, worst in 3-8 kHz —
+with **no standing hypothesis**. All 16 tunes decode via `layout='signature'`,
+not the validated `driller` fast path, so the decode is unverified in the sense
+`MATTGRAY.md` uses everywhere else; 1 of 55 HVSC files is properly located.
+
+Detail: `docs/players/MATTGRAY.md`.
+
+### HardTrack item 6: the brightness gap's two leading causes are falsified
+
+Re-measured rung 4's residual gap at the render's real -3 alignment
+(`Love_tune_2` part 1, 28 s, 1,396 frames); the baseline reproduces exactly at
+centroid -51.4 Hz, rolloff -169.6 Hz, level -0.4 dBA.
+
+- **Cutoff is not the cause, and the figure on record was misleading.**
+  Restricted to the 757 frames where the original actually routes a voice
+  through the filter, the cutoff is **100.0% byte-exact**; all 418 mismatches
+  sit on frames where `$D417`'s routing nibble is 0, so the filter is out of
+  circuit and the cutoff cannot be heard. The documented "cutoff 94.6%" was
+  measured over all frames and does not describe an audible defect. Retired.
+- **Frequency is not the cause.** All 206 mismatches carry the SID TEST bit or
+  have the gate off — the known structural note-on frame, which is silent.
+- That leaves SR (336 frames, every one gate-off), AD (28) and waveform (4) as
+  the only audible register differences. **The SR-tail hypothesis does not
+  survive the energy measurement**: if our release tails rang where HardTrack
+  cuts them dead we would be locally louder, and per-frame RMS says we are
+  uniformly ~1.1 dB **quieter** (-0.84 dB near an SR mismatch against -1.17 dB
+  elsewhere) — wrong sign, no locality. Recorded as *not* a clean falsification,
+  because `Love_tune_2` has an SR mismatch at every note-on across three voices,
+  so 1,055 of 1,400 frames lie within 8 frames of one and only 3 are clear of
+  all: there is no within-render control on this material.
+
+Net effect: item 6 is much narrower than "about half the gap is unexplained" —
+two of its three candidate registers are provably inaudible — and the expensive
+shared-driver HRC lookahead is now a **weaker** bet than the docs implied,
+because the register it targets moves the energy the wrong way. Measurement and
+documentation only; no code changed.
+
+### Documentation integrity
+
+The recurring failure here is **duplicated truth**: one fact in several places,
+where only some copies get updated. Several instances were found and the class
+was given a test rather than another checklist item.
+
+**Added**
+- `pyscript/test_version_stamps_agree.py` — the version lives in five places and
+  two had gone stale (`ACCURACY_MATRIX.md` sat at 3.22.0 through the 3.23.0
+  release; README's banner sat at 3.22.0 for **four** releases). The stamps can
+  no longer disagree without something going red, and a bump that leaves its
+  entries under `[Unreleased]` now fails too — which had shipped at v3.25.0.
+
+**Fixed**
+- README's version banner, stale for four releases.
+- A **third** copy of the HardTrack figures had drifted, plus two dead
+  `docs/INDEX.md` links and four other dead doc links; one doc that describes a
+  2025 pipeline is now flagged as such.
+- `CLAUDE.md` trimmed 32.5 KB → 26.4 KB after verifying all 23 of its HardTrack
+  claims survive in `docs/players/HARDTRACK.md`. It had drifted while *staying
+  inside* its line budget, because prose migrates into table cells and a line
+  count cannot see that — one table row was 6,696 bytes, 21% of the file. The
+  size note now measures itself in **bytes**.
+- `CLAUDE.md`'s Matt Gray row still said "Stage A only / Driller build only"
+  after Stage B shipped; re-written with the caveats needed to quote its numbers
+  correctly.
+
 ### Instrument map: which instrument is sounding on each siddump frame
 
 Every fidelity number in this repo was per voice and per register. A HardTrack
