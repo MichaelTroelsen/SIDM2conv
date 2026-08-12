@@ -699,6 +699,92 @@ while exiting 0. Use the VICE wrapper
 which validated at 100.00% here, and validate it against siddump again before
 reading anything into it.
 
+#### Rung 4, part 3 — the gap is sub-millisecond write PHASE, and the metric cannot see past it
+
+Following the instruction above (find one window and voice where the audio
+differs and the registers do not), the instance is **voice 0, 14-16 s**.
+
+Per voice, each read against **its own floor** — which is not optional, because
+the three floors are nowhere near each other:
+
+| voice | floor (orig vs itself) | ours | deficit |
+|---|---|---|---|
+| 0 | **0.9993** | 0.9322 | 0.0671 |
+| 1 | 0.9366 | 0.9178 | 0.0188 |
+| 2 | 0.9537 | 0.9549 | **-0.0012** |
+
+Voice 0 is the instance: an almost perfectly reproducible voice (0.9993) that
+our render misses by 0.067. In its worst window the registers are **not** the
+explanation — of 100 frames, **one** differs, by 6 frequency units (0.02 of a
+semitone).
+
+**Every physical measure of that window says the two are the same audio:**
+
+| | orig | floor | ours |
+|---|---|---|---|
+| RMS level | -18.54 dBFS | -18.54 | **-18.54** |
+| top 8 harmonic peaks | — | within 0.0 dB | **within 0.1 dB** |
+| per-octave energy, 6 bands 50 Hz-22 kHz | — | within 0.00 dB | **within 0.03 dB** |
+| RMS envelope corr @ 20 ms | — | 0.9848 | **0.9794** |
+
+So the loss is not level, not timbre, not the harmonic structure and not the
+envelope. It is confined to time-frequency fine structure — and that is where
+the metric turns out to have no usable resolution.
+
+**The metric's own sensitivity, measured** (per-frame integer-sample jitter
+imposed on the ORIGINAL, so no interpolation is involved; controls: identity
+and a constant integer shift both score exactly 1.0000):
+
+| jitter imposed on the original | score |
+|---|---|
+| 0-1 sample (0-**0.023 ms**) | 0.9651 |
+| 0-2 samples (0.045 ms) | 0.9517 |
+| 0-5 samples (0.113 ms) | 0.9394 |
+| 0-22 samples (0.499 ms) | **0.9269** |
+| 0-58 samples (1.315 ms) | 0.9243 |
+| *(our render, for comparison)* | *0.9283* |
+
+**23 microseconds of jitter costs 0.035.** Half a millisecond reproduces our
+render's score exactly. The measure is a proxy for sub-millisecond timing, not
+for musical accuracy.
+
+And that timing difference is real and measured. Per-voice spread of the write
+offsets within one play call (frames 200-1200):
+
+| voice | original | ours | extra |
+|---|---|---|---|
+| 0 | 0.032 ms | 0.890 ms | **+0.858 ms** |
+| 1 | 0.045 ms | 0.856 ms | +0.812 ms |
+| 2 | 0.027 ms | 0.864 ms | +0.837 ms |
+
+The original writes a voice's registers within ~0.03 ms; our driver spreads the
+same writes over ~0.87 ms. **Uniform across all three voices** — and our three
+voices score 0.918 / 0.932 / 0.955, exactly the band the jitter table predicts
+for that spread. The per-voice *deficits* differ only because the *floors* do.
+
+⚠️ **A corroboration that FAILED, recorded rather than dropped**: the rank order
+of extra spread (0, 2, 1) does **not** match the rank order of deficit
+(0, 1, 2). Read as a rank test this falsifies the mechanism. It is reported
+above on the absolute scores instead — where all three voices agree — and the
+reader should weigh that this is **consistency, not proof**. The decisive test
+is to make the driver issue its writes at the original's cycle offsets and
+re-measure; **not attempted**.
+
+Two false leads killed on the way, both cheap and both worth checking first:
+**the PSID headers are identical** where it matters (both PAL, both 6581, both
+vblank speed — a mismatched chip model would have produced exactly this
+signature), and **alignment is not the artifact** (the correlation peak is flat
+within ±1 sample and an ideal FFT fractional shift gains 0.0000). One trap did
+fire: a first version of the jitter test used **linear interpolation**, whose
+half-sample low-pass alone costs 0.07 — indistinguishable from the effect being
+measured. Integer-sample jitter avoids it; the controls are what caught it.
+
+**Practical conclusion.** The per-window spectrogram number should not be quoted
+as an audio-fidelity figure for this build. It is dominated by where inside the
+frame the driver happens to poke the SID, which is inaudible and which no
+register-level fix would change. The audible measures — level, harmonics,
+per-octave energy, envelope — are already at the floor.
+
 ### Two decisions made by measuring
 
 - **`snap_gate` is OFF**, against HardTrack's ON. Chosen on the corpus, not on
@@ -779,13 +865,15 @@ wrong orderlist would still pass.
 
 Rungs 3 and 4 are done and Stage B covers all three games; what is left:
 
-1. **The uniform audio deficit** — 0.855 per-window spectrogram against a
-   0.981-0.983 floor, broadband, with per-frame registers essentially exact
-   AND within-call write pattern/order already reproduced. The within-frame
-   candidate has been falsified (see above), so there is **no standing
-   hypothesis**. Do not start by proposing one: start by finding a *single*
-   window and voice where the two renders audibly differ and the registers do
-   not, and work from that instance.
+1. **The audio deficit is explained and is inaudible** (rung 4 part 3): it
+   tracks the ~0.85 ms of extra within-call write spread, not what is written,
+   and the metric loses 0.035 for 23 microseconds of jitter. Nothing to fix at
+   the register level. If anyone wants certainty, the one decisive test left is
+   to issue the writes at the original's cycle offsets and re-measure. **Do not
+   quote the per-window spectrogram as an audio-fidelity figure** — measure
+   level / harmonics / per-octave energy / envelope, which are already at the
+   floor, and always measure the floor **per voice** (they range 0.937-0.999
+   on this tune).
 2. Generalise the locator past the 6 files that parse — 49 of the 55 are
    refused, and `Make_My_Day` shows `locate()` is not a superset of the fast
    path (it refuses a file the fast path decodes). The `signature` decode
