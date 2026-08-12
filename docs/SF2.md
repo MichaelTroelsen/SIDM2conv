@@ -25,8 +25,20 @@ converted SF2 runs on (a stock **Driver 11**, the native **Laxity** driver, or a
 | Rob Hubbard V1 | Rob Hubbard | **native** (MoN engine) | `SID/Hubbard_Rob/` | pulse/freq/filter **100%** | `bin/` |
 | Rob Hubbard V2 (Delta) | Rob Hubbard | **native** | `SID/Hubbard_Rob/` | Delta theme freq/pulse/filter 100% (wf 85–96) | `bin/` |
 | DMC (Demo Music Creator) | Johannes Bjerregaard | **native** (MoN engine) | `SID/JohannesBjerregaard/` (88) | see below; **56 eligible** (within-frame onsets, 2026-07-11) | `bin/` |
-| Future Composer ($1800) | Michael Troelsen | Driver 11 (Stage A) | `SID/Fun_Fun/` | notes/order trace-validated | `bin/` |
+| Future Composer | Michael Troelsen (Fun Fun) | **native** (Stage B, via a MoN shim) | `SID/Fun_Fun/` (20) | **14/15 corpus voices exactly 100.0%** audible pitch, full song length | `bin/` |
+| Sound Monitor (Hülsbeck) | Michael Troelsen (Fun Fun) | **native** | `SID/Fun_Fun/` (20) | corpus strict sweep **99.25%** freq+wf over **27 of 27** parts | `bin/` |
+| SID Duzz' It (SDI) | Glenn Rune Gallefoss / Tjelta | Driver 11 (Stage A) | `SID/Gallefoss_Glenn/` (441) | strict onset+pitch medians A 98.3 · D 100 · C 86.0 · B 74.8 · E 50.8 · V 21.8 — **only A+D are unfitted** | `bin/` |
+| Blackbird / lft | Linus Åkesson (lft) | **native** | `SID/LFT/` (61) | 16-file v1.2-exact corpus mean **99.96**; **11 of 16 exactly 100.0**, none below 99.8 | `bin/` |
+| Jeroen Kimmel (Hubbard-derived) | Jeroen Kimmel | Driver 11 (Stage A) | `SID/Red_kommel_jeroen/` (4) | **11/12 voice-medians exact 100%** (frame-pitch) | `bin/` |
+| Maniacs of Noise / Deenen | Charles Deenen | Driver 11 (Stage A) | `SID/deenen/` (40) | 7 clean wins (5 at exactly 100/100); 10/19 located | `bin/` |
+| HardTrack Composer | Wojciech Radziejewski (Shogoon) | Driver 11 (Stage A) + **native** (Stage B) | `SID/Shogoon/` (150, mixed-player) | register model **100.00%** freq/wf/pulse on the 18 layout-seeded files; Stage B builds 33/33 | `bin/` |
+| Matt Gray | Matt Gray | Driver 11 (Stage A) + **native** (Stage B) | `SID/Gray_Matt/` (55) | wf/AD/SR/filter/`$D418` **100.00%**, freq **92.7/92.9/100.0** (Last Ninja 2 sub 0, all frames) | `bin/` |
 | NewPlayer 20.G4 | various | NP20 | `SID/` (NP20 variants) | 70–90% | ✅ auto (registry) |
+
+⚠️ Every figure here is a **verdict with conditions attached** — the match window,
+which files were included, and which registers were actually exercised all change
+what it means. Read the player's own doc in [`docs/players/`](players/) before
+quoting any of them; several have been retracted and re-measured.
 
 ---
 
@@ -160,7 +172,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**587 songs built** across 10 native players (each song may span several SF2 parts).
+**643 songs built** across 13 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -226,20 +238,21 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Who Is Robb Vol 1 | Johannes Bjerregaard (The Jerk) | 198? The Jerk | 15 |
 | Zoom | Johannes Bjerregaard | 1988 Discovery Software Int'l | 1 |
 
-### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  26 songs / 201 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  27 songs / 206 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
 | Children Songs sub0 | Jeroen Tel | 1988 Maniacs of Noise | 11 |
-| Cybernoid II sub0 | Jeroen Tel | 1988 Hewson | 13 |
-| Cybernoid sub0 | Jeroen Tel | 1988 Hewson | 14 |
+| Cybernoid II sub0 | Jeroen Tel | 1988 Hewson | 18 |
+| Cybernoid II sub0 native |  |  | 1 |
+| Cybernoid sub0 | Jeroen Tel | 1988 Hewson | 13 |
 | Daring Dots sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
 | G I Hero sub0 | Jeroen Tel | 1988 Maniacs of Noise | 13 |
 | Gaplus preview sub0 | Jeroen Tel | 1988 Maniacs of Noise | 18 |
 | Gaplus sub0 | Jeroen Tel | 1988 Mastertronic | 27 |
 | Hawkeye Proto 1 sub0 | Jeroen Tel | 198? Maniacs of Noise | 4 |
-| Hawkeye sub0 | Jeroen Tel | 1988 Thalamus | 7 |
-| Hawkeye sub2 | Jeroen Tel | 1988 Thalamus | 2 |
+| Hawkeye sub0 | Jeroen Tel | 1988 Thalamus | 8 |
+| Hawkeye sub2 | Jeroen Tel | 1988 Thalamus | 1 |
 | Hawkeye sub2 native |  |  | 1 |
 | Hawkeye sub3 | Jeroen Tel | 1988 Thalamus | 1 |
 | Hawkeye sub3 native |  |  | 1 |
@@ -257,7 +270,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Viool Tello sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
 | Wizzy sub0 | Jeroen Tel | 1988 Maniacs of Noise | 3 |
 
-### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 589 SF2 files
+### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 634 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -272,14 +285,14 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Auf Wiedersehen Monty song0 | Rob Hubbard & Ben Daglish | 1987 Gremlin Graphics | 43 |
 | Chimera song0 | Rob Hubbard | 1985 Firebird | 12 |
 | Chimera song1 | Rob Hubbard | 1985 Firebird | 1 |
-| Commando song0 | Rob Hubbard | 1985 Elite | 4 |
+| Commando song0 | Rob Hubbard | 1985 Elite | 45 |
 | Commando song16 | Rob Hubbard | 1985 Elite | 4 |
 | Commando song2 | Rob Hubbard | 1985 Elite | 1 |
 | Confuzion song0 | Rob Hubbard | 1985 Incentive | 5 |
 | Crazy Comets song0 | Rob Hubbard | 1985 Martech | 5 |
 | Crazy Comets song1 | Rob Hubbard | 1985 Martech | 1 |
-| Deep Strike song0 | Rob Hubbard | 1987 Durell | 25 |
-| Delta song0 | Rob Hubbard | 1987 Thalamus | 221 |
+| Deep Strike song0 | Rob Hubbard | 1987 Durell | 28 |
+| Delta song0 | Rob Hubbard | 1987 Thalamus | 222 |
 | Delta song11 | Rob Hubbard | 1987 Thalamus | 3 |
 | Delta song12 | Rob Hubbard | 1987 Thalamus | 3 |
 | Geoff Capes Strongman Challenge song0 | Rob Hubbard | 1986 Martech | 1 |
@@ -393,7 +406,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Thats All | Michael Troelsen (Fun Fun) | 1987 Triangle | 3 |
 | Times Up | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  348 songs / 348 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  348 songs / 363 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -417,7 +430,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Alone in Space | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 1 |
 | Ambient | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 1 |
 | Another Beginning | Glenn Rune Gallefoss | 1998 SHAPE | 1 |
-| Another Day in Paradize | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Another Day in Paradize | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Arabia | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Arcane | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Arnhild | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
@@ -455,7 +468,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Country-Dip | Glenn Rune Gallefoss (Shark) | 1995 Plush | 1 |
 | Crizz Crozz | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
 | Culture Mix 1 | Glenn Rune Gallefoss (Shark) | 1990 Collision | 1 |
-| Culture Mix 2 | Glenn Rune Gallefoss (Shark) | 1990 Collision | 1 |
+| Culture Mix 2 | Glenn Rune Gallefoss (Shark) | 1990 Collision | 2 |
 | Curse | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 1 |
 | Dancing in the Moonlight | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Danske-baaten | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -520,7 +533,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | GRG in Cyberspace | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 1 |
 | GT Groove | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 | Guaranteed | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
-| Happy Birthday Tg-Acme | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Happy Birthday Tg-Acme | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 3 |
 | Hardcore | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 1 |
 | Hava Nagila | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
 | Heartbeat | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
@@ -529,7 +542,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | High Pressure | Glenn Rune Gallefoss (Shark) | 1993 Regina | 1 |
 | Hithouse | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Holy Daze | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
-| Holy Josh | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Holy Josh | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Homebrew | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 1 |
 | House Fantasy | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Hyperfool | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
@@ -552,7 +565,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Jazzy-d | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | JB Groove I | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
 | JB Groove II | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
-| Jessie Jazz | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Jessie Jazz | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Joikaboller | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | JS Beta Song | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | JS Fanfare | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -565,9 +578,9 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Kleptoekko | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
 | Koke Stek | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Kururin | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
-| L-Forza long edit | Glenn Rune Gallefoss | 2010 Recollection | 1 |
+| L-Forza long edit | Glenn Rune Gallefoss | 2010 Recollection | 2 |
 | L-Forza Remix | Glenn Rune Gallefoss | 2009 Byterapers | 1 |
-| Lame | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
+| Lame | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 2 |
 | Lederhosen | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Leon Latex | Glenn Rune Gallefoss | 2007 SHAPE | 1 |
 | Lesbians | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
@@ -583,7 +596,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Micro Mix | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Microwave | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Milkshake | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
-| Mini Poelse | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
+| Mini Poelse | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 2 |
 | Moi Funk | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 1 |
 | Moonraker | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Morphosis | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
@@ -606,7 +619,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Oh Boy VE-2x | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 1 |
 | Ohne Titel | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 1 |
 | Oldie | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
-| Onkie Donkie | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Onkie Donkie | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Opening | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Orbital | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Organ Blues | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 1 |
@@ -633,8 +646,8 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Product | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Promises | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Psychic | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
-| Psycho | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
-| Psycho II | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Psycho | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 3 |
+| Psycho II | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Psycho IV | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Pulstro | Glenn Rune Gallefoss (Shark) | 1993 Regina | 1 |
 | Pultost VE-4x | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
@@ -693,7 +706,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Sugarhill | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Super Galaxy preview | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
 | Survival | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
-| Sveitser Ost | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Sveitser Ost | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Sweeper | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Sweet JB | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 1 |
 | Syk Sang | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -702,7 +715,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Synthfunk | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 | T-Shirt | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
 | Tango | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
-| Tanks 3000 | Glenn R. Gallefoss & R. Bayliss | 2006 Protovision | 1 |
+| Tanks 3000 | Glenn R. Gallefoss & R. Bayliss | 2006 Protovision | 2 |
 | Tarmslyng | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Techno | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Techno-Kaare | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
@@ -800,6 +813,76 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | To Die For II native | Linus Åkesson (lft) | 2017 Genesis Project | 1 |
 | Toy Rocket native | Linus Åkesson (lft) | 2017 lft | 1 |
 | Trinket native | Linus Åkesson (lft) | 2017 lft | 1 |
+
+### HardTrack Composer — Longhair/Brush  ·  `native (Stage B)`  ·  33 songs / 196 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Altered States Tune 1 | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 6 |
+| Altered States Tune 2 | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 14 |
+| Arizona Dream | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 3 |
+| Astoria 7 tune 2 | Wojciech Radziejewski (Shogoon) | 1996 Agony | 9 |
+| Domagareflexow | Wojciech Radziejewski (Shogoon) | 1995 Samar Productions | 3 |
+| For Astoria 6 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 4 |
+| Fun Factory | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 12 |
+| Griffin Score | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 20 |
+| Hopscotch | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo | 4 |
+| If I Was a Rich Man | Shogoon & Longhair | 199? Elysium | 1 |
+| Illmatic end | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 9 |
+| Intrigue | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 1 |
+| Jazz and Weird Tekno | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 13 |
+| Jazzloor | Shogoon & Longhair | 1994 Elysium | 4 |
+| Love tune 2 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 6 |
+| Love tune 3 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 11 |
+| Love tune 5 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 4 |
+| Muminki Rooooolz | Wojciech Radziejewski (Shogoon) | 1995 Agony | 3 |
+| Muza Do Dema | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 3 |
+| Ritual II tune 1 | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 4 |
+| Ritual II tune 2 | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 7 |
+| Rune-T Noter | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 8 |
+| Shogoon-Rave | Wojciech Radziejewski (Shogoon) | 1994 Agony/Taboo | 2 |
+| Sling | Wojciech Radziejewski (Shogoon) | 2002 Elysium | 2 |
+| Something to Eat | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 8 |
+| Takisobie | Wojciech Radziejewski (Shogoon) | 1996 Taboo/Agony | 6 |
+| Teekkno | Wojciech Radziejewski (Shogoon) | 1995 Agony | 2 |
+| Timsoft Intro | Wojciech Radziejewski (Shogoon) | 1994 Timsoft | 8 |
+| Trance | Wojciech Radziejewski (Shogoon) | 1994 Agony | 5 |
+| Tribute to Laxity | Wojciech Radziejewski (Shogoon) | 2007 Shogoon | 4 |
+| Walk to Soul | Wojciech Radziejewski (Shogoon) | 1996 Taboo | 3 |
+| What Can I Say Crap | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 5 |
+| Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 2 |
+
+### Matt Gray — Matt Gray  ·  `native (Stage B)`  ·  17 songs / 25 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Driller sub01 | Matt Gray | 1987 Incentive | 1 |
+| Last Ninja 2 sub00 | Matt Gray | 1988 System 3 | 2 |
+| Last Ninja 2 sub01 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub02 | Matt Gray | 1988 System 3 | 2 |
+| Last Ninja 2 sub03 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub04 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub05 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub06 | Matt Gray | 1988 System 3 | 4 |
+| Last Ninja 2 sub08 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub09 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub10 | Matt Gray | 1988 System 3 | 2 |
+| Last Ninja 2 sub11 | Matt Gray | 1988 System 3 | 1 |
+| Last Ninja 2 sub12 | Matt Gray | 1988 System 3 | 2 |
+| Tusker sub00 | Matt Gray | 1989 System 3 | 1 |
+| Tusker sub01 | Matt Gray | 1989 System 3 | 2 |
+| Tusker sub02 | Matt Gray | 1989 System 3 | 1 |
+| Tusker sub03 | Matt Gray | 1989 System 3 | 1 |
+
+### Future Composer — Michael Troelsen  ·  `native (Stage B)`  ·  5 songs / 19 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Carillo part 2 | Michael Troelsen (Fun Fun) | 1988 Byterapers Inc. | 4 |
+| Demo of the Year 88 Elite 1997 | Michael Troelsen (Fun Fun) | 1988 Triangle | 3 |
+| Is There a Difference | Michael Troelsen (Fun Fun) | 1988 Triangle | 5 |
+| Triangle 2 years | Michael Troelsen (Fun Fun) | 1989 Triangle | 4 |
+| Triangle Intro | Michael Troelsen (Fun Fun) | 1988 Triangle | 3 |
 
 <!-- END GENERATED -->
 

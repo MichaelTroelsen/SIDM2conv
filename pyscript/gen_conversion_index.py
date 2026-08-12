@@ -2,7 +2,8 @@
 """Generate docs/SID_TO_SF2_CONVERSIONS.md — a master list of every SID song that
 has actually been converted to an SF2 file on disk, across BOTH known locations:
 
-  * out/<player>/    — the native-driver build pipeline (10 known player subdirs)
+  * out/<player>/    — the native-driver build pipeline (known player subdirs,
+                       see OUT_PLAYERS; a count here would only drift)
   * SF2/ (+subdirs)  — the older/separate conversion set (root + Fun_Fun,
                         Galway_Martin, Hubbard_Rob, Tel_Jeroen, Laxity)
 
@@ -53,6 +54,9 @@ OUT_PLAYERS = [
     ("kimmel_sf2",   "Jeroen Kimmel (Hubbard-derived)", "Jeroen Kimmel",    "Driver 11 (Stage A)"),
     ("deenen_sf2",   "Maniacs of Noise / Deenen",   "Charles Deenen",       "Driver 11 (Stage A)"),
     ("blackbird",    "Blackbird / lft",             "lft",                  "native"),
+    ("hardtrack_native", "HardTrack Composer",      "Longhair/Brush",       "native (Stage B)"),
+    ("mattgray_native", "Matt Gray",                 "Matt Gray",            "native (Stage B)"),
+    ("fc",           "Future Composer",             "Michael Troelsen",     "native (Stage B)"),
 ]
 OUT_SID_DIRS = {
     "dmc":          ["SID/JohannesBjerregaard"],
@@ -65,6 +69,9 @@ OUT_SID_DIRS = {
     "kimmel_sf2":   ["SID/Red_kommel_jeroen"],
     "deenen_sf2":   ["SID/deenen"],
     "blackbird":    ["SID/LFT"],
+    "hardtrack_native": ["SID/Shogoon"],
+    "mattgray_native": ["SID/Gray_Matt"],
+    "fc":           ["SID/Fun_Fun"],
 }
 
 # SF2/ locations: (label, relative dir, non-recursive). Root + the 5 subdirs.
@@ -302,7 +309,8 @@ def player_id(sid_path):
 # ---------------------------------------------------------------------------
 def render_out_section():
     lines = ["## Native-build pipeline — `out/<player>/`", ""]
-    lines.append("*The 10 known native/Driver-11-Stage-A player subdirectories under `out/` "
+    lines.append(f"*The {len(OUT_PLAYERS)} known native/Driver-11-Stage-A player "
+                 "subdirectories under `out/` "
                  "(same mapping as `pyscript/gen_sf2_index.py`). \"Original Player\" is the "
                  "already-known label for these dirs (not re-detected); \"SF2 Driver\" is read "
                  "live from each SF2's descriptor block.*")

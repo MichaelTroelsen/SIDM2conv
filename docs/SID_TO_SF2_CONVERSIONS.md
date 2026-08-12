@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**619 songs / 2227 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**675 songs / 2533 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **587 songs / 2195 files** across 10 player dirs
+- `out/<player>/` native-build pipeline: **643 songs / 2501 files** across 13 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -32,23 +32,27 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Rob Hubbard | Rob Hubbard | 60 |
 | Johannes Bjerregaard | DMC (Demo Music Creator) | 55 |
 | Martin Galway | Martin Galway | 40 |
+| Wojciech Radziejewski (Shogoon) | HardTrack Composer | 31 |
 | Jeroen Tel | Maniacs of Noise | 24 |
+| Matt Gray | Matt Gray | 17 |
 | Linus Åkesson (lft) | Blackbird / lft | 15 |
 | Thomas Mogensen (DRAX) | Laxity_NewPlayer_V21 | 12 |
 | Charles Deenen | Maniacs of Noise / Deenen | 9 |
 | Michael Troelsen (Fun Fun) | Sound Monitor (Musicmaster) | 9 |
 | Jeroen Kimmel | Jeroen Kimmel (Hubbard-derived) | 6 |
 | Martin Galway | Martin_Galway | 5 |
+| Michael Troelsen (Fun Fun) | Future Composer | 5 |
 | Michael Troelsen (Fun Fun) | ROMUZAK V6.3 | 4 |
+| (unknown) | Maniacs of Noise | 3 |
 | (unresolved) | unresolved | 3 |
 | Charles Deenen (TMC) | Maniacs of Noise / Deenen | 3 |
 | Jeroen Kimmel (Red) | Jeroen Kimmel (Hubbard-derived) | 3 |
 | Rob Hubbard | Rob_Hubbard | 3 |
-| (unknown) | Maniacs of Noise | 2 |
 | Charles Deenen (TSS) | Maniacs of Noise / Deenen | 2 |
 | Jeroen Tel & Markus Klein (LMan) | CheeseCutter_2.x | 2 |
 | Johannes Bjerregaard (The Jerk) | DMC (Demo Music Creator) | 2 |
 | Michael Troelsen (Coto) | Sound Monitor (Musicmaster) | 2 |
+| Shogoon & Longhair | HardTrack Composer | 2 |
 | Charles Deenen & Jeroen Tel | Maniacs of Noise / Deenen | 1 |
 | G. R. Gallefoss & B. Vosseteig | SID Duzz' It (SDI) | 1 |
 | Glenn Gallefoss & D. Bakewell | SID Duzz' It (SDI) | 1 |
@@ -69,7 +73,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Native-build pipeline — `out/<player>/`
 
-*The 10 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
+*The 13 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
 
 ### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  57 songs / 943 SF2 files
 
@@ -133,20 +137,21 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Who Is Robb Vol 1 | DMC (Demo Music Creator) | 1 | Romuzak | 15 | Johannes Bjerregaard (The Jerk) | 198? The Jerk |
 | Zoom | DMC (Demo Music Creator) | 19 | Romuzak | 1 | Johannes Bjerregaard | 1988 Discovery Software Int'l |
 
-### Maniacs of Noise — Jeroen Tel  ·  26 songs / 200 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  27 songs / 206 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
 | Children Songs sub0 | Maniacs of Noise | 3 | Romuzak | 11 | Jeroen Tel | 1988 Maniacs of Noise |
-| Cybernoid II sub0 | Maniacs of Noise | 2 | Romuzak | 13 | Jeroen Tel | 1988 Hewson |
-| Cybernoid sub0 | Maniacs of Noise | 2 | Romuzak (1 stale legacy build excluded) | 13 | Jeroen Tel | 1988 Hewson |
+| Cybernoid II sub0 | Maniacs of Noise | 2 | Romuzak | 18 | Jeroen Tel | 1988 Hewson |
+| Cybernoid II sub0 native | Maniacs of Noise | ? | Romuzak | 1 |  |  |
+| Cybernoid sub0 | Maniacs of Noise | 2 | Romuzak | 13 | Jeroen Tel | 1988 Hewson |
 | Daring Dots sub0 | Maniacs of Noise | 1 | Romuzak | 1 | Jeroen Tel | 1988 Maniacs of Noise |
 | G I Hero sub0 | Maniacs of Noise | 2 | Romuzak | 13 | Jeroen Tel | 1988 Maniacs of Noise |
 | Gaplus preview sub0 | Maniacs of Noise | 1 | Romuzak | 18 | Jeroen Tel | 1988 Maniacs of Noise |
 | Gaplus sub0 | Maniacs of Noise | 23 | Romuzak | 27 | Jeroen Tel | 1988 Mastertronic |
 | Hawkeye Proto 1 sub0 | Maniacs of Noise | 7 | Romuzak | 4 | Jeroen Tel | 198? Maniacs of Noise |
-| Hawkeye sub0 | Maniacs of Noise | 12 | Romuzak | 7 | Jeroen Tel | 1988 Thalamus |
-| Hawkeye sub2 | Maniacs of Noise | 12 | Romuzak | 2 | Jeroen Tel | 1988 Thalamus |
+| Hawkeye sub0 | Maniacs of Noise | 12 | Romuzak | 8 | Jeroen Tel | 1988 Thalamus |
+| Hawkeye sub2 | Maniacs of Noise | 12 | Romuzak | 1 | Jeroen Tel | 1988 Thalamus |
 | Hawkeye sub2 native | Maniacs of Noise | ? | Romuzak | 1 |  |  |
 | Hawkeye sub3 | Maniacs of Noise | 12 | Romuzak | 1 | Jeroen Tel | 1988 Thalamus |
 | Hawkeye sub3 native | Maniacs of Noise | ? | Romuzak | 1 |  |  |
@@ -164,7 +169,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Viool Tello sub0 | Maniacs of Noise | 1 | Romuzak | 1 | Jeroen Tel | 1988 Maniacs of Noise |
 | Wizzy sub0 | Maniacs of Noise | 1 | Romuzak | 3 | Jeroen Tel | 1988 Maniacs of Noise |
 
-### Rob Hubbard — Rob Hubbard  ·  61 songs / 589 SF2 files
+### Rob Hubbard — Rob Hubbard  ·  61 songs / 634 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
@@ -179,14 +184,14 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Auf Wiedersehen Monty song0 | Rob Hubbard | 13 | Romuzak | 43 | Rob Hubbard & Ben Daglish | 1987 Gremlin Graphics |
 | Chimera song0 | Rob Hubbard | 4 | Romuzak | 12 | Rob Hubbard | 1985 Firebird |
 | Chimera song1 | Rob Hubbard | 4 | Romuzak | 1 | Rob Hubbard | 1985 Firebird |
-| Commando song0 | Rob Hubbard | 19 | Romuzak | 4 | Rob Hubbard | 1985 Elite |
+| Commando song0 | Rob Hubbard | 19 | Romuzak | 45 | Rob Hubbard | 1985 Elite |
 | Commando song16 | Rob Hubbard | 19 | Romuzak | 4 | Rob Hubbard | 1985 Elite |
 | Commando song2 | Rob Hubbard | 19 | Romuzak | 1 | Rob Hubbard | 1985 Elite |
 | Confuzion song0 | Rob Hubbard | 1 | Romuzak | 5 | Rob Hubbard | 1985 Incentive |
 | Crazy Comets song0 | Rob Hubbard | 17 | Romuzak | 5 | Rob Hubbard | 1985 Martech |
 | Crazy Comets song1 | Rob Hubbard | 17 | Romuzak | 1 | Rob Hubbard | 1985 Martech |
-| Deep Strike song0 | Rob Hubbard | 1 | Romuzak | 25 | Rob Hubbard | 1987 Durell |
-| Delta song0 | Rob Hubbard | 13 | Romuzak | 221 | Rob Hubbard | 1987 Thalamus |
+| Deep Strike song0 | Rob Hubbard | 1 | Romuzak | 28 | Rob Hubbard | 1987 Durell |
+| Delta song0 | Rob Hubbard | 13 | Romuzak | 222 | Rob Hubbard | 1987 Thalamus |
 | Delta song11 | Rob Hubbard | 13 | Romuzak | 3 | Rob Hubbard | 1987 Thalamus |
 | Delta song12 | Rob Hubbard | 13 | Romuzak | 3 | Rob Hubbard | 1987 Thalamus |
 | Geoff Capes Strongman Challenge song0 | Rob Hubbard | 24 | Romuzak | 1 | Rob Hubbard | 1986 Martech |
@@ -300,7 +305,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Thats All | Sound Monitor (Musicmaster) | 1 | Romuzak | 3 | Michael Troelsen (Fun Fun) | 1987 Triangle |
 | Times Up | Sound Monitor (Musicmaster) | 1 | Romuzak | 1 | Michael Troelsen (Fun Fun) | 1987 Triangle |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  348 songs / 348 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  348 songs / 363 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
@@ -324,7 +329,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Alone in Space | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' |
 | Ambient | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' |
 | Another Beginning | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1998 SHAPE |
-| Another Day in Paradize | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Another Day in Paradize | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Arabia | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Arcane | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Arnhild | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
@@ -362,7 +367,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Country-Dip | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1995 Plush |
 | Crizz Crozz | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1993 Digital Designs |
 | Culture Mix 1 | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1990 Collision |
-| Culture Mix 2 | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1990 Collision |
+| Culture Mix 2 | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1990 Collision |
 | Curse | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' |
 | Dancing in the Moonlight | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Danske-baaten | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
@@ -427,7 +432,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | GRG in Cyberspace | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
 | GT Groove | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
 | Guaranteed | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
-| Happy Birthday Tg-Acme | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Happy Birthday Tg-Acme | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 3 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Hardcore | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' |
 | Hava Nagila | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
 | Heartbeat | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
@@ -436,7 +441,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | High Pressure | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Regina |
 | Hithouse | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
 | Holy Daze | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
-| Holy Josh | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Holy Josh | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Homebrew | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
 | House Fantasy | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | Hyperfool | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' |
@@ -459,7 +464,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Jazzy-d | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | JB Groove I | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
 | JB Groove II | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
-| Jessie Jazz | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Jessie Jazz | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Joikaboller | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | JS Beta Song | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | JS Fanfare | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
@@ -472,9 +477,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Kleptoekko | SID Duzz' It (SDI) | 8 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
 | Koke Stek | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Kururin | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
-| L-Forza long edit | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2010 Recollection |
+| L-Forza long edit | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss | 2010 Recollection |
 | L-Forza Remix | SID Duzz' It (SDI) | 2 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2009 Byterapers |
-| Lame | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk |
+| Lame | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk |
 | Lederhosen | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | Leon Latex | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2007 SHAPE |
 | Lesbians | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
@@ -490,7 +495,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Micro Mix | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
 | Microwave | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | Milkshake | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' |
-| Mini Poelse | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk |
+| Mini Poelse | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk |
 | Moi Funk | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
 | Moonraker | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | Morphosis | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
@@ -513,7 +518,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Oh Boy VE-2x | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' |
 | Ohne Titel | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' |
 | Oldie | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
-| Onkie Donkie | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Onkie Donkie | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Opening | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Orbital | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | Organ Blues | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' |
@@ -540,8 +545,8 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Product | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Promises | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
 | Psychic | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
-| Psycho | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
-| Psycho II | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Psycho | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 3 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Psycho II | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Psycho IV | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
 | Pulstro | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Regina |
 | Pultost VE-4x | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
@@ -600,7 +605,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Sugarhill | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
 | Super Galaxy preview | SID Duzz' It (SDI) | 54 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
 | Survival | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
-| Sveitser Ost | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Sveitser Ost | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 2 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
 | Sweeper | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Sweet JB | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
 | Syk Sang | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
@@ -609,7 +614,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Synthfunk | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
 | T-Shirt | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1993 Digital Designs |
 | Tango | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
-| Tanks 3000 | SID Duzz' It (SDI) | 13 | Driver 11.00 - The Standard | 1 | Glenn R. Gallefoss & R. Bayliss | 2006 Protovision |
+| Tanks 3000 | SID Duzz' It (SDI) | 13 | Driver 11.00 - The Standard | 2 | Glenn R. Gallefoss & R. Bayliss | 2006 Protovision |
 | Tarmslyng | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
 | Techno | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
 | Techno-Kaare | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
@@ -707,6 +712,76 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | To Die For II native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 Genesis Project |
 | Toy Rocket native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
 | Trinket native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
+
+### HardTrack Composer — Longhair/Brush  ·  33 songs / 196 SF2 files
+
+| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
+|------|------------------|---------:|------------|------:|----------|----------|
+| Altered States Tune 1 | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Altered States Tune 2 | HardTrack Composer | 1 | Romuzak | 14 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Arizona Dream | HardTrack Composer | 2 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Astoria 7 tune 2 | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1996 Agony |
+| Domagareflexow | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1995 Samar Productions |
+| For Astoria 6 | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Fun Factory | HardTrack Composer | 1 | Romuzak | 12 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Griffin Score | HardTrack Composer | 4 | Romuzak | 20 | Wojciech Radziejewski (Shogoon) | 1993 Elysium |
+| Hopscotch | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo |
+| If I Was a Rich Man | HardTrack Composer | 1 | Romuzak | 1 | Shogoon & Longhair | 199? Elysium |
+| Illmatic end | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
+| Intrigue | HardTrack Composer | 1 | Romuzak | 1 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Jazz and Weird Tekno | HardTrack Composer | 1 | Romuzak | 13 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Jazzloor | HardTrack Composer | 1 | Romuzak | 4 | Shogoon & Longhair | 1994 Elysium |
+| Love tune 2 | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Love tune 3 | HardTrack Composer | 1 | Romuzak | 11 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Love tune 5 | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Muminki Rooooolz | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Muza Do Dema | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
+| Ritual II tune 1 | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Ritual II tune 2 | HardTrack Composer | 1 | Romuzak | 7 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Rune-T Noter | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Shogoon-Rave | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 1994 Agony/Taboo |
+| Sling | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 2002 Elysium |
+| Something to Eat | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
+| Takisobie | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1996 Taboo/Agony |
+| Teekkno | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Timsoft Intro | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1994 Timsoft |
+| Trance | HardTrack Composer | 1 | Romuzak | 5 | Wojciech Radziejewski (Shogoon) | 1994 Agony |
+| Tribute to Laxity | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 2007 Shogoon |
+| Walk to Soul | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1996 Taboo |
+| What Can I Say Crap | HardTrack Composer | 1 | Romuzak | 5 | Wojciech Radziejewski (Shogoon) | 1993 Elysium |
+| Zakplus | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 1999 Taboo |
+
+### Matt Gray — Matt Gray  ·  17 songs / 25 SF2 files
+
+| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
+|------|------------------|---------:|------------|------:|----------|----------|
+| Driller sub01 | Matt Gray | 2 | Romuzak | 1 | Matt Gray | 1987 Incentive |
+| Last Ninja 2 sub00 | Matt Gray | 13 | Romuzak | 2 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub01 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub02 | Matt Gray | 13 | Romuzak | 2 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub03 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub04 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub05 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub06 | Matt Gray | 13 | Romuzak | 4 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub08 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub09 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub10 | Matt Gray | 13 | Romuzak | 2 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub11 | Matt Gray | 13 | Romuzak | 1 | Matt Gray | 1988 System 3 |
+| Last Ninja 2 sub12 | Matt Gray | 13 | Romuzak | 2 | Matt Gray | 1988 System 3 |
+| Tusker sub00 | Matt Gray | 4 | Romuzak | 1 | Matt Gray | 1989 System 3 |
+| Tusker sub01 | Matt Gray | 4 | Romuzak | 2 | Matt Gray | 1989 System 3 |
+| Tusker sub02 | Matt Gray | 4 | Romuzak | 1 | Matt Gray | 1989 System 3 |
+| Tusker sub03 | Matt Gray | 4 | Romuzak | 1 | Matt Gray | 1989 System 3 |
+
+### Future Composer — Michael Troelsen  ·  5 songs / 19 SF2 files
+
+| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
+|------|------------------|---------:|------------|------:|----------|----------|
+| Carillo part 2 | Future Composer | 1 | Romuzak | 4 | Michael Troelsen (Fun Fun) | 1988 Byterapers Inc. |
+| Demo of the Year 88 Elite 1997 | Future Composer | 1 | Romuzak | 3 | Michael Troelsen (Fun Fun) | 1988 Triangle |
+| Is There a Difference | Future Composer | 1 | Romuzak | 5 | Michael Troelsen (Fun Fun) | 1988 Triangle |
+| Triangle 2 years | Future Composer | 2 | Romuzak | 4 | Michael Troelsen (Fun Fun) | 1989 Triangle |
+| Triangle Intro | Future Composer | 1 | Romuzak | 3 | Michael Troelsen (Fun Fun) | 1988 Triangle |
 
 ---
 

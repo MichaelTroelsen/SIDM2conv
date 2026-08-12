@@ -32,6 +32,8 @@ PLAYERS = [
     ("deenen_sf2",   "Maniacs of Noise / Deenen",   "Charles Deenen",       "Driver 11 (Stage A)"),
     ("blackbird",    "Blackbird / lft",             "lft",                  "native"),
     ("hardtrack_native", "HardTrack Composer",      "Longhair/Brush",       "native (Stage B)"),
+    ("mattgray_native", "Matt Gray",                 "Matt Gray",            "native (Stage B)"),
+    ("fc",           "Future Composer",             "Michael Troelsen",     "native (Stage B)"),
 ]
 # out/ subdir -> SID corpus dir(s) holding the ORIGINAL files, for the
 # per-song PSID metadata (title/author/released at header +$16/+$36/+$56)
@@ -47,6 +49,8 @@ SID_DIRS = {
     "deenen_sf2":   ["SID/deenen"],
     "blackbird":    ["SID/LFT"],
     "hardtrack_native": ["SID/Shogoon"],
+    "mattgray_native": ["SID/Gray_Matt"],
+    "fc":           ["SID/Fun_Fun"],
 }
 # suffixes the builders append to the source SID's stem
 SUFFIX = re.compile(r"(_sub\d+|_song\d+|_native)$", re.I)
