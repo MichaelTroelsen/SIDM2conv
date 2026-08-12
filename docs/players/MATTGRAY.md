@@ -874,13 +874,68 @@ Rungs 3 and 4 are done and Stage B covers all three games; what is left:
    level / harmonics / per-octave energy / envelope, which are already at the
    floor, and always measure the floor **per voice** (they range 0.937-0.999
    on this tune).
-2. Generalise the locator past the 6 files that parse — 49 of the 55 are
-   refused, and `Make_My_Day` shows `locate()` is not a superset of the fast
-   path (it refuses a file the fast path decodes). The `signature` decode
-   itself is no longer unverified (see above), so this is coverage work, not
-   a correctness risk.
+2. Generalise the locator further. **6 → 11 of 55 files now parse** (see
+   *The track-table stride*), but only **1 of the 5 new ones is confirmed**
+   and one is probably wrong — read that section before building any of them.
+   `Make_My_Day` still shows `locate()` is not a superset of the fast path.
 3. Subtune 7's truncated pattern: recover the missing bytes from the
    relocating copy, or confirm the rip itself is short.
+
+### The track-table stride was hard-coded, and it is per-build
+
+`locate()` identifies the six per-voice track-pointer tables as six consecutive
+`LDA abs,y` sites whose operands step by a constant — but the constant was
+written as **2**, which is Last Ninja 2's and Tusker's. It is not universal.
+The same six-table shape appears at stride **3** (`Pogo_Stick_Olympics`),
+**4** (`Hyperion_2`), **5** (`KGB_Superspy`, `Motocross`) and **6**
+(`Maze_Mania`), and hard-coding 2 refused every one of them — with the message
+"could not locate the track-pointer tables" on **14 files that had already
+passed the `music_play` shim check**, i.e. files the parser had itself just
+recognised as Matt Gray builds. Requiring the step to be *constant* is what
+identifies the tables; its value is a per-build layout detail, exactly like the
+site offsets the surrounding comment already says move between builds.
+
+**6 → 11 of 55 files parse, and nothing that parsed before was lost** (verified
+by running the census against an unmodified copy of the parser in the same
+process). Newly parsing: `Hunters_Moon_Remastered`, `Hyperion_2`,
+`KGB_Superspy`, `Maze_Mania`, `Motocross` — all at subtune 1.
+
+#### ⚠️ Parsing is not decoding correctly. 1 of the 5 is confirmed; 1 is probably wrong
+
+Run against the AD/SR ground truth (the same cross-validation used above —
+`$D405`/`$D406` at a note-on is a verbatim per-instrument copy, so a correctly
+located table explains every sounded pair, and a null table 16 bytes off must
+not):
+
+| file | onsets | explained | null | verdict |
+|---|---|---|---|---|
+| `Last_Ninja_2` sub 0 *(control)* | 601 | **601** | 0 | CONFIRMED |
+| `Maze_Mania` sub 1 | 354 | **354** | 1 | **CONFIRMED** |
+| `KGB_Superspy` sub 1 | 9 | 9 | 1 | insufficient data |
+| `Motocross` sub 1 | 7 | 7 | 0 | insufficient data |
+| `Hunters_Moon_Remastered` sub 1 | 5 | 5 | 0 | insufficient data |
+| `Hyperion_2` sub 1 | 3 | 3 | 0 | insufficient data |
+| `Tusker` sub 0 *(control)* | 16 | 16 | 0 | insufficient data |
+
+The window was extended to 90 s and the counts barely moved, so those tunes
+genuinely have very few gate-rises at that subtune — **`insufficient-data` is
+not `wrong`, and it is not `right` either.** Note the *control* lands there
+too, which is the honest calibration: the test simply has no power on a
+sparse-onset tune.
+
+A second, independent check says one of them **is** wrong. Building them:
+
+| file | raw | audible | gate-on frames vs the original's onsets |
+|---|---|---|---|
+| `Maze_Mania` | 83.2 / 92.0 / 88.0 | 80.2 / 92.0 / 88.0 | 1553 / 5881 / 5881 — plausible |
+| `Motocross` | 90.0 / 89.1 / 90.7 | **99.2 / 30.6 / 62.0** | **120 / 108 / 108** against 601 / 652 / 555 |
+
+`Motocross` decodes to roughly **a sixth** of the note-ons the original plays.
+The raw column looks fine (89-91%) because it is dominated by frames where both
+sides are quiet — this is the same blindness recorded above for the `audible`
+column, in the other direction. Its tables locate; its **sequencer walk** does
+not follow. Treat `Motocross` as unbuilt, and the other three unproven files as
+suspect until something independent says otherwise.
 
 ## Sources
 

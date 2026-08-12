@@ -375,3 +375,36 @@ def test_probe_splits_rather_than_dropping_sequences(tmp_path, capsys):
     # The parts must still add up to the whole song, not a truncated prefix.
     assert "rows 0-" in out.out and "-8320" in out.out, \
         f"parts must cover all 8320 rows, got: {out.out!r}"
+
+
+# -- the track-table stride is a per-build detail, not the constant 2 --------
+
+def test_the_track_table_stride_is_not_hardcoded():
+    """The six track-pointer tables are identified by a CONSTANT step, not by
+    the value 2.
+
+    2 is Last Ninja 2's and Tusker's. The same six-table shape appears at
+    stride 3, 4, 5 and 6 in other games, and hard-coding 2 refused every one of
+    them -- `locate()` reported "could not locate the track-pointer tables" on
+    14 files that had already passed the music_play shim check, i.e. on files
+    it had itself recognised as Matt Gray builds.
+    """
+    import sidm2.mattgray_parser as mp
+    src = open(mp.__file__, encoding="utf-8").read()
+    assert "win[k + 1] - win[k] == 2 for k in range(5)" not in src, (
+        "the stride is hard-coded to 2 again; it is a per-build layout detail")
+    assert "win[k + 1] - win[k] == step" in src
+
+
+def test_relaxing_the_stride_did_not_cost_any_previously_parsing_file():
+    """A looser signature can match EARLIER and wrongly -- the guard is that
+    every file that parsed before still parses, and Last Ninja 2 still locates
+    the same tables (pinned by the AD/SR cross-validation in
+    test_mattgray_native.py, which runs against this same parse)."""
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name, sub in (("Last_Ninja_2", 0), ("Tusker", 0), ("Driller", 1)):
+        p = os.path.join(repo, "SID", "Gray_Matt", f"{name}.sid")
+        if not os.path.exists(p):
+            continue
+        song = parse_sid(p, subtune=sub)
+        assert song.instruments, f"{name} sub {sub} lost its decode"

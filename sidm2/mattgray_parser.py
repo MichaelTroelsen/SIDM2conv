@@ -472,11 +472,22 @@ class MattGrayParser:
         ops = [a for _, a in sites]
         found: Dict[str, int] = {}
 
-        # 6 consecutive sites whose operands step by 2: the per-voice track
-        # pointer lo/hi tables (v1lo v1hi v2lo v2hi v3lo v3hi).
+        # 6 consecutive sites whose operands step by a CONSTANT: the per-voice
+        # track pointer lo/hi tables (v1lo v1hi v2lo v2hi v3lo v3hi).
+        #
+        # The stride was hard-coded to 2, which is Last Ninja 2's and Tusker's.
+        # It is not universal -- the same six-table shape appears at stride 3
+        # (Pogo_Stick_Olympics), 4 (Hyperion_2), 5 (KGB_Superspy, Motocross)
+        # and 6 (Maze_Mania), and hard-coding 2 refused all of them. Requiring
+        # the step to be CONSTANT is what identifies the tables; its particular
+        # value is a per-build layout detail, exactly like the site offsets the
+        # comment above already says move between builds.
         for i in range(len(sites) - 6):
             win = [sites[i + k][1] for k in range(6)]
-            if all(win[k + 1] - win[k] == 2 for k in range(5)):
+            step = win[1] - win[0]
+            if step <= 0 or step > 64:
+                continue          # descending or absurd: not a table row group
+            if all(win[k + 1] - win[k] == step for k in range(5)):
                 found["trk_v1_lo"], found["trk_v1_hi"] = win[0], win[1]
                 found["trk_v2_lo"], found["trk_v2_hi"] = win[2], win[3]
                 found["trk_v3_lo"], found["trk_v3_hi"] = win[4], win[5]
