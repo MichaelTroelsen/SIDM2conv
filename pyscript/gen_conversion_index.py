@@ -30,6 +30,9 @@ import re
 import glob
 import struct
 import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC = os.path.join(ROOT, "docs", "SID_TO_SF2_CONVERSIONS.md")
@@ -37,42 +40,12 @@ PLAYER_ID_EXE = os.path.join(ROOT, "tools", "player-id.exe")
 BEGIN = "<!-- BEGIN GENERATED: conversion index -->"
 END = "<!-- END GENERATED -->"
 
-# ---------------------------------------------------------------------------
-# out/<subdir> -> (player, composer, driver label). Same mapping as
-# gen_sf2_index.py's PLAYERS (kept in sync manually; that script is the
-# source of truth for the native-build side and is NOT imported here to keep
-# this script standalone/dependency-free).
-# ---------------------------------------------------------------------------
-OUT_PLAYERS = [
-    ("dmc",          "DMC (Demo Music Creator)",    "Johannes Bjerregaard", "native"),
-    ("mon",          "Maniacs of Noise",            "Jeroen Tel",           "native"),
-    ("hubbard",      "Rob Hubbard",                 "Rob Hubbard",          "native"),
-    ("galway_sf2",   "Martin Galway",               "Martin Galway",        "native"),
-    ("romuzak",      "ROMUZAK V6.3",                "Oliver Blasnik",       "native"),
-    ("soundmonitor", "Sound Monitor (Musicmaster)", "Fun Fun",              "native"),
-    ("sdi_sf2",      "SID Duzz' It (SDI)",          "Gallefoss/Tjelta",     "Driver 11 (Stage A)"),
-    ("kimmel_sf2",   "Jeroen Kimmel (Hubbard-derived)", "Jeroen Kimmel",    "Driver 11 (Stage A)"),
-    ("deenen_sf2",   "Maniacs of Noise / Deenen",   "Charles Deenen",       "Driver 11 (Stage A)"),
-    ("blackbird",    "Blackbird / lft",             "lft",                  "native"),
-    ("hardtrack_native", "HardTrack Composer",      "Longhair/Brush",       "native (Stage B)"),
-    ("mattgray_native", "Matt Gray",                 "Matt Gray",            "native (Stage B)"),
-    ("fc",           "Future Composer",             "Michael Troelsen",     "native (Stage B)"),
-]
-OUT_SID_DIRS = {
-    "dmc":          ["SID/JohannesBjerregaard"],
-    "mon":          ["SID/Tel_Jeroen"],
-    "hubbard":      ["SID/Hubbard_Rob"],
-    "galway_sf2":   ["SID/Galway_Martin"],
-    "romuzak":      ["SID/Fun_Fun"],
-    "soundmonitor": ["SID/Fun_Fun"],
-    "sdi_sf2":      ["SID/Gallefoss_Glenn"],
-    "kimmel_sf2":   ["SID/Red_kommel_jeroen"],
-    "deenen_sf2":   ["SID/deenen"],
-    "blackbird":    ["SID/LFT"],
-    "hardtrack_native": ["SID/Shogoon"],
-    "mattgray_native": ["SID/Gray_Matt"],
-    "fc":           ["SID/Fun_Fun"],
-}
+# The out/ -> player/composer/corpus mapping lives in ONE place (pyscript/player_index.py).
+# This script and gen_sf2_index.py each used to carry a copy "kept in sync manually";
+# three shipped players were missing from both as a result.
+from player_index import (PLAYERS as OUT_PLAYERS,  # noqa: E402
+                          SID_DIRS as OUT_SID_DIRS,
+                          warn_if_unclassified)
 
 # SF2/ locations: (label, relative dir, non-recursive). Root + the 5 subdirs.
 SF2_LOCATIONS = [
@@ -461,6 +434,7 @@ def render():
 
 
 def main():
+    warn_if_unclassified()
     block = render()
     if os.path.exists(DOC):
         text = open(DOC, encoding="utf-8").read()

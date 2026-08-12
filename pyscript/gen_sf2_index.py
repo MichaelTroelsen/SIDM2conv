@@ -13,45 +13,19 @@ The curated fidelity tables above the markers are hand-maintained and untouched.
 import os
 import re
 import glob
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC = os.path.join(ROOT, "docs", "SF2.md")
 BEGIN = "<!-- BEGIN GENERATED: build inventory -->"
 END = "<!-- END GENERATED -->"
 
-# out/ subdir -> (player, composer, driver). Order = display order.
-PLAYERS = [
-    ("dmc",          "DMC (Demo Music Creator)",    "Johannes Bjerregaard", "native"),
-    ("mon",          "Maniacs of Noise",            "Jeroen Tel",           "native"),
-    ("hubbard",      "Rob Hubbard",                 "Rob Hubbard",          "native"),
-    ("galway_sf2",   "Martin Galway",               "Martin Galway",        "native"),
-    ("romuzak",      "ROMUZAK V6.3",                "Oliver Blasnik",       "native"),
-    ("soundmonitor", "Sound Monitor (Musicmaster)", "Fun Fun",              "native"),
-    ("sdi_sf2",      "SID Duzz' It (SDI)",          "Gallefoss/Tjelta",     "Driver 11 (Stage A)"),
-    ("kimmel_sf2",   "Jeroen Kimmel (Hubbard-derived)", "Jeroen Kimmel",    "Driver 11 (Stage A)"),
-    ("deenen_sf2",   "Maniacs of Noise / Deenen",   "Charles Deenen",       "Driver 11 (Stage A)"),
-    ("blackbird",    "Blackbird / lft",             "lft",                  "native"),
-    ("hardtrack_native", "HardTrack Composer",      "Longhair/Brush",       "native (Stage B)"),
-    ("mattgray_native", "Matt Gray",                 "Matt Gray",            "native (Stage B)"),
-    ("fc",           "Future Composer",             "Michael Troelsen",     "native (Stage B)"),
-]
-# out/ subdir -> SID corpus dir(s) holding the ORIGINAL files, for the
-# per-song PSID metadata (title/author/released at header +$16/+$36/+$56)
-SID_DIRS = {
-    "dmc":          ["SID/JohannesBjerregaard"],
-    "mon":          ["SID/Tel_Jeroen"],
-    "hubbard":      ["SID/Hubbard_Rob"],
-    "galway_sf2":   ["SID/Galway_Martin"],
-    "romuzak":      ["SID/Fun_Fun"],
-    "soundmonitor": ["SID/Fun_Fun"],
-    "sdi_sf2":      ["SID/Gallefoss_Glenn"],
-    "kimmel_sf2":   ["SID/Red_kommel_jeroen"],
-    "deenen_sf2":   ["SID/deenen"],
-    "blackbird":    ["SID/LFT"],
-    "hardtrack_native": ["SID/Shogoon"],
-    "mattgray_native": ["SID/Gray_Matt"],
-    "fc":           ["SID/Fun_Fun"],
-}
+# The out/ -> player/composer/corpus mapping lives in ONE place; this script
+# and gen_conversion_index.py both had their own copy, and both went stale.
+from player_index import PLAYERS, SID_DIRS, warn_if_unclassified  # noqa: E402
+
 # suffixes the builders append to the source SID's stem
 SUFFIX = re.compile(r"(_sub\d+|_song\d+|_native)$", re.I)
 
@@ -142,6 +116,7 @@ def render():
 
 
 def main():
+    warn_if_unclassified()
     block = render()
     if os.path.exists(DOC):
         text = open(DOC, encoding="utf-8").read()

@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**675 songs / 2533 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**702 songs / 2772 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **643 songs / 2501 files** across 13 player dirs
+- `out/<player>/` native-build pipeline: **670 songs / 2740 files** across 15 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -27,12 +27,12 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 | Composer | Original Player | Songs |
 |----------|------------------|------:|
-| Glenn Rune Gallefoss | SID Duzz' It (SDI) | 209 |
-| Glenn Rune Gallefoss (Shark) | SID Duzz' It (SDI) | 134 |
+| Glenn Rune Gallefoss | SID Duzz' It (SDI) | 225 |
+| Glenn Rune Gallefoss (Shark) | SID Duzz' It (SDI) | 139 |
 | Rob Hubbard | Rob Hubbard | 60 |
 | Johannes Bjerregaard | DMC (Demo Music Creator) | 55 |
 | Martin Galway | Martin Galway | 40 |
-| Wojciech Radziejewski (Shogoon) | HardTrack Composer | 31 |
+| Wojciech Radziejewski (Shogoon) | HardTrack Composer | 36 |
 | Jeroen Tel | Maniacs of Noise | 24 |
 | Matt Gray | Matt Gray | 17 |
 | Linus Åkesson (lft) | Blackbird / lft | 15 |
@@ -53,6 +53,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Johannes Bjerregaard (The Jerk) | DMC (Demo Music Creator) | 2 |
 | Michael Troelsen (Coto) | Sound Monitor (Musicmaster) | 2 |
 | Shogoon & Longhair | HardTrack Composer | 2 |
+| (unknown) | SID Duzz' It (SDI) | 1 |
 | Charles Deenen & Jeroen Tel | Maniacs of Noise / Deenen | 1 |
 | G. R. Gallefoss & B. Vosseteig | SID Duzz' It (SDI) | 1 |
 | Glenn Gallefoss & D. Bakewell | SID Duzz' It (SDI) | 1 |
@@ -73,7 +74,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Native-build pipeline — `out/<player>/`
 
-*The 13 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
+*The 15 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
 
 ### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  57 songs / 943 SF2 files
 
@@ -658,6 +659,33 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Zexest | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
 | Zoophyte | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
 
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  22 songs / 234 SF2 files
+
+| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
+|------|------------------|---------:|------------|------:|----------|----------|
+| 2 Young 2 Die native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| 64 Antheme native | SID Duzz' It (SDI) | 1 | Romuzak | 37 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Bahbar native | SID Duzz' It (SDI) | 1 | Romuzak | 30 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Bahbar v native | SID Duzz' It (SDI) | ? | Romuzak | 11 |  |  |
+| Banana Man native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Commando native | SID Duzz' It (SDI) | 1 | Romuzak | 11 | Glenn Rune Gallefoss | 1999 Nostalgia |
+| Delta native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
+| Delta Slow native | SID Duzz' It (SDI) | 1 | Romuzak | 12 | Glenn Rune Gallefoss | 2001 Nostalgia |
+| Different Reality VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' |
+| Filthy Hit VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+| Implocation VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' |
+| Kirby native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Micro Mix native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Moi Funk native | SID Duzz' It (SDI) | 1 | Romuzak | 22 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| Neurotica short native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 1999 Onslaught |
+| Neverending Story native | SID Duzz' It (SDI) | 1 | Romuzak | 13 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Oh Boy VE-2x native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' |
+| Pultost VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
+| Short Deel native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss | 2000 Nostalgia |
+| Survival native | SID Duzz' It (SDI) | 1 | Romuzak | 23 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Tranedans native | SID Duzz' It (SDI) | 1 | Romuzak | 30 | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' |
+| Underwear VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+
 ### Jeroen Kimmel (Hubbard-derived) — Jeroen Kimmel  ·  9 songs / 9 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
@@ -712,6 +740,16 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | To Die For II native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 Genesis Project |
 | Toy Rocket native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
 | Trinket native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
+
+### HardTrack Composer — Longhair/Brush  ·  5 songs / 5 SF2 files
+
+| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
+|------|------------------|---------:|------------|------:|----------|----------|
+| Hopscotch | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo |
+| Love tune 2 | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Love tune 3 | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Muminki Rooooolz | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Zakplus | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1999 Taboo |
 
 ### HardTrack Composer — Longhair/Brush  ·  33 songs / 196 SF2 files
 

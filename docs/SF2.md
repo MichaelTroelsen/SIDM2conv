@@ -27,7 +27,7 @@ converted SF2 runs on (a stock **Driver 11**, the native **Laxity** driver, or a
 | DMC (Demo Music Creator) | Johannes Bjerregaard | **native** (MoN engine) | `SID/JohannesBjerregaard/` (88) | see below; **56 eligible** (within-frame onsets, 2026-07-11) | `bin/` |
 | Future Composer | Michael Troelsen (Fun Fun) | **native** (Stage B, via a MoN shim) | `SID/Fun_Fun/` (20) | **14/15 corpus voices exactly 100.0%** audible pitch, full song length | `bin/` |
 | Sound Monitor (Hülsbeck) | Michael Troelsen (Fun Fun) | **native** | `SID/Fun_Fun/` (20) | corpus strict sweep **99.25%** freq+wf over **27 of 27** parts | `bin/` |
-| SID Duzz' It (SDI) | Glenn Rune Gallefoss / Tjelta | Driver 11 (Stage A) | `SID/Gallefoss_Glenn/` (441) | strict onset+pitch medians A 98.3 · D 100 · C 86.0 · B 74.8 · E 50.8 · V 21.8 — **only A+D are unfitted** | `bin/` |
+| SID Duzz' It (SDI) | Glenn Rune Gallefoss / Tjelta | Driver 11 (Stage A) + **native** (Stage B) | `SID/Gallefoss_Glenn/` (441) | Stage A strict onset+pitch medians A 98.3 · D 100 · C 86.0 · B 74.8 · E 50.8 · V 21.8 — **only A+D are unfitted**. Stage B covers **all six variants**, most E/DELTA/C/V voices **98-100%**; residual is a fast per-frame arp class (Bahbar v1/v2 ~92.7/90.4, Filthy_Hit v0 76). Stage B is **standalone, one file at a time** — not wired into a shipping path | `bin/` |
 | Blackbird / lft | Linus Åkesson (lft) | **native** | `SID/LFT/` (61) | 16-file v1.2-exact corpus mean **99.96**; **11 of 16 exactly 100.0**, none below 99.8 | `bin/` |
 | Jeroen Kimmel (Hubbard-derived) | Jeroen Kimmel | Driver 11 (Stage A) | `SID/Red_kommel_jeroen/` (4) | **11/12 voice-medians exact 100%** (frame-pitch) | `bin/` |
 | Maniacs of Noise / Deenen | Charles Deenen | Driver 11 (Stage A) | `SID/deenen/` (40) | 7 clean wins (5 at exactly 100/100); 10/19 located | `bin/` |
@@ -172,7 +172,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**643 songs built** across 13 native players (each song may span several SF2 parts).
+**670 songs built** across 15 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -759,6 +759,33 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Zexest | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Zoophyte | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `native (Stage B)`  ·  22 songs / 234 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| 2 Young 2 Die native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
+| 64 Antheme native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 37 |
+| Bahbar native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 30 |
+| Bahbar v native |  |  | 11 |
+| Banana Man native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 2 |
+| Commando native | Glenn Rune Gallefoss | 1999 Nostalgia | 11 |
+| Delta native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 5 |
+| Delta Slow native | Glenn Rune Gallefoss | 2001 Nostalgia | 12 |
+| Different Reality VE-4x native | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 1 |
+| Filthy Hit VE-4x native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 2 |
+| Implocation VE-4x native | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 2 |
+| Kirby native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 5 |
+| Micro Mix native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 6 |
+| Moi Funk native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 22 |
+| Neurotica short native | Glenn Rune Gallefoss | 1999 Onslaught | 7 |
+| Neverending Story native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 13 |
+| Oh Boy VE-2x native | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 1 |
+| Pultost VE-4x native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 4 |
+| Short Deel native | Glenn Rune Gallefoss | 2000 Nostalgia | 6 |
+| Survival native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 23 |
+| Tranedans native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 30 |
+| Underwear VE-4x native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+
 ### Jeroen Kimmel (Hubbard-derived) — Jeroen Kimmel  ·  `Driver 11 (Stage A)`  ·  9 songs / 9 SF2 files
 
 | Song | Composer | Released | Parts |
@@ -813,6 +840,16 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | To Die For II native | Linus Åkesson (lft) | 2017 Genesis Project | 1 |
 | Toy Rocket native | Linus Åkesson (lft) | 2017 lft | 1 |
 | Trinket native | Linus Åkesson (lft) | 2017 lft | 1 |
+
+### HardTrack Composer — Longhair/Brush  ·  `Driver 11 (Stage A)`  ·  5 songs / 5 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Hopscotch | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo | 1 |
+| Love tune 2 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 1 |
+| Love tune 3 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 1 |
+| Muminki Rooooolz | Wojciech Radziejewski (Shogoon) | 1995 Agony | 1 |
+| Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 1 |
 
 ### HardTrack Composer — Longhair/Brush  ·  `native (Stage B)`  ·  33 songs / 196 SF2 files
 
