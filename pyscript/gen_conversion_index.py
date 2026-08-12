@@ -291,6 +291,7 @@ def render_out_section():
     grand_songs = 0
     grand_files = 0
     composer_stats = {}  # (composer, original_player) -> song_count
+    player_stats = []    # (player, composer, driver_label, subdir, songs, files)
     for subdir, player, composer, driver_label in OUT_PLAYERS:
         songs = songs_in(os.path.join(ROOT, "out", subdir))
         if not songs:
@@ -311,13 +312,15 @@ def render_out_section():
             composer_stats[ck] = composer_stats.get(ck, 0) + 1
         grand_songs += len(songs)
         grand_files += total_files
+        player_stats.append((player, composer, driver_label, subdir,
+                             len(songs), total_files))
         lines.append(f"### {player} — {composer}  ·  {len(songs)} songs / {total_files} SF2 files")
         lines.append("")
         lines.append("| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |")
         lines.append("|------|------------------|---------:|------------|------:|----------|----------|")
         lines.extend(rows)
         lines.append("")
-    return lines, grand_songs, grand_files, composer_stats
+    return lines, grand_songs, grand_files, composer_stats, player_stats
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +384,37 @@ def _merge_composer_stats(*stat_dicts):
     return merged
 
 
+def render_player_section(player_stats):
+    """Songs/files per PLAYER -- the breakdown the composer table cannot give.
+
+    A composer table answers "whose music", not "which engine": Gallefoss'
+    225 songs span an SDI Stage A pipeline and a native Stage B one, and a
+    reader comparing coverage between players had to add up per-section
+    headings by hand. Sorted by file count, since that is what dominates the
+    2,772 total.
+    """
+    lines = ["## Songs converted per player", ""]
+    lines.append("*Each `out/<player>/` build directory, with the SF2 driver it "
+                 "targets. A player with both a Driver 11 Stage A and a native "
+                 "Stage B pipeline gets one row per pipeline — they are separate "
+                 "build directories and separate bodies of work. Percentages are "
+                 "of the `out/` file total; the `SF2/` set is listed separately in "
+                 "the Summary above.*")
+    lines.append("")
+    lines.append("| Player | Composer | Pipeline | `out/` dir | Songs | SF2 Files | % of files |")
+    lines.append("|--------|----------|----------|-----------|------:|----------:|-----------:|")
+    total_files = sum(r[5] for r in player_stats) or 1
+    for player, composer, driver, subdir, songs, files in sorted(
+            player_stats, key=lambda r: (-r[5], r[0])):
+        lines.append(f"| {player} | {composer} | {driver} | `out/{subdir}/` | "
+                     f"{songs} | {files} | {100 * files / total_files:.1f}% |")
+    lines.append(f"| **Total** | | | **{len(player_stats)} dirs** | "
+                 f"**{sum(r[4] for r in player_stats)}** | "
+                 f"**{sum(r[5] for r in player_stats)}** | 100% |")
+    lines.append("")
+    return lines
+
+
 def render_composer_section(composer_stats):
     lines = ["## Songs converted per composer", ""]
     lines.append("*Every (composer, original player) pair appearing in either scanned location, "
@@ -401,7 +435,7 @@ def render_composer_section(composer_stats):
 
 
 def render():
-    out_lines, out_songs, out_files, out_composer_stats = render_out_section()
+    out_lines, out_songs, out_files, out_composer_stats, player_stats = render_out_section()
     sid_idx = build_global_sid_index()
     sf2_lines, sf2_songs, sf2_files, unresolved, sf2_composer_stats = render_sf2_section(sid_idx)
     composer_stats = _merge_composer_stats(out_composer_stats, sf2_composer_stats)
@@ -428,6 +462,7 @@ def render():
         "---",
         "",
     ]
+    header += render_player_section(player_stats) + ["---", ""]
     header += render_composer_section(composer_stats) + ["---", ""]
     body = out_lines + ["---", ""] + sf2_lines
     return "\n".join(header + body + [END])

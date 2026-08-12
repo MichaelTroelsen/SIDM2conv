@@ -172,7 +172,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**670 songs built** across 15 native players (each song may span several SF2 parts).
+**818 songs built** across 15 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -759,22 +759,150 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Zexest | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Zoophyte | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `native (Stage B)`  ·  22 songs / 234 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `native (Stage B)`  ·  150 songs / 3504 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
 | 2 Young 2 Die native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
+| 30seconds native | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
 | 64 Antheme native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 37 |
+| Ablegoeyer native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Abrakadabra preview native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 4 |
+| Acid Jazz native | Glenn Rune Gallefoss | 2002 SHAPE/Blues Muz' | 73 |
+| Aerodynamic native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Afterburner native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 7 |
+| Agrajag native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Airwalk 98 native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 23 |
+| Airwalk II native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 4 |
+| Aldebaran native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Alf Theme native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 8 |
+| Alone in Space native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 24 |
+| Ambient native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 3 |
+| Another Beginning native | Glenn Rune Gallefoss | 1998 SHAPE | 13 |
+| Arabia native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 8 |
+| Arcane native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
+| Arnhild native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 22 |
 | Bahbar native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 30 |
 | Bahbar v native |  |  | 11 |
-| Banana Man native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 2 |
-| Commando native | Glenn Rune Gallefoss | 1999 Nostalgia | 11 |
+| Banana Man native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 5 |
+| Basselusk native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
+| Batman in Jp native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
+| Beginning native | Glenn Rune Gallefoss | 1999 SHAPE | 20 |
+| Beverly Kraven native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 2 |
+| Blowfish native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
+| Boiled Beans native | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 13 |
+| Bossa Butt native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Bouncing native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 6 |
+| Buttlern native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 5 |
+| Calmdown II another one native | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 20 |
+| Calmdown Whats this native | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 1 |
+| Careless Whisper native | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 38 |
+| Close preview native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 6 |
+| Club 69 native | Glenn Rune Gallefoss | 2004 SHAPE/Blues Muz' | 90 |
+| Coming Soon native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Commando native | Glenn Rune Gallefoss | 1999 Nostalgia | 38 |
+| Commies native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
+| Computare Maximus Dominanus native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 3 |
+| Countdown to NIL native | Glenn Rune Gallefoss | 2000 SHAPE | 15 |
+| Country-Dip native | Glenn Rune Gallefoss (Shark) | 1995 Plush | 1 |
+| Crizz Crozz native | Glenn Rune Gallefoss | 1993 Digital Designs | 9 |
+| Culture Mix 1 native | Glenn Rune Gallefoss (Shark) | 1990 Collision | 4 |
+| Culture Mix 2 native | Glenn Rune Gallefoss (Shark) | 1990 Collision | 129 |
+| Curse native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 25 |
+| Dancing in the Moonlight native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 6 |
+| Danske-baaten native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
+| Darkmoon native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 31 |
+| Das Boot native | Glenn Rune Gallefoss (Shark) | 1993 Regina | 7 |
+| Day of the Tentacle DOTT native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 29 |
+| Death of the Pulse v1 0 native | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Deelight native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 14 |
+| Delphines native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 8 |
 | Delta native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 5 |
 | Delta Slow native | Glenn Rune Gallefoss | 2001 Nostalgia | 12 |
+| Denver native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 2 |
+| Derilicts native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 14 |
+| Destruction native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 6 |
+| Devotion native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 3 |
+| Dialects native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 9 |
 | Different Reality VE-4x native | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 1 |
+| Digital Designs Intro 2 native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 4 |
+| DMC Demo remake native | Glenn Rune Gallefoss | 2004 SHAPE/Blues Muz' | 21 |
+| Domino Dancing native | Glenn Rune Gallefoss | 1993 Digital Designs | 10 |
+| Dorull native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
+| Dreadful native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 15 |
+| Dream native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 4 |
+| Dreamland native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 12 |
+| Eastbottom native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
+| Effect Freak native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| End 94 native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1190 |
+| End Music native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 9 |
+| End native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 11 |
+| Enigma Elg moose native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 3 |
+| Eurovision native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Everytime native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 7 |
+| Evil Within native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 13 |
+| Extreme native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 4 |
+| Faeries native | Glenn Rune Gallefoss | 2002 SHAPE/Blues Muz' | 28 |
 | Filthy Hit VE-4x native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 2 |
+| Fin Sang native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Finish Line native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 2 |
+| Fjellgeit ode to Fearlight native | Glenn Rune Gallefoss | 1994 Blues Muz' | 1 |
+| Flames native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 47 |
+| Flimbos native | Glenn Rune Gallefoss | 1992 Digital Designs | 8 |
+| Flunk native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 8 |
+| Forbannet native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Funhouse native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 3 |
+| Funk Facet native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 2 |
+| Funkman native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
+| Funkriff native | Glenn Rune Gallefoss | 1993 Digital Designs | 5 |
+| Funkriff v2 native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 4 |
+| Fusion native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 17 |
+| Galvanized native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 6 |
+| Get hyped native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 9 |
+| Got Da Bluez native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 4 |
+| Gracious native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 8 |
+| Granturismo native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
+| Graut native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 5 |
+| GT Groove native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 402 |
+| Guaranteed native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 6 |
+| Hardcore native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 6 |
+| Heartbeat native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 9 |
+| Heartbit native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 6 |
+| Hickup native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 54 |
+| High Pressure native | Glenn Rune Gallefoss (Shark) | 1993 Regina | 53 |
+| Hithouse native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
+| Holy Daze native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 14 |
+| Homebrew native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 9 |
+| House Fantasy native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 10 |
+| Hyperfool native | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 9 |
+| Imperial March native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 3 |
 | Implocation VE-4x native | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 2 |
+| Infra Red native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 9 |
+| Interlude native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 5 |
+| Intro Aktig native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
+| Intro Lime native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Intro native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 3 |
+| Intro Zax II native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Intro Zax native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
+| Invention 1 native | Glenn Rune Gallefoss | 1999 SHAPE | 10 |
+| Iridion native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
+| Jazzmjux native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
+| Jazzstones native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 11 |
+| Jazzy-d native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 16 |
+| JB Groove II native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 5 |
+| Joikaboller native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 24 |
+| JS Beta Song native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| JS Fanfare native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 11 |
+| Juba-Jazz native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 4 |
+| Jule Fun native | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
+| Kalkun Yak native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Karamell native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
 | Kirby native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 5 |
+| Kleptoekko native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
+| Koke Stek native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 6 |
+| Kururin native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 4 |
+| L-Forza long edit native | Glenn Rune Gallefoss | 2010 Recollection | 174 |
+| L-Forza Remix native | Glenn Rune Gallefoss | 2009 Byterapers | 126 |
 | Micro Mix native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 6 |
 | Moi Funk native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 22 |
 | Neurotica short native | Glenn Rune Gallefoss | 1999 Onslaught | 7 |
@@ -889,11 +1017,22 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | What Can I Say Crap | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 5 |
 | Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 2 |
 
-### Matt Gray — Matt Gray  ·  `native (Stage B)`  ·  17 songs / 25 SF2 files
+### Matt Gray — Matt Gray  ·  `native (Stage B)`  ·  37 songs / 78 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
 | Driller sub01 | Matt Gray | 1987 Incentive | 1 |
+| Hunters Moon Remastered sub01 | Matt Gray | 2018 Thalamus Digital Publ. | 1 |
+| Hunters Moon Remastered sub02 | Matt Gray | 2018 Thalamus Digital Publ. | 1 |
+| Hunters Moon Remastered sub03 | Matt Gray | 2018 Thalamus Digital Publ. | 1 |
+| Hunters Moon Remastered sub04 | Matt Gray | 2018 Thalamus Digital Publ. | 6 |
+| Hyperion 2 sub01 | Matt Gray | 1988 Matt Gray | 5 |
+| Hyperion 2 sub02 | Matt Gray | 1988 Matt Gray | 3 |
+| Hyperion 2 sub03 | Matt Gray | 1988 Matt Gray | 3 |
+| KGB Superspy sub01 | Matt Gray | 1990 Codemasters | 2 |
+| KGB Superspy sub02 | Matt Gray | 1990 Codemasters | 1 |
+| KGB Superspy sub03 | Matt Gray | 1990 Codemasters | 1 |
+| KGB Superspy sub04 | Matt Gray | 1990 Codemasters | 1 |
 | Last Ninja 2 sub00 | Matt Gray | 1988 System 3 | 2 |
 | Last Ninja 2 sub01 | Matt Gray | 1988 System 3 | 1 |
 | Last Ninja 2 sub02 | Matt Gray | 1988 System 3 | 2 |
@@ -906,6 +1045,15 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Last Ninja 2 sub10 | Matt Gray | 1988 System 3 | 2 |
 | Last Ninja 2 sub11 | Matt Gray | 1988 System 3 | 1 |
 | Last Ninja 2 sub12 | Matt Gray | 1988 System 3 | 2 |
+| Maze Mania sub01 | Matt Gray | 1989 Hewson | 2 |
+| Maze Mania sub02 | Matt Gray | 1989 Hewson | 8 |
+| Maze Mania sub03 | Matt Gray | 1989 Hewson | 1 |
+| Maze Mania sub04 | Matt Gray | 1989 Hewson | 1 |
+| Maze Mania sub05 | Matt Gray | 1989 Hewson | 1 |
+| Motocross sub01 | Matt Gray | 1989 Codemasters | 12 |
+| Motocross sub02 | Matt Gray | 1989 Codemasters | 1 |
+| Motocross sub03 | Matt Gray | 1989 Codemasters | 1 |
+| Motocross sub04 | Matt Gray | 1989 Codemasters | 1 |
 | Tusker sub00 | Matt Gray | 1989 System 3 | 1 |
 | Tusker sub01 | Matt Gray | 1989 System 3 | 2 |
 | Tusker sub02 | Matt Gray | 1989 System 3 | 1 |

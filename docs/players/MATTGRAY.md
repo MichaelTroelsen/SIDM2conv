@@ -1,10 +1,10 @@
 # Matt Gray — player RE + Stage A
 
 **Status:** RE complete and Stage A shipped for **Driller, Last Ninja 2 (13 subtunes) and Tusker (4 subtunes)** — 18 tunes, all at 100% onset / 100% pitch on plain instruments.
-**Native Stage B: SHIPPED** (`bin/build_mattgray_native_song.py`) — **36 tunes
+**Native Stage B: SHIPPED** (`bin/build_mattgray_native_song.py`) — **37 tunes
 across 8 games**: Last Ninja 2, Driller, Tusker, and (after the stride and
 `psid_song` fixes) Maze_Mania, Motocross, KGB_Superspy, Hyperion_2 and
-Hunters_Moon_Remastered. **6 of the 36 are 1-3 second jingles** whose
+Hunters_Moon_Remastered. **6 of the 37 are 1-3 second jingles** whose
 percentages carry almost no information, and **`Motocross` sub 4 fails
 outright** — see *The corpus after the fix*. For Last Ninja 2 —
 12 of 13 subtunes build, **98.16% audible per-frame frequency** (n=172,745),
@@ -982,7 +982,12 @@ from a small `n`.
 
 With `psid_song` tracing the right tune, every valid subtune of the five
 newly-parsing files was built. **20 build**, taking Stage B from 3 games to
-**8**. Audible (gate-on) fidelity, with `n` beside every number because four of
+**8** and from 17 tunes to **37**.
+
+(The 17 is worth stating because this doc had long said "16 tunes across the
+three games" — Last Ninja 2's 12 building subtunes plus Driller 1 plus Tusker 4
+is 17, and the enumeration on disk agrees. A count nobody re-derived, off by
+one, for as long as the section existed.) Audible (gate-on) fidelity, with `n` beside every number because four of
 these are short jingles where a percentage carries almost no information:
 
 | game | subtunes | audible v0/v1/v2 | note |

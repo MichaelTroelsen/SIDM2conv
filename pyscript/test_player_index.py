@@ -89,3 +89,51 @@ def test_a_dir_without_sf2_files_is_not_flagged(tmp_path):
     """Scratch dirs that hold no SF2 need no entry -- only built output counts."""
     (tmp_path / "out" / "empty_scratch").mkdir(parents=True)
     assert player_index.unclassified(str(tmp_path)) == []
+
+
+# -- the per-player breakdown in gen_conversion_index -----------------------
+
+def _gen():
+    import gen_conversion_index
+    return gen_conversion_index
+
+
+def test_player_section_totals_match_the_rows():
+    """The Total row is the sum of the rows above it, not a separate count.
+
+    Pins the failure mode a hand-written summary has: a total that drifts from
+    its own table. Uses synthetic stats so it does not depend on what happens
+    to be built on this machine.
+    """
+    stats = [("A", "ca", "native", "a", 3, 30),
+             ("B", "cb", "Driver 11 (Stage A)", "b", 2, 10)]
+    lines = _gen().render_player_section(stats)
+    total = [l for l in lines if l.startswith("| **Total**")][0]
+    assert "**5**" in total and "**40**" in total, total
+    assert "**2 dirs**" in total, total
+
+
+def test_player_section_percentages_are_of_the_file_total():
+    stats = [("A", "ca", "native", "a", 1, 75),
+             ("B", "cb", "native", "b", 1, 25)]
+    lines = _gen().render_player_section(stats)
+    assert any("75.0%" in l for l in lines), lines
+    assert any("25.0%" in l for l in lines), lines
+
+
+def test_player_section_survives_an_empty_corpus():
+    """A fresh clone has no out/ at all -- the percentage divisor must not
+    raise ZeroDivisionError there."""
+    lines = _gen().render_player_section([])
+    assert any("**0 dirs**" in l for l in lines), lines
+
+
+def test_a_player_with_two_pipelines_gets_two_rows():
+    """SDI and HardTrack each have a Stage A and a native Stage B directory;
+    collapsing them would hide one body of work behind the other."""
+    stats = [("SDI", "c", "Driver 11 (Stage A)", "sdi_sf2", 348, 363),
+             ("SDI", "c", "native (Stage B)", "sdi", 22, 234)]
+    lines = _gen().render_player_section(stats)
+    rows = [l for l in lines if l.startswith("| SDI")]
+    assert len(rows) == 2, rows
+    assert "`out/sdi_sf2/`" in rows[0] and "`out/sdi/`" in rows[1]
