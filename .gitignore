@@ -157,6 +157,16 @@ cleanup_backup_*.txt
 out/
 drivers_src/galway/*.inc
 drivers_src/galway/_*.asm
+# The same is true of the other three driver families, but only galway was ever
+# ignored -- so every native build left mon/romuzak/blackbird .inc files dirty in
+# `git status`, and bin/_sm_build_all.py carried a `git checkout --` to undo it.
+# All 10 were verified regenerated-from-scratch before untracking (a planted
+# sentinel line vanished from every one of them after a Matt Gray, Blackbird and
+# ROMUZAK build). Their tracked content was never canonical: it was whatever
+# build happened to run last on whoever's machine committed it.
+drivers_src/mon/*.inc
+drivers_src/romuzak/*.inc
+drivers_src/blackbird/*.inc
 tools/_*.prg
 
 # Debug output files
