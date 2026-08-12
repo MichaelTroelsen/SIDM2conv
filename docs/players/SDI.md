@@ -1,9 +1,11 @@
 # SDI — SID Duzz' It (Geir Tjelta & Glenn Rune Gallefoss)
 
-**Status (2026-07-16):** parser + onset/pitch validation across SIX decoded
+**Status (2026-08-12):** parser + onset/pitch validation across SIX decoded
 variants; Stage A (editable Driver 11) shipping via `bin/sdi_to_sf2.py`;
-Stage B native = next arc. Corpus: `SID/Gallefoss_Glenn/` (473 files; 441 in
-the flat dir, 671 songs) + `SID/Red_kommel_jeroen/` staging.
+Stage B native shipping via `bin/build_sdi_native_song.py`, **swept over the
+whole flat dir** (`pyscript/sdi_native_sweep.py`). Corpus:
+`SID/Gallefoss_Glenn/` (473 files; 441 in the flat dir, 671 songs) +
+`SID/Red_kommel_jeroen/` staging.
 **343 of 441 files locate → 348 Stage-A SF2s** (343 + 5 verified E extra
 subtunes). **324 of those are sweep-validated** — the medians below rest on
 those, not on all 343. Current headline figures: `docs/reference/ACCURACY_MATRIX.md`
@@ -20,6 +22,12 @@ those, not on all 343. Current headline figures: `docs/reference/ACCURACY_MATRIX
 >   `Barbers_Adagio_64`, `play=$0000`, 0 real onsets — correctly excluded, so it
 >   inflates no median).
 > - **671 songs** — subtunes. ~417 remain undecoded.
+>
+> A **fourth** denominator now exists and belongs to a different pipeline:
+> **262 of 441 build natively (Stage B)**, measured by
+> `pyscript/sdi_native_sweep.py`. It is not a subset of the 343 — Stage B needs
+> drivable onsets, which locate() does not check, and refuses 62 files locate()
+> accepts. Never quote 343, 324 and 262 in the same sentence.
 
 **This cycle (2026-07-13):** variant **C walk decoded** (strict median
 66.7→86.0), **multi-subtune** support (A/C/E), and the **"sixth layout"
@@ -163,8 +171,9 @@ by strict agreement (D5).
   Hysteria_Pimped), + the 9 abs-form false-positives the dispatch guard
   correctly excludes (Crystal_Gazer/Doors_of_Perception/... = other engines).
   ~73 more locate-NONE with other play-init offsets.
-- **Stage B native** — BEACHHEAD SHIPPED (`bin/build_sdi_native_song.py`, first
-  cut). See below.
+- **Stage B native** — SHIPPED (`bin/build_sdi_native_song.py`) and now swept
+  over the whole flat dir: **262 of 441 build, 786 scored voices**, tracked and
+  reproducible from a fresh clone via `pyscript/sdi_native_sweep.py`. See below.
 
 ## Stage B native — the pitch-ceiling lift (`bin/build_sdi_native_song.py`)
 
@@ -209,8 +218,65 @@ v1 residuals are the known drum/hat re-gate capture class.
 **98-100%** (2_Young 100/100/100, Delta_Slow 100/100/100, Neurotica 99.9/99.6/99.9,
 Moi_Funk 99.9/99.9/98.6, Kirby ~99.7). The lone residual is a **fast per-frame arp
 voice class** (Bahbar v1/v2 ~92.7/90.4, Filthy_Hit v0 76) — genuinely tonal, the
-honest FM-capture ceiling (lifting it needs shared-MoN-engine FM work). Open:
-wiring Stage B into a shipping path (currently standalone, one file at a time).
+honest FM-capture ceiling (lifting it needs shared-MoN-engine FM work).
+
+### The corpus sweep (`pyscript/sdi_native_sweep.py`, 2026-08-12)
+
+The figures above came from `bin/_sdi_stageb_sweep.py` — **untracked**
+(`.gitignore` excludes `bin/_*.py`) and a hand-picked **15-file sample across 3
+of the 6 variants**. The tracked sweep replaces it: it derives its corpus from
+`SID/Gallefoss_Glenn/` rather than naming one, invokes the builder per file, and
+**records refusals with their reason instead of dropping them**. This is also the
+shipping path this section used to list as open — the builder was standalone,
+one file at a time.
+
+**All 441 files in the flat dir, no sample:**
+
+| | files | |
+|---|---:|---|
+| **built** | **262** | 786 scored voices |
+| refused | 62 | all one reason: `cannot be driven by measure_onsets (self-IRQ / multispeed)` |
+| errored | 117 | 98 `not an SDI play+3 rip`, 16 `WAVE overflow (>256 rows)`, 2 timeout, 1 `IndexError` |
+
+| variant | voices | median | =100 | <90 |
+|---|---:|---:|---:|---:|
+| A | 120 | 99.9 | 30 | 8 |
+| B | 75 | 99.9 | 16 | 10 |
+| C | 201 | 98.1 | 21 | 21 |
+| D | 15 | **95.9** | 2 | **7 of 15** |
+| DELTA | 21 | 99.9 | 4 | 0 |
+| E | 336 | 99.7 | 59 | 17 |
+| V | 18 | 96.8 | 0 | 2 |
+
+**103 of the 262 have all three voices ≥99; 11 are 100/100/100.**
+
+Read these with three conditions attached:
+
+- **A median is not a pass rate.** 65 of 786 voices are below 90, and they are
+  not spread evenly: **variant D is 7 of its 15**, the only variant where a
+  broken voice is the common case (`Onkie_Donkie` 47.7/77.2/71.1, `Lame`
+  55.3/86.1/99.3, `Culture_Mix_2` 56.3/99.6/99.9 — yet `Culture_Mix_1` is
+  99.7/100/100). D is 5 files; treat its median as a sample, not a verdict.
+- **These percentages carry no `n`.** The builder prints `voice N: X%` with no
+  frame count, so `underpowered()` cannot mark a short song and a 1-second sting
+  is averaged against a 400-part epic (`parts` runs 1→402 across the corpus).
+  Wiring `fmt_pct(p, n=…)` into `build_sdi_native_song.py` is open work.
+- **`errored` ≠ unsupported.** `WAVE overflow: N rows > 256` (16 files, seen at
+  259–305 rows) is a **builder cap**, not a property of the music — the same
+  class of ceiling as Hubbard's 128-sequence cap.
+
+> **A sweep that stops being able to launch a process has stopped measuring.**
+> The first full-corpus run returned rc `3221225794` (`STATUS_DLL_INIT_FAILED`)
+> for every file from #275 of 441 onward — ~5 h in, the parent could no longer
+> spawn a child — and **did not stop**. It counted all 167 as `errored`
+> alongside the real classes and printed `built 161 refused 38 errored 242 of
+> 441`, whose per-variant medians were in fact an alphabetical **A–O sample**.
+> Three of those files build cleanly on a fresh invocation, so 167 "results"
+> were fabrications. The sweep now quarantines those return codes as
+> `unmeasured`, aborts after `--infra-abort` consecutive ones (default 3), and
+> prints the resume command; the table above is the merge of the valid 274-file
+> portion with a chunked re-run of the other 167. Pinned by
+> `pyscript/test_sdi_sweep_launch_guard.py`.
 
 ## Stage A
 

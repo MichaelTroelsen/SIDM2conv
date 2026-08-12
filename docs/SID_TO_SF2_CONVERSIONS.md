@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**850 songs / 6095 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**981 songs / 7818 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **818 songs / 6063 files** across 15 player dirs
+- `out/<player>/` native-build pipeline: **949 songs / 7786 files** across 15 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -27,22 +27,22 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 | Player | Composer | Pipeline | `out/` dir | Songs | SF2 Files | % of files |
 |--------|----------|----------|-----------|------:|----------:|-----------:|
-| SID Duzz' It (SDI) | Gallefoss/Tjelta | native (Stage B) | `out/sdi/` | 150 | 3504 | 57.8% |
-| DMC (Demo Music Creator) | Johannes Bjerregaard | native | `out/dmc/` | 57 | 943 | 15.6% |
-| Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 10.5% |
-| SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 6.0% |
-| Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 206 | 3.4% |
-| HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 196 | 3.2% |
-| Matt Gray | Matt Gray | native (Stage B) | `out/mattgray_native/` | 37 | 78 | 1.3% |
-| Martin Galway | Martin Galway | native | `out/galway_sf2/` | 40 | 40 | 0.7% |
-| Sound Monitor (Musicmaster) | Fun Fun | native | `out/soundmonitor/` | 11 | 27 | 0.4% |
+| SID Duzz' It (SDI) | Gallefoss/Tjelta | native (Stage B) | `out/sdi/` | 281 | 5227 | 67.1% |
+| DMC (Demo Music Creator) | Johannes Bjerregaard | native | `out/dmc/` | 57 | 943 | 12.1% |
+| Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 8.1% |
+| SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 4.7% |
+| Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 206 | 2.6% |
+| HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 196 | 2.5% |
+| Matt Gray | Matt Gray | native (Stage B) | `out/mattgray_native/` | 37 | 78 | 1.0% |
+| Martin Galway | Martin Galway | native | `out/galway_sf2/` | 40 | 40 | 0.5% |
+| Sound Monitor (Musicmaster) | Fun Fun | native | `out/soundmonitor/` | 11 | 27 | 0.3% |
 | Blackbird / lft | lft | native | `out/blackbird/` | 16 | 20 | 0.3% |
-| Future Composer | Michael Troelsen | native (Stage B) | `out/fc/` | 5 | 19 | 0.3% |
+| Future Composer | Michael Troelsen | native (Stage B) | `out/fc/` | 5 | 19 | 0.2% |
 | Maniacs of Noise / Deenen | Charles Deenen | Driver 11 (Stage A) | `out/deenen_sf2/` | 15 | 15 | 0.2% |
 | Jeroen Kimmel (Hubbard-derived) | Jeroen Kimmel | Driver 11 (Stage A) | `out/kimmel_sf2/` | 9 | 9 | 0.1% |
 | HardTrack Composer | Longhair/Brush | Driver 11 (Stage A) | `out/hardtrack/` | 5 | 5 | 0.1% |
 | ROMUZAK V6.3 | Oliver Blasnik | native | `out/romuzak/` | 4 | 4 | 0.1% |
-| **Total** | | | **15 dirs** | **818** | **6063** | 100% |
+| **Total** | | | **15 dirs** | **949** | **7786** | 100% |
 
 ---
 
@@ -52,8 +52,8 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 | Composer | Original Player | Songs |
 |----------|------------------|------:|
-| Glenn Rune Gallefoss | SID Duzz' It (SDI) | 300 |
-| Glenn Rune Gallefoss (Shark) | SID Duzz' It (SDI) | 192 |
+| Glenn Rune Gallefoss | SID Duzz' It (SDI) | 377 |
+| Glenn Rune Gallefoss (Shark) | SID Duzz' It (SDI) | 243 |
 | Rob Hubbard | Rob Hubbard | 60 |
 | Johannes Bjerregaard | DMC (Demo Music Creator) | 55 |
 | Martin Galway | Martin Galway | 40 |
@@ -74,6 +74,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Jeroen Kimmel (Red) | Jeroen Kimmel (Hubbard-derived) | 3 |
 | Rob Hubbard | Rob_Hubbard | 3 |
 | Charles Deenen (TSS) | Maniacs of Noise / Deenen | 2 |
+| Glenn Gallefoss & D. Bakewell | SID Duzz' It (SDI) | 2 |
+| Glenn R. Gallefoss & R. Bayliss | SID Duzz' It (SDI) | 2 |
+| Glenn Rune Gallefoss & Mitch | SID Duzz' It (SDI) | 2 |
 | Jeroen Tel & Markus Klein (LMan) | CheeseCutter_2.x | 2 |
 | Johannes Bjerregaard (The Jerk) | DMC (Demo Music Creator) | 2 |
 | Michael Troelsen (Coto) | Sound Monitor (Musicmaster) | 2 |
@@ -81,10 +84,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | (unknown) | SID Duzz' It (SDI) | 1 |
 | Charles Deenen & Jeroen Tel | Maniacs of Noise / Deenen | 1 |
 | G. R. Gallefoss & B. Vosseteig | SID Duzz' It (SDI) | 1 |
-| Glenn Gallefoss & D. Bakewell | SID Duzz' It (SDI) | 1 |
-| Glenn R. Gallefoss & R. Bayliss | SID Duzz' It (SDI) | 1 |
 | Glenn Rune Gallefoss & Bjarte V | SID Duzz' It (SDI) | 1 |
-| Glenn Rune Gallefoss & Mitch | SID Duzz' It (SDI) | 1 |
 | Jeroen Tel | Rob_Hubbard | 1 |
 | Laxity & Shogoon | SidFactory_II/Laxity | 1 |
 | Linus Akesson (lft) | Blackbird / lft | 1 |
@@ -684,7 +684,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Zexest | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
 | Zoophyte | SID Duzz' It (SDI) | 1 | Driver 11.00 - The Standard | 1 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  150 songs / 3504 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  281 songs / 5227 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
@@ -828,16 +828,147 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Kururin native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | L-Forza long edit native | SID Duzz' It (SDI) | 1 | Romuzak | 174 | Glenn Rune Gallefoss | 2010 Recollection |
 | L-Forza Remix native | SID Duzz' It (SDI) | 2 | Romuzak | 126 | Glenn Rune Gallefoss | 2009 Byterapers |
+| Lame native | SID Duzz' It (SDI) | 1 | Romuzak | 31 | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk |
+| Lederhosen native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Leon Latex native | SID Duzz' It (SDI) | 1 | Romuzak | 35 | Glenn Rune Gallefoss | 2007 SHAPE |
+| Lethal Weapon native | SID Duzz' It (SDI) | 1 | Romuzak | 24 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| Lightforce native | SID Duzz' It (SDI) | 1 | Romuzak | 21 | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' |
+| Little Bee native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Long Ting native | SID Duzz' It (SDI) | 1 | Romuzak | 28 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Looping native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Magic Moment native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Menthol native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss | 1993 Digital Designs |
 | Micro Mix native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Microwave native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Milkshake native | SID Duzz' It (SDI) | 1 | Romuzak | 41 | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' |
 | Moi Funk native | SID Duzz' It (SDI) | 1 | Romuzak | 22 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| Mozell native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Nasty Hombre native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Nephritis native | SID Duzz' It (SDI) | 1 | Romuzak | 22 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
 | Neurotica short native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 1999 Onslaught |
 | Neverending Story native | SID Duzz' It (SDI) | 1 | Romuzak | 13 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Nightjazz native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1992 Blues Muz' |
+| NineOneOne native | SID Duzz' It (SDI) | 1 | Romuzak | 101 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
+| Nitro Dot native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Noice native | SID Duzz' It (SDI) | 1 | Romuzak | 22 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Norvegia thats a cheese native | SID Duzz' It (SDI) | 1 | Romuzak | 13 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Ode to Bugg native | SID Duzz' It (SDI) | 1 | Romuzak | 21 | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' |
 | Oh Boy VE-2x native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' |
+| Ohne Titel native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' |
+| Oldie native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Onkie Donkie native | SID Duzz' It (SDI) | 1 | Romuzak | 19 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks |
+| Opening native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Orbital native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Organ Blues native | SID Duzz' It (SDI) | 1 | Romuzak | 15 | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' |
+| Other Day native | SID Duzz' It (SDI) | 1 | Romuzak | 32 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
+| Outrun native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Overlord native | SID Duzz' It (SDI) | 1 | Romuzak | 13 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
+| Painful native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Paranoid native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Pervers native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Phneumatic native | SID Duzz' It (SDI) | 2 | Romuzak | 5 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Pjatt native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Pling Plong native | SID Duzz' It (SDI) | 1 | Romuzak | 20 | Glenn Rune Gallefoss | 2002 SHAPE/Blues Muz' |
+| Pop native | SID Duzz' It (SDI) | 1 | Romuzak | 21 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
+| Potatoes native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Praiser native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+| Prelude native | SID Duzz' It (SDI) | 1 | Romuzak | 11 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Premature native | SID Duzz' It (SDI) | 1 | Romuzak | 36 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
+| Preview Zax native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 1993 Digital Designs |
+| Product native | SID Duzz' It (SDI) | 1 | Romuzak | 22 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Promises native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Psycho IV native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Pulstro native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss (Shark) | 1993 Regina |
 | Pultost VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
+| Punkfunk native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Pust native | SID Duzz' It (SDI) | 1 | Romuzak | 9 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Quaternion native | SID Duzz' It (SDI) | 1 | Romuzak | 14 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Quest native | SID Duzz' It (SDI) | 1 | Romuzak | 33 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| Rapture native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Rar Takt native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Raw and Mean native | SID Duzz' It (SDI) | 1 | Romuzak | 10 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Reaxion extended native | SID Duzz' It (SDI) | 4 | Romuzak | 24 | Glenn Rune Gallefoss | 2001 Commodore Zone |
+| Reaxion Extended Remix native | SID Duzz' It (SDI) | 4 | Romuzak | 11 | Glenn Rune Gallefoss | 2001 Commodore Zone |
+| Reyn Only native | SID Duzz' It (SDI) | 1 | Romuzak | 12 | Glenn Rune Gallefoss (Shark) | 1993 Regina/Blues Muz' |
+| Rhyme native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| RNA Reset Now Asshole native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Rocker native | SID Duzz' It (SDI) | 1 | Romuzak | 10 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
+| Rough Boy native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Sad Song native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Sad Toob native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+| Scene plus III native | SID Duzz' It (SDI) | 1 | Romuzak | 54 | Glenn Rune Gallefoss | 1998 FairLight |
+| Scimitars native | SID Duzz' It (SDI) | 1 | Romuzak | 31 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| Screaming native | SID Duzz' It (SDI) | 1 | Romuzak | 14 | Glenn Rune Gallefoss | 1993 Digital Designs |
+| Sharkie native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
 | Short Deel native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss | 2000 Nostalgia |
+| Short One native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Short Zax native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Slamtime native | SID Duzz' It (SDI) | 1 | Romuzak | 12 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Slapfart native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+| Slowjazz native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Slowmotion native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Smiley native | SID Duzz' It (SDI) | 1 | Romuzak | 56 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
+| Snip Snap native | SID Duzz' It (SDI) | 1 | Romuzak | 9 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Snufs native | SID Duzz' It (SDI) | 1 | Romuzak | 10 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Solar Plexus native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Sorrows native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Sound Test native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1992 Digital Designs |
+| Spellbound native | SID Duzz' It (SDI) | 1 | Romuzak | 9 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
+| Stairway 1 native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Stairway 2 native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Stort Plaster native | SID Duzz' It (SDI) | 1 | Romuzak | 137 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz'/HVSC |
+| Strangers native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Strangle native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz'/Onslaught |
+| Suburbia native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Sugarhill native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Super Galaxy preview native | SID Duzz' It (SDI) | 54 | Romuzak | 1 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
 | Survival native | SID Duzz' It (SDI) | 1 | Romuzak | 23 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Sweeper native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Sweet JB native | SID Duzz' It (SDI) | 1 | Romuzak | 12 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
+| Syk Sang native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Synchro native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
+| Syncomatic native | SID Duzz' It (SDI) | 1 | Romuzak | 57 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
+| Synthfunk native | SID Duzz' It (SDI) | 1 | Romuzak | 28 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
+| T-Shirt native | SID Duzz' It (SDI) | 1 | Romuzak | 4 | Glenn Rune Gallefoss | 1993 Digital Designs |
+| Tango native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Tanks 3000 native | SID Duzz' It (SDI) | 13 | Romuzak | 69 | Glenn R. Gallefoss & R. Bayliss | 2006 Protovision |
+| Tarmslyng native | SID Duzz' It (SDI) | 1 | Romuzak | 17 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Techno-Kaare native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Techno Chaos native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Techno native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Techno Rave native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss & Mitch | 1994 SHAPE/Crest |
+| Tekkno Tuna Sandwich native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Ten Seconds native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Terpentin native | SID Duzz' It (SDI) | 1 | Romuzak | 10 | Glenn Rune Gallefoss | 1993 Digital Designs |
+| Test-trip native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Tight Jeans native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Timbuktu native | SID Duzz' It (SDI) | 1 | Romuzak | 15 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Tissemann native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs |
+| Toto native | SID Duzz' It (SDI) | 1 | Romuzak | 10 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Trakten native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Tranedans native | SID Duzz' It (SDI) | 1 | Romuzak | 30 | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' |
+| Trapped native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 2002 SHAPE/Blues Muz' |
+| Trist native | SID Duzz' It (SDI) | 1 | Romuzak | 13 | Glenn Gallefoss & D. Bakewell | 1999 Blues Muz' |
+| Trooper native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Tunfiskpizza native | SID Duzz' It (SDI) | 1 | Romuzak | 6 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Tycoon 2 native | SID Duzz' It (SDI) | 1 | Romuzak | 21 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| Tycoon native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| U May C native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
 | Underwear VE-4x native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+| Velomatrix native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' |
+| Vicious Circles native | SID Duzz' It (SDI) | 1 | Romuzak | 46 | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' |
+| Vikings native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Virtual native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Vozza Jazz native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss | 1994 The Radbrekkjers |
+| Warbeat native | SID Duzz' It (SDI) | 1 | Romuzak | 5 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Wash and Go native | SID Duzz' It (SDI) | 1 | Romuzak | 7 | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs |
+| Wavetrip native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' |
+| What Is Love native | SID Duzz' It (SDI) | 1 | Romuzak | 79 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Xard native | SID Duzz' It (SDI) | 1 | Romuzak | 2 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' |
+| Yeah native | SID Duzz' It (SDI) | 1 | Romuzak | 21 | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' |
+| Zap native | SID Duzz' It (SDI) | 1 | Romuzak | 1 | Glenn Rune Gallefoss | 2007 SHAPE/Blues Muz' |
+| Zexest native | SID Duzz' It (SDI) | 1 | Romuzak | 3 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs |
+| Zoophyte native | SID Duzz' It (SDI) | 1 | Romuzak | 8 | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' |
 
 ### Jeroen Kimmel (Hubbard-derived) — Jeroen Kimmel  ·  9 songs / 9 SF2 files
 
