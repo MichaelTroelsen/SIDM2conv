@@ -87,9 +87,49 @@ def exercised(a_vals, b_vals):
     return len(set(a)) > 1 or len(set(b)) > 1 or a[0] != b[0]
 
 
-def fmt_pct(p, width=5, prec=1):
-    """Render a `score_pct` result. None -> 'n/a', never a number."""
-    return f"{p:{width}.{prec}f}" if p is not None else "n/a".rjust(width)
+# A per-voice percentage over fewer than this many compared frames is not a
+# fidelity claim. 250 frames is 5 seconds of PAL playback -- chosen as the point
+# below which the corpus stops containing songs and starts containing jingles,
+# not from a significance test, and stated here rather than buried in a caller
+# so it can be argued with. Matt Gray's Stage B corpus is the worked example:
+# 30 of its 36 tunes compare 1,500-6,300 frames per voice, and the other 6 are
+# 1-3 second stingers compared over 46-136 -- one of which reported a confident
+# 100.0/100.0/100.0 on n=46.
+MIN_INFORMATIVE_FRAMES = 250
+
+
+def underpowered(tot, min_n=MIN_INFORMATIVE_FRAMES):
+    """True when a percentage over `tot` comparisons is too small to quote.
+
+    The third guard, and the one this harness was missing. `score_pct` asks
+    "were there ANY frames?" and `exercised` asks "did those frames carry
+    INFORMATION?" -- neither asks "were there ENOUGH?". A voice compared over
+    46 frames scores 100.0% exactly as confidently as one compared over 6,000,
+    and prints identically, so a corpus table silently averages a 1-second
+    stinger against a 2-minute song.
+
+    This does NOT reject the measurement -- a short tune is real music and its
+    score is real. It marks the number as unquotable on its own, which is the
+    same distinction `insufficient-data` draws from `no-trace` in
+    `sidm2/instrument_map.py`: absence of evidence, recorded as such, rather
+    than silently promoted to evidence of absence or of success.
+    """
+    return tot is not None and tot < min_n
+
+
+def fmt_pct(p, width=5, prec=1, n=None):
+    """Render a `score_pct` result. None -> 'n/a', never a number.
+
+    `n` (optional) is the comparison count behind `p`. When it is below
+    `MIN_INFORMATIVE_FRAMES` the number is suffixed with `!` -- see
+    `underpowered`. Callers that do not pass `n` are unchanged, so the ~40
+    existing call sites and the scripts that parse their output keep their
+    exact format.
+    """
+    if p is None:
+        return "n/a".rjust(width)
+    out = f"{p:{width}.{prec}f}"
+    return out + "!" if underpowered(n) else out
 
 
 def series_shape(vals):

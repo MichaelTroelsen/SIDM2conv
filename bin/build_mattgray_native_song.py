@@ -390,6 +390,7 @@ def main():
         return 1
 
     import mon_fidelity as F
+    from sidm2 import fidelity_common as _FC
     global WARG
     if WARG.lower() not in ("auto", "a"):
         span = min(span, int(WARG) * 50)
@@ -432,11 +433,21 @@ def main():
     print("  FIDELITY (per-frame freq semitone vs original, all parts):")
     print("    voice |  raw  (n)      | AUDIBLE gate-on (n) | misses on the "
           "driver's note-on frame")
+    from sidm2.fidelity_common import fmt_pct as _fp, underpowered as _up
+    thin = False
     for i, (raw, rn, aud, an, tm, ms, ts) in enumerate(res):
-        rs = f"{raw:5.1f}%" if raw is not None else "  n/a "
-        as_ = f"{aud:5.1f}%" if aud is not None else "  n/a "
+        # `!` marks a score whose comparison is too short to quote on its own
+        # (see fidelity_common.underpowered). A 1-second stinger otherwise
+        # prints an identical, equally confident 100.0 to a 2-minute song.
+        rs = _fp(raw, n=rn) + "%"
+        as_ = _fp(aud, n=an) + "%"
+        thin = thin or _up(an)
         print(f"      {i}   | {rs} ({rn:5d}) | {as_} ({an:5d})     | "
               f"{tm:4d} of {ms:4d} ({ts} under the SID TEST bit)")
+    if thin:
+        print(f"    NOTE: `!` = fewer than {_FC.MIN_INFORMATIVE_FRAMES} compared "
+              f"frames ({_FC.MIN_INFORMATIVE_FRAMES // 50}s). Real, but not a "
+              f"fidelity claim on its own -- do not average it with a full song.")
     return 0
 
 
