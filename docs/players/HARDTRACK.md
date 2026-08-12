@@ -1298,6 +1298,39 @@ DMC's fix was verified by byte-diffing the emitted SF2 against a build with the
 change reverted: **exactly 8 bytes differ, all filter SET rows, every one
 `low → low+band` with its cutoff nibble untouched.**
 
+### Per-voice isolation: attempted, and it does NOT yet settle anything
+
+Per-voice isolation is what localised the equivalent Matt Gray audio gap, and it
+had never been run here. Run on `Love_tune_2` part 1 (28 s,
+`audio-tightness.bat … --voice all --repeat-floor 1`), it returns a
+**SYNTHESIS** diagnosis on voices 1 and 2 — audio 73% and 67% against floors of
+99% and 100%, registers 96-100% byte-exact.
+
+⚠️ **Do not quote that.** The tool prints `p=0.50 by rank alone` beside it: with
+a single self-comparison the rank test has no power, which is exactly the trap
+`PATTERNS.md` F5b and `MON.md` already record — a "register-exact but SYNTHESIS
+on every voice" reading on Maniacs of Noise was **falsified** and turned out to
+be metric noise. This measurement is the same shape and the same strength.
+Settling it needs `--repeat-floor 3` or more, which is a long render and was not
+run.
+
+**One observation did come out of it that is not about the per-voice scores.**
+The isolation guard *warns* on this material, and the asymmetry is in the
+numbers it prints:
+
+| inter-voice correlation of the "isolated" renders | r(1-2) | r(1-3) | r(2-3) |
+|---|---|---|---|
+| original | +0.01 | +0.03 | −0.01 |
+| ours | **+0.14** | **+0.17** | **+0.13** |
+
+The original's three voices are essentially uncorrelated once muted; ours are
+not. That is a real difference in the render, and a candidate mechanism for a
+*broadband* spectral difference. But it is also precisely why the guard warns —
+the per-voice deltas above are partly shared signal — so it cannot be used to
+support the per-voice conclusion it sits beside. **Recorded as a lead, not as a
+result**, and it needs a second tune before it means anything: one file cannot
+distinguish "our renders bleed" from "this tune's voices genuinely overlap".
+
 ### About half the brightness gap is still open
 
 After the fix the windowed step is roughly halved but still there (centroid
