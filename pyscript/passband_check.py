@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Do the SHIPPED builds select the filter passband their originals do?
+
+`docs/players/HARDTRACK.md` records `$D418` at **100.00% byte-exact**, and that
+figure is true *about the builder*: `bin/build_hardtrack_native_song.py` passes
+the 3-tuple whose third element is `BM.passband_trace(...)`, so a build made
+today gets the passband right. What no check anywhere covered is whether the
+SF2/SID files ON DISK were made by that builder. On 2026-08-12 they were not:
+21 of 33 rendered low-pass where the original selects low+band, band+high, or
+modulates between modes up to 87 times in 28 s. The builder had been fixed and
+the artifacts predating the fix were never regenerated.
+
+That gap -- correct code, stale output, and a document quoting the code -- is the
+same shape as the tracked-`.inc` problem (`test_generated_inc_untracked.py`) and
+deserves the same treatment: something that measures the artifact, not the
+source. This script does that, and it is deliberately CHEAP (siddump only, no
+audio render, no rebuild) so it can be run after any batch build.
+
+WHY THE PASSBAND AND NOT THE WHOLE REGISTER: `$D418`'s low nibble is master
+volume and its bits 4-6 are the low/band/high pass selects. A volume difference
+is audible as level, a mode difference as timbre, and pooling them lets one mask
+the other. This compares bits 4-6 only.
+
+THREE THINGS SIDDUMP DOES THAT WOULD OTHERWISE FAKE A RESULT:
+  - It FILL-FORWARDS: a side that never writes `$D418` shows its last value
+    forever, so "static" here means "the register held that value", which is
+    what the SID acts on -- not "the playroutine wrote it every frame".
+  - It FORCE-DISPLAYS every register on frame 0 whatever the playroutine did,
+    so frame 0 is dropped rather than counted as a write.
+  - It CANNOT SEE bit 7 (voice-3-off); it prints only `(D418 >> 4) & 7`. That
+    bit is outside this check and HARDTRACK.md says so too.
+
+COMMIT `cffc51e` FIXED TWO BUILDERS, NOT ONE: `build_hardtrack_native_song.py`
+and `build_dmc_native_song.py`. HardTrack's artifacts were regenerated on
+2026-08-12; 968 of 984 `out/dmc/*.sf2` still predate the fix. So this takes a
+`--player` rather than hard-coding one directory.
+
+WHAT IT DOES NOT PROVE, for DMC especially: it reads **part 1 only**, against
+the original's first `--seconds`. A song split into 77 parts has most of its
+music outside that window, so a clean result here means "part 1's passband is
+right", never "the song's is". A DIRTY result is still conclusive.
+
+    py -3 pyscript/passband_check.py                     # hardtrack
+    py -3 pyscript/passband_check.py --player dmc
+    py -3 pyscript/passband_check.py --min 99            # gate at 99%
+
+Exit 0 = every build agrees, 1 = at least one disagrees, 2 = nothing to check.
+"""
+import argparse
+import glob
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sidm2.fidelity_common import siddump_frames_full, psid_wrap  # noqa: E402
+from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Each player ships a different artifact: HardTrack writes a playable .sid
+# beside its .sf2, DMC writes only .sf2 and must be PSID-wrapped before siddump
+# will look at it. `origs` is a glob relative to SID/ -- '*' where the rip
+# directory is not fixed.
+PLAYERS = {
+    "hardtrack": {"dir": ("out", "hardtrack_native"), "suffix": "_part01.sid",
+                  "origs": "*"},
+    "dmc": {"dir": ("out", "dmc"), "suffix": "_part01.sf2",
+            "origs": "JohannesBjerregaard"},
+}
+
+MODE_NAMES = {0x00: "off", 0x10: "LP", 0x20: "BP", 0x30: "LP+BP",
+              0x40: "HP", 0x50: "LP+HP", 0x60: "BP+HP", 0x70: "LP+BP+HP"}
+
+
+def mode_sequence(frames):
+    """Per-frame `$D418` passband (bits 4-6), frame 0 dropped.
+
+    `frames` is `siddump_frames_full`'s output. Returns [] when the register
+    never appears -- which is NOT the same as "the tune selects no filter", and
+    the caller must not score an empty sequence as agreement.
+    """
+    return [f["volmode"] & 0x70 for _v, f in frames[1:]
+            if f.get("volmode") is not None]
+
+
+def describe(modes):
+    """(names present, number of mode CHANGES). The change count is what
+    separates "both sides sit on one constant" from "the original modulates and
+    we do not" -- two failures that score identically on a plain equality test
+    against a static side."""
+    names = [MODE_NAMES.get(m, f"${m:02X}") for m in sorted(set(modes))]
+    changes = sum(1 for a, b in zip(modes, modes[1:]) if a != b)
+    return names, changes
+
+
+# The native driver boots a few frames after the original. Every other scorer
+# in this repo fits this before comparing (`measure_parts` uses range(-4, 9));
+# HARDTRACK.md states the render sits at -3. Not fitting it makes a constant
+# boot delay read as a passband defect on any tune that MODULATES the mode --
+# the static-mode files are immune, which is exactly why the flaw survived the
+# first run of this check.
+OFFSETS = range(-4, 9)
+
+
+def _agree_at(orig_modes, our_modes, off):
+    n = 0
+    ok = 0
+    for i in range(len(orig_modes)):
+        j = i + off
+        if not (0 <= j < len(our_modes)):
+            continue
+        n += 1
+        ok += orig_modes[i] == our_modes[j]
+    return ok, n
+
+
+def compare(orig_modes, our_modes, offsets=OFFSETS):
+    """Best-aligned frame-wise agreement, plus the two failure shapes.
+
+    Returns (pct|None, n, orig_changes, our_changes, offset). `None` -- never
+    100.0 and never 0.0 -- when either side has no `$D418` rows at all,
+    following `fidelity_common.score_pct`: an unmeasured comparison is not a
+    perfect one.
+
+    The offset is fitted, not assumed, and REPORTED, because a large one is
+    itself a finding: it means the passband is right but arrives late, which is
+    a different defect from selecting the wrong band.
+    """
+    if not orig_modes or not our_modes:
+        return None, 0, 0, 0, 0
+    # Maximise the RATE, not the raw match count: shifting shrinks the overlap,
+    # so a count-maximiser always prefers offset 0 and a pure boot delay never
+    # scores 100%. Ties go to the smallest shift, so a file that agrees nowhere
+    # reports offset 0 rather than whichever offset happened to be tried first.
+    cand = []
+    for off in sorted(offsets, key=lambda o: (abs(o), o)):
+        ok, n = _agree_at(orig_modes, our_modes, off)
+        if n:
+            cand.append((off, ok, n))
+    if not cand:
+        return None, 0, 0, 0, 0
+    # A shift may not buy its rate by discarding the comparison: with offsets
+    # bounded to a few frames against ~1400 this never binds, but it stops the
+    # fit degenerating if either ever changes.
+    widest = max(n for _o, _k, n in cand)
+    cand = [c for c in cand if c[2] >= widest * 0.5]
+    best_off, best_ok, best_n = max(cand, key=lambda c: (c[1] / c[2], -abs(c[0])))
+    _, oc = describe(orig_modes)
+    _, dc = describe(our_modes)
+    return 100.0 * best_ok / best_n, best_n, oc, dc, best_off
+
+
+def find_original(base, origs):
+    for cand in sorted(glob.glob(os.path.join(ROOT, "SID", origs, base + ".sid"))):
+        return cand
+    return None
+
+
+def artifact_frames(path, args):
+    """siddump an artifact, PSID-wrapping it first when it is a bare .sf2.
+
+    The wrap is the same one the builders and sweeps use; writing it beside the
+    source would litter `out/`, so it goes to a single scratch name that is
+    overwritten per file and never read again.
+    """
+    if path.lower().endswith(".sid"):
+        return siddump_frames_full(path, args)
+    sf2 = open(path, "rb").read()
+    info = SF2DriverInfo()
+    sla = parse_sf2_blocks(sf2, info)
+    probe = os.path.join(os.path.dirname(path), "_passband_probe.sid")
+    open(probe, "wb").write(psid_wrap(sf2[2:], sla, 0x1000, 0x1003))
+    return siddump_frames_full(probe, args)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--player", choices=sorted(PLAYERS), default="hardtrack")
+    ap.add_argument("--seconds", type=int, default=28)
+    ap.add_argument("--min", type=float, default=99.0, metavar="PCT",
+                    help="fail below this frame-wise mode agreement")
+    a = ap.parse_args(argv)
+
+    cfg = PLAYERS[a.player]
+    build_dir = os.path.join(ROOT, *cfg["dir"])
+    # `_`-prefixed names are scratch (A/B baselines, probes), never shipped.
+    builds = sorted(b for b in glob.glob(os.path.join(build_dir, "*" + cfg["suffix"]))
+                    if not os.path.basename(b).startswith("_"))
+    if not builds:
+        print(f"no {a.player} builds in {build_dir} -- nothing to check")
+        return 2
+
+    args = ["-a0", f"-t{a.seconds}"]
+    print(f"{'file':<28s} {'original':<14s} {'ours':<14s} "
+          f"{'oChg':>5s} {'dChg':>5s} {'off':>4s} {'agree':>7s}")
+    bad = []
+    for b in builds:
+        base = os.path.basename(b)[:-len(cfg["suffix"])]
+        orig = find_original(base, cfg["origs"])
+        if not orig:
+            print(f"{base:<28s} NO ORIGINAL FOUND -- cannot check")
+            bad.append((base, "no original"))
+            continue
+        om = mode_sequence(siddump_frames_full(orig, args))
+        dm = mode_sequence(artifact_frames(b, args))
+        pct, n, oc, dc, off = compare(om, dm)
+        on, _ = describe(om) if om else (["n/a"], 0)
+        dn, _ = describe(dm) if dm else (["n/a"], 0)
+        shown = "n/a" if pct is None else f"{pct:.1f}"
+        note = ""
+        if pct is None:
+            note = "   <== no $D418 rows on one side"
+            bad.append((base, "unmeasured"))
+        elif oc and not dc:
+            note = "   <== original MODULATES, ours is static"
+            bad.append((base, f"static vs {oc} changes"))
+        elif pct < a.min:
+            note = "   <== mode mismatch"
+            bad.append((base, f"{pct:.1f}%"))
+        print(f"{base:<28s} {'/'.join(on):<14s} {'/'.join(dn):<14s} "
+              f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s}{note}")
+
+    print(f"\n{len(builds) - len(bad)}/{len(builds)} builds select the "
+          f"original's passband")
+    if bad:
+        print("FAILED -- rebuild these, the builder is already correct:")
+        for name, why in bad:
+            print(f"  {name} ({why})")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
