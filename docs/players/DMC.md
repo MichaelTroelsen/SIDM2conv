@@ -143,9 +143,8 @@ rather than another column in either scorer.
 part 1 spans 596 frames and the check compared 1,400, so past its end our part
 **looped** and showed 5 mode changes against the original's 1. At the 12 s its
 part actually spans it is **100.0%, 1 change against 1**. `French_Frites` is
-real — at its true 39 s span it still reads **49.6%**, holding LP+BP+HP while
-the original moves through HP and BP+HP. `DMC_Demo_IV_tune_5` reads 98.0% at
-10 s, and its 3 mode changes all occur with the **cutoff unchanged**.
+real and **audible** — at its true 39 s span it reads **49.6%** with the filter routed on 100% of frames and **978 mismatched frames that the original actually routes**, holding LP+BP+HP while the original moves HP → BP+HP → LP+BP+HP. It is the **largest genuine passband defect left in the project** — every other player's residual is either 100%, unexercised, or confined to frames the original does not route. `DMC_Demo_IV_tune_5` reads 98.0% at
+10 s with **10 audible mismatched frames**, and its 3 mode changes all occur with the **cutoff unchanged**.
 
 That suggested a mechanism — a passband is only expressible where the builder
 emits a filter row, so a mode change coinciding with no cutoff change has
