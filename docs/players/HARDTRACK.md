@@ -1298,38 +1298,114 @@ DMC's fix was verified by byte-diffing the emitted SF2 against a build with the
 change reverted: **exactly 8 bytes differ, all filter SET rows, every one
 `low → low+band` with its cutoff nibble untouched.**
 
-### Per-voice isolation: attempted, and it does NOT yet settle anything
+### ⚠️ The fix was in the BUILDER. The files on disk were not rebuilt.
 
-Per-voice isolation is what localised the equivalent Matt Gray audio gap, and it
-had never been run here. Run on `Love_tune_2` part 1 (28 s,
-`audio-tightness.bat … --voice all --repeat-floor 1`), it returns a
-**SYNTHESIS** diagnosis on voices 1 and 2 — audio 73% and 67% against floors of
-99% and 100%, registers 96-100% byte-exact.
+Everything above is true of `build_hardtrack_native_song.py` and was false of
+almost every artifact it had produced, for two days, while this document quoted
+the builder. `pyscript/passband_check.py` measures the **artifact**; run against
+the 33 shipped builds on 2026-08-12 it found 21 rendering the wrong passband.
 
-⚠️ **Do not quote that.** The tool prints `p=0.50 by rank alone` beside it: with
-a single self-comparison the rank test has no power, which is exactly the trap
-`PATTERNS.md` F5b and `MON.md` already record — a "register-exact but SYNTHESIS
-on every voice" reading on Maniacs of Noise was **falsified** and turned out to
-be metric noise. This measurement is the same shape and the same strength.
-Settling it needs `--repeat-floor 3` or more, which is a long render and was not
-run.
+The accurate statement is stronger than "21 were stale":
 
-**One observation did come out of it that is not about the per-voice scores.**
-The isolation guard *warns* on this material, and the asymmetry is in the
-numbers it prints:
+> **31 of 33 artifacts came from the PRE-FIX code, which wrote low-pass
+> unconditionally.** That is observable on the 21 whose originals select
+> anything other than plain LP; on the other 10 the hardcoded default happens to
+> be the right answer. Only `Love_tune_2` and `Zakplus` — both rebuilt after
+> `cffc51e` — were correct by construction.
 
-| inter-voice correlation of the "isolated" renders | r(1-2) | r(1-3) | r(2-3) |
+So the defect rate in builder *output* was 100% until the fix, and a naive audit
+scoring 12/33 "correct" would have been reading coincidence as evidence.
+
+After rebuilding all 33:
+
+| | passing | note |
+|---|---|---|
+| before | **2** by construction (12 by the check) | 10 correct only because their original is LP-only |
+| after | **24 of 33** | all 10 static-wrong files → 100.0% |
+
+The 9 that still fail (57-89%) have changed class entirely: every one now
+**modulates**, and `Something_to_Eat` makes 88 mode changes against the
+original's 87. What is wrong is the *timing* of the changes, not their absence.
+Fitted offsets land on **−3**, matching this document's own render offset.
+
+`out/dmc/` was NOT rebuilt — 968 of its 984 `.sf2` predate `cffc51e`, and
+`passband_check.py --player dmc` exists to size that before anyone commits to a
+57-song rebuild.
+
+### ⚠️ Fixing the passband did NOT close the brightness gap
+
+The rung-4 pass attributed a brightness deficit to the missing passband:
+"consistently darker", centroid −99.3 → −51.4 Hz, rolloff −280.1 → −169.6 Hz.
+**That was measured on one file, and it does not generalise.**
+
+Measured across 8 tunes with `HT_NO_PASSBAND=1` — the pre-fix 2-tuple
+reproduced deliberately, so both arms come from the same builder and the only
+difference is the passband:
+
+| | mean |Δ| reduction | closer with passband on | no-passband arm *darker* |
 |---|---|---|---|
-| original | +0.01 | +0.03 | −0.01 |
-| ours | **+0.14** | **+0.17** | **+0.13** |
+| spectral centroid | +3.95 Hz | 4/8 | **2/8** |
+| rolloff (85%) | **−32.54 Hz** | 2/8 | **1/8** |
+| RMS level (A-weighted) | +0.41 dBA | **7/8** | 0/8 |
+| spectral flatness | −0.00 | 2/8 | 3/8 |
 
-The original's three voices are essentially uncorrelated once muted; ours are
-not. That is a real difference in the render, and a candidate mechanism for a
-*broadband* spectral difference. But it is also precisely why the guard warns —
-the per-voice deltas above are partly shared signal — so it cannot be used to
-support the per-voice conclusion it sits beside. **Recorded as a lead, not as a
-result**, and it needs a second tune before it means anything: one file cannot
-distinguish "our renders bleed" from "this tune's voices genuinely overlap".
+Two claims die here. **"Missing passband reads as darker" is refuted** — on 6 of
+8 files the low-pass-only render was *brighter* than the original. And **the fix
+does not move brightness toward the original**: centroid is a coin flip and
+rolloff gets *worse* on 6 of 8. The only consistent gain is A-weighted level.
+
+Among the four files that reached 100.0% register agreement, one improved
+sharply (`Teekkno`, centroid −136.8 → −45.7, rolloff −330.7 → −154.6), one did
+not move at all (`Walk_to_Soul`, +86.6 → +87.2 despite going 0% → 100%), and two
+got **worse** (`Muminki_Rooooolz`, centroid +77.1 → +172.5).
+
+**The A/B is confound-free, and that was checked rather than assumed.** The
+worry was that "before" artifacts dated from 2026-08-09 and "after" from today,
+folding three days of builder changes into the deltas. Re-built with
+`HT_NO_PASSBAND=1` against today's code, the register traces of the two
+no-passband arms are **identical across all 1400 frames** on every file tested —
+including three whose SF2s differ in bytes, where the differences sit in data the
+player never reaches. The only output-affecting HardTrack builder change since
+2026-08-09 *is* the passband.
+
+So the passband fix stands on **correctness** — the register is now right where
+it was provably wrong — and not on any audio claim. The brightness gap is
+unchanged, and it now has one fewer candidate mechanism.
+
+### Per-voice isolation: run at a real floor, and the cross-voice lead is DEAD
+
+Per-voice isolation is what localised the equivalent Matt Gray audio gap. Run on
+`Love_tune_2` part 1 (28 s, `--voice all`) it returns **SYNTHESIS** on voices 1
+and 2 — audio 73% and 67% against floors of 89% and 95%, registers 96-100%
+byte-exact.
+
+The first run of this used `--repeat-floor 1`, which prints `p=0.50 by rank
+alone` — no power at all, the exact trap `PATTERNS.md` F5b and `MON.md` record,
+where a "register-exact but SYNTHESIS on every voice" reading on Maniacs of
+Noise was **falsified** as metric noise. Re-run at `--repeat-floor 3` it is
+`p=0.25`. Better, still below any conventional bar, and the isolation guard
+**warns on our side**, so the tool's own words apply: "usable but partly
+correlated across voices". Voice 3 reads SEQUENCER, not SYNTHESIS — its
+registers diverge too (freq 94.1%).
+
+**The cross-voice asymmetry that came out of the first run does NOT survive a
+second tune.** The claim was that the original's voices are uncorrelated once
+isolated while ours are not:
+
+| inter-voice correlation of the "isolated" renders | orig r(1-2)/(1-3)/(2-3) | ours |
+|---|---|---|
+| `Love_tune_2` | +0.01 / +0.03 / −0.01 `[clean]` | +0.14 / +0.17 / +0.13 `[warn]` |
+| `Jazzloor` | +0.05 / +0.12 / +0.10 `[warn]` | +0.09 / +0.17 / +0.10 `[warn]` |
+| `Hopscotch` | +0.07 / +0.04 / +0.11 `[warn]` | +0.69 / +0.77 / +0.72 `[refuse]` |
+
+On `Jazzloor` the original bleeds essentially as much as we do. So "our renders
+bleed" is **not** a general property — it was a `Love_tune_2` fact. What holds
+across all three is only the weaker statement that ours is never *better* and is
+sometimes far worse. `Hopscotch`'s `[refuse]` at 56-80% shared energy is
+unexplained and **is not the passband**: that file's `$D418` is static on our
+side, so it cannot be driving an all-muted residual. One untested confound
+remains — `residual/mix` is a ratio, so a quieter mix inflates it, and absolute
+levels were not checked.
 
 ### About half the brightness gap is still open
 
