@@ -354,6 +354,49 @@ in the **validator**, and quote the lag next to the score.
 `pyscript/hardtrack_stagea_validate.py --lag`, pinned by
 `pyscript/test_driver11_startup_frame.py`.
 
+### F7. A fix in the BUILDER is not a fix in the CORPUS
+**Symptom**: a player doc states a register at 100.00% byte-exact and the files
+on disk disagree with it — because the doc is describing the builder and nobody
+measured the artifacts. Found **three times in one session**, on three players,
+each by a session that had fixed the code and never regenerated the output:
+
+| player | builder fixed | shipped artifacts wrong |
+|---|---|---|
+| MoN | 2026-08-08 (`464406a`, where `passband_trace` was WRITTEN) | 8 of 19 |
+| HardTrack | 2026-08-10 (`cffc51e`) | 21 of 33 |
+| DMC | 2026-08-10 (same commit) | 26 of 57 |
+
+**Detection**: a cheap check that reads the **artifact**, not the source —
+siddump the shipped file and the original and compare the register directly
+(`pyscript/passband_check.py`). Do **not** rebuild first: a sweep that
+regenerates before measuring answers "is the builder right", which was never in
+doubt, and reports the corpus healthy. Cross-checking the *code* across builders
+is what missed it three times — HARDTRACK.md records "the same gap was then
+checked across every native builder", and that audit read call sites.
+**Why it hides**: the per-player fidelity scorers are structurally blind to the
+register. HardTrack's builder "scores frequency and nothing else";
+`bin/_dmc_fidelity.py` scores freq/wf/pulse. `$D418` is in neither, so no
+headless number could move — `Balloon` re-measures **byte-identical** before and
+after the fix. A scorer cannot report a register it does not read.
+**Second trap — severity is not the same question as correctness.** Three DMC
+files differed on `$D418` and were reported as failures three separate times;
+all three have `$D417 = $00`, so **no voice is routed into the filter** and the
+passband selects among silent outputs. Report the routed fraction beside the
+mode match, or a true statement gets filed as a defect.
+**Third trap — check the reference is alive.** The same tool applied to
+Blackbird produced "16/16 pass", then "16 originals never route a voice", then
+"our builds filter where the original does not" — all against `SID/LFT/*.sid`,
+which siddump **cannot drive at all** (0 frames with any freq or waveform,
+`$D418` = 0). An all-zero trace is byte-identical to "never filters" and to
+"silent". See F1 and the `zig64` empty-vs-empty gate: **assert evidence exists
+before comparing**.
+**Rule**: when a fix lands in a shared builder, the artifacts it already
+produced are now wrong, and nothing in this repo notices. Re-run the artifact
+check, not the test suite.
+**Seen in**: MoN, HardTrack, DMC ([MON.md](MON.md), [HARDTRACK.md](HARDTRACK.md),
+[DMC.md](DMC.md)); `pyscript/passband_check.py`, pinned by
+`pyscript/test_passband_check.py`.
+
 ---
 
 ## Adding an entry
