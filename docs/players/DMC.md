@@ -145,11 +145,17 @@ part 1 spans 596 frames and the check compared 1,400, so past its end our part
 part actually spans it is **100.0%, 1 change against 1**. `French_Frites` is
 real — at its true 39 s span it still reads **49.6%**, holding LP+BP+HP while
 the original moves through HP and BP+HP. `DMC_Demo_IV_tune_5` reads 98.0% at
-10 s, and its 3 mode changes all occur with the **cutoff unchanged**, which is
-the one mechanism with support: a passband is only expressible where the builder
-emits a filter row, so a mode change that coincides with no cutoff change has
-nowhere to go. `Zoom`, which passes at 100%, changes mode only where the cutoff
-also moves.
+10 s, and its 3 mode changes all occur with the **cutoff unchanged**.
+
+That suggested a mechanism — a passband is only expressible where the builder
+emits a filter row, so a mode change coinciding with no cutoff change has
+nowhere to go — and `Zoom`, which passes at 100%, changes mode only where the
+cutoff also moves. ⚠️ **`French_Frites` REFUTES it.** Both of its mode changes
+coincide with cutoff changes (frame 963, cutoff 896→768; frame 1933,
+768→1024), so a filter row exists at each, and our build still holds
+LP+BP+HP across both. The mechanism explains `DMC_Demo_IV_tune_5` and `Zoom` and
+does not explain the one confirmed failure — so either there are two causes or
+it is the wrong one. **No live hypothesis for `French_Frites`.**
 
 **Three more were failures for three consecutive runs and should never have
 been.** `Eagles`, `In_the_Mood` and `Roadblaster` emit mode `off` — no passband
