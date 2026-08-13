@@ -385,9 +385,14 @@ def main():
     # (centroid -99 Hz, rolloff -280 Hz). The identical defect was found and
     # fixed on MoN once already -- see `passband_trace`'s docstring, which names
     # Cybernoid_II dropping its band exactly this way.
+    # HT_NO_PASSBAND=1 reproduces the PRE-cffc51e 2-tuple on purpose, so the
+    # passband's effect can be A/B'd against today's builder on BOTH sides. The
+    # first attempt at that A/B compared 2026-08-09 artifacts with 2026-08-12
+    # ones and folded three days of unrelated builder changes into the deltas.
     traces = (F.per_frame(SID, [f'-a{SUB}', f'-t{secs}']),
-              BM.filter_trace(SID, SUB, secs),
-              BM.passband_trace(SID, SUB, secs))
+              BM.filter_trace(SID, SUB, secs))
+    if os.environ.get("HT_NO_PASSBAND") != "1":
+        traces = traces + (BM.passband_trace(SID, SUB, secs),)
     shim.main_vol = BM.master_volume(SID, SUB, secs)
 
     parts = build_song(shim, base, traces, span)
