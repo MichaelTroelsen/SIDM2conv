@@ -255,27 +255,27 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Who Is Robb Vol 1 | Johannes Bjerregaard (The Jerk) | 198? The Jerk | 15 |
 | Zoom | Johannes Bjerregaard | 1988 Discovery Software Int'l | 1 |
 
-### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  27 songs / 206 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  27 songs / 209 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
-| Children Songs sub0 | Jeroen Tel | 1988 Maniacs of Noise | 11 |
+| Children Songs sub0 | Jeroen Tel | 1988 Maniacs of Noise | 13 |
 | Cybernoid II sub0 | Jeroen Tel | 1988 Hewson | 18 |
 | Cybernoid II sub0 native |  |  | 1 |
 | Cybernoid sub0 | Jeroen Tel | 1988 Hewson | 13 |
 | Daring Dots sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
-| G I Hero sub0 | Jeroen Tel | 1988 Maniacs of Noise | 13 |
+| G I Hero sub0 | Jeroen Tel | 1988 Maniacs of Noise | 17 |
 | Gaplus preview sub0 | Jeroen Tel | 1988 Maniacs of Noise | 18 |
-| Gaplus sub0 | Jeroen Tel | 1988 Mastertronic | 27 |
+| Gaplus sub0 | Jeroen Tel | 1988 Mastertronic | 25 |
 | Hawkeye Proto 1 sub0 | Jeroen Tel | 198? Maniacs of Noise | 4 |
 | Hawkeye sub0 | Jeroen Tel | 1988 Thalamus | 8 |
 | Hawkeye sub2 | Jeroen Tel | 1988 Thalamus | 1 |
 | Hawkeye sub2 native |  |  | 1 |
 | Hawkeye sub3 | Jeroen Tel | 1988 Thalamus | 1 |
 | Hawkeye sub3 native |  |  | 1 |
-| Ice Age sub0 | Jeroen Tel | 1988 Maniacs of Noise | 23 |
+| Ice Age sub0 | Jeroen Tel | 1988 Maniacs of Noise | 21 |
 | Iets van JT sub0 | Jeroen Tel | 1988 Maniacs of Noise | 10 |
-| M A C C sub0 | Jeroen Tel | 1988 Maniacs of Noise | 7 |
+| M A C C sub0 | Jeroen Tel | 1988 Maniacs of Noise | 8 |
 | Myth sub0 | Jeroen Tel | 1989 System 3 | 8 |
 | Pal sine hoener tune 1 sub0 | Jeroen Tel | 2020 Offence | 3 |
 | Sample sub0 | Jeroen Tel | 1988 Maniacs of Noise | 4 |

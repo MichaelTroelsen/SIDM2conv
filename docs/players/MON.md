@@ -17,7 +17,18 @@ it selected"*) is where `passband_trace` was written. **131 of the 206 `out/mon`
 `pyscript/passband_check.py --player mon`, which measures the ARTIFACT rather
 than the builder:
 
-**8 of 19 checkable builds select the wrong passband**, five of them at 0.0%
+**FIXED 2026-08-13 — 17 of 19 now correct** (the other 2 never exercise the
+filter in the window). Seven were stale artifacts and a rebuild with
+`build_mon_native_song.py <sid> 0 auto` corrected them. **`Myth` was not**: it
+came back at 0.0% *after* a rebuild with its own builder, because
+`build_myth_native_song.py` never passed a passband either — a builder gap, not
+a stale file. It could not take the fix the others took: Myth is a relocating
+compilation whose `frames` and `ftr` come from a **py65 `capture()`**, not
+siddump, so a `BM.passband_trace` third element would have mixed two clocks.
+`capture()` already reads `$D417`, so `$D418` is recorded beside it on the same
+timeline. `Myth` 0.0% → **100.0%**.
+
+Before the fix, **8 of 19 checkable builds selected the wrong passband**, five of them at 0.0%
 with the filter routed on 100% of frames — `Daring_Dots`, `G_I_Hero`, `Ice_Age`,
 `M_A_C_C` and `Myth` all render plain LP where the original selects LP+BP or
 LP+HP. `Children_Songs`, `Gaplus` and `Pal_sine_hoener_tune_1` are the
@@ -30,9 +41,14 @@ the output, and the player doc went on quoting the builder. The lesson is not
 about the filter: **a fix in a builder is not a fix in the corpus**, and nothing
 in this repo measured shipped artifacts until now.
 
-> ⚠️ **Do not blind-rebuild these.** `Myth` is a relocating compilation and needs
-> `bin/build_myth_native_song.py`, **not** the generic `build_mon_native_song.py`
-> — and `Myth` is one of the eight. MoN songs also carry subtune arguments.
+> ⚠️ **The `Myth` hazard was real and then some.** It needs
+> `bin/build_myth_native_song.py` (which takes `<SUB> <warg>` and no path at
+> all), **not** the generic `build_mon_native_song.py` — and even then the
+> rebuild did not fix it, because that builder had the same gap. A blind loop
+> would have produced a plausible wrong build AND reported the file as handled.
+> `warg=auto` was confirmed by matching the rebuilt part counts against the
+> originals, not assumed; part counts do move (`Gaplus` 27→25, `Ice_Age`
+> 23→21) and `prune_stale_parts` removes the orphans.
 > Coverage is partial for the same reason: only 19 songs expose a
 > `_sub0_part01.sf2` for the checker to find.
 

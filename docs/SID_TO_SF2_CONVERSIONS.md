@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**998 songs / 8405 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**998 songs / 8408 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **966 songs / 8373 files** across 15 player dirs
+- `out/<player>/` native-build pipeline: **966 songs / 8376 files** across 15 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -32,7 +32,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 7.6% |
 | SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 4.3% |
 | HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 313 | 3.7% |
-| Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 206 | 2.5% |
+| Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 209 | 2.5% |
 | Matt Gray | Matt Gray | native (Stage B) | `out/mattgray_native/` | 37 | 78 | 0.9% |
 | Martin Galway | Martin Galway | native | `out/galway_sf2/` | 40 | 40 | 0.5% |
 | Sound Monitor (Musicmaster) | Fun Fun | native | `out/soundmonitor/` | 11 | 27 | 0.3% |
@@ -42,7 +42,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Jeroen Kimmel (Hubbard-derived) | Jeroen Kimmel | Driver 11 (Stage A) | `out/kimmel_sf2/` | 9 | 9 | 0.1% |
 | HardTrack Composer | Longhair/Brush | Driver 11 (Stage A) | `out/hardtrack/` | 5 | 5 | 0.1% |
 | ROMUZAK V6.3 | Oliver Blasnik | native | `out/romuzak/` | 4 | 4 | 0.0% |
-| **Total** | | | **15 dirs** | **966** | **8373** | 100% |
+| **Total** | | | **15 dirs** | **966** | **8376** | 100% |
 
 ---
 
@@ -181,27 +181,27 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Who Is Robb Vol 1 | DMC (Demo Music Creator) | 1 | Romuzak | 15 | Johannes Bjerregaard (The Jerk) | 198? The Jerk |
 | Zoom | DMC (Demo Music Creator) | 19 | Romuzak | 1 | Johannes Bjerregaard | 1988 Discovery Software Int'l |
 
-### Maniacs of Noise — Jeroen Tel  ·  27 songs / 206 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  27 songs / 209 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
-| Children Songs sub0 | Maniacs of Noise | 3 | Romuzak | 11 | Jeroen Tel | 1988 Maniacs of Noise |
+| Children Songs sub0 | Maniacs of Noise | 3 | Romuzak | 13 | Jeroen Tel | 1988 Maniacs of Noise |
 | Cybernoid II sub0 | Maniacs of Noise | 2 | Romuzak | 18 | Jeroen Tel | 1988 Hewson |
 | Cybernoid II sub0 native | Maniacs of Noise | ? | Romuzak | 1 |  |  |
 | Cybernoid sub0 | Maniacs of Noise | 2 | Romuzak | 13 | Jeroen Tel | 1988 Hewson |
 | Daring Dots sub0 | Maniacs of Noise | 1 | Romuzak | 1 | Jeroen Tel | 1988 Maniacs of Noise |
-| G I Hero sub0 | Maniacs of Noise | 2 | Romuzak | 13 | Jeroen Tel | 1988 Maniacs of Noise |
+| G I Hero sub0 | Maniacs of Noise | 2 | Romuzak | 17 | Jeroen Tel | 1988 Maniacs of Noise |
 | Gaplus preview sub0 | Maniacs of Noise | 1 | Romuzak | 18 | Jeroen Tel | 1988 Maniacs of Noise |
-| Gaplus sub0 | Maniacs of Noise | 23 | Romuzak | 27 | Jeroen Tel | 1988 Mastertronic |
+| Gaplus sub0 | Maniacs of Noise | 23 | Romuzak | 25 | Jeroen Tel | 1988 Mastertronic |
 | Hawkeye Proto 1 sub0 | Maniacs of Noise | 7 | Romuzak | 4 | Jeroen Tel | 198? Maniacs of Noise |
 | Hawkeye sub0 | Maniacs of Noise | 12 | Romuzak | 8 | Jeroen Tel | 1988 Thalamus |
 | Hawkeye sub2 | Maniacs of Noise | 12 | Romuzak | 1 | Jeroen Tel | 1988 Thalamus |
 | Hawkeye sub2 native | Maniacs of Noise | ? | Romuzak | 1 |  |  |
 | Hawkeye sub3 | Maniacs of Noise | 12 | Romuzak | 1 | Jeroen Tel | 1988 Thalamus |
 | Hawkeye sub3 native | Maniacs of Noise | ? | Romuzak | 1 |  |  |
-| Ice Age sub0 | Maniacs of Noise | 3 | Romuzak | 23 | Jeroen Tel | 1988 Maniacs of Noise |
+| Ice Age sub0 | Maniacs of Noise | 3 | Romuzak | 21 | Jeroen Tel | 1988 Maniacs of Noise |
 | Iets van JT sub0 | Maniacs of Noise | 1 | Romuzak | 10 | Jeroen Tel | 1988 Maniacs of Noise |
-| M A C C sub0 | Maniacs of Noise | 2 | Romuzak | 7 | Jeroen Tel | 1988 Maniacs of Noise |
+| M A C C sub0 | Maniacs of Noise | 2 | Romuzak | 8 | Jeroen Tel | 1988 Maniacs of Noise |
 | Myth sub0 | Maniacs of Noise | 3 | Romuzak | 8 | Jeroen Tel | 1989 System 3 |
 | Pal sine hoener tune 1 sub0 | Maniacs of Noise | 1 | Romuzak | 3 | Jeroen Tel | 2020 Offence |
 | Sample sub0 | Maniacs of Noise | 2 | Romuzak | 4 | Jeroen Tel | 1988 Maniacs of Noise |

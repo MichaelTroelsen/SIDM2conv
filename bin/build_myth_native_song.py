@@ -82,10 +82,13 @@ def _state_hash():
 def capture(nframes, detect_loop=False):
     """Run play per frame; return (events per voice, frames trace, ftr, instr_map).
     events[v] = list of (onset_frame, note_idx, instr_idx). frames[i] = (voicedict, fcut).
-    ftr[i] = (cutoff11, ctrl). instr_map[idx] = {'ad','sr','waveform'} from first use.
+    ftr[i] = (cutoff11, ctrl). pbt[i] = the $D418 passband, bits 4-6 shifted down
+    (1 low, 2 band, 4 high) -- same contract as `BM.passband_trace`, but taken
+    from THIS emulation rather than siddump so it shares the clock `frames` and
+    `ftr` are on. instr_map[idx] = {'ad','sr','waveform'} from first use.
     If detect_loop, stop when the sequencer state repeats (the song's loop length)."""
     events = [[], [], []]
-    frames, ftr = [], []
+    frames, ftr, pbt = [], [], []
     instr_map = {}
     seen = {}
     for fr in range(nframes):
@@ -118,6 +121,7 @@ def capture(nframes, detect_loop=False):
         cut = (mpu.memory[0xD415] & 0x07) | (mpu.memory[0xD416] << 3)
         frames.append((vd, cut))
         ftr.append((cut, mpu.memory[0xD417]))
+        pbt.append((mpu.memory[0xD418] >> 4) & 0x07)
         for v, noteidx, instr in trig:
             events[v].append((fr, noteidx, instr))
             if instr not in instr_map:
@@ -125,7 +129,7 @@ def capture(nframes, detect_loop=False):
                 instr_map[instr] = {'ad': mpu.memory[0xD405 + o],
                                     'sr': mpu.memory[0xD406 + o],
                                     'waveform': mpu.memory[0xD404 + o] or 0x41}
-    return events, frames, ftr, instr_map
+    return events, frames, ftr, pbt, instr_map
 
 
 class MythShim:
@@ -178,11 +182,11 @@ def main():
     print(f"Myth sub{SUB}: play=${PLAYB:04X} (page ${DST:04X}), freq-lookup ${FREQLOOK:04X}")
     if adaptive:
         print("  extracting full song (loop-detect)...")
-        events, frames, ftr, instr_map = capture(60000, detect_loop=True)
+        events, frames, ftr, pbt, instr_map = capture(60000, detect_loop=True)
     else:
         span_s = int(warg)
         print(f"  extracting {span_s}s...")
-        events, frames, ftr, instr_map = capture(span_s * 50 + 50)
+        events, frames, ftr, pbt, instr_map = capture(span_s * 50 + 50)
     counts = [len(events[v]) for v in range(3)]
     gaps = []
     for v in range(3):
@@ -197,7 +201,11 @@ def main():
 
     m = MythShim(events, instr_map, fpt)
     BM.write_mon_freqtable = lambda mm: _write_freqtable()   # use the emulated freq table
-    traces = (frames, ftr)
+    # The THIRD element is the $D418 passband. Without it `_filt_set_row`
+    # defaults to low-pass: Myth selects low+band on 100% of frames and was
+    # built low-only on 100% of them. Taken from `capture()` rather than
+    # `BM.passband_trace` so it shares the py65 clock `frames`/`ftr` use.
+    traces = (frames, ftr, pbt)
     base = f"Myth_sub{SUB}"
 
     if not adaptive:
