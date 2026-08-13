@@ -1289,10 +1289,18 @@ actually select a non-low-pass passband:
 |---|---|---|
 | HardTrack | low+band 100% | **was wrong — fixed** |
 | DMC (`Rockbuster`) | low+band 100% | **was wrong — fixed** |
-| Future Composer | low 100% | default was right by luck |
-| SDI | low 100% | default was right by luck |
+| Future Composer | low 100% | default was right by luck — **confirmed 5/5, 2026-08-13** |
+| SDI | **BP / LP+BP / LP+HP / LP+BP+HP, and modulating** | ⚠️ **this row was WRONG** — it was one file. 15 of a 30-file sample fail; builder fixed 2026-08-13, corpus not yet rebuilt |
+| MoN | low+band, band+high, modulating | **was wrong — fixed** (`464406a`), and 131 of 206 artifacts kept the bug until 2026-08-13 |
+| Blackbird | LP / BP / LP+BP, modulating | **correct, 16/16** — but only measurable against its simulator; siddump cannot drive an LFT rip |
 | Hubbard | none 100% | no passband to get wrong |
 | Sound Monitor | none 100% | no passband to get wrong |
+
+⚠️ **This table checked each builder's CODE, and per player it checked ONE
+FILE.** Both limits cost something: the code check missed that 31 of 33
+HardTrack, 968 of 984 DMC and 131 of 206 MoN shipped artifacts predated their
+fix, and the one-file sampling recorded SDI as fine when half its corpus is not.
+See `PATTERNS.md` F7.
 
 DMC's fix was verified by byte-diffing the emitted SF2 against a build with the
 change reverted: **exactly 8 bytes differ, all filter SET rows, every one
