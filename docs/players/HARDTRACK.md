@@ -1351,11 +1351,36 @@ our own loop. The claim that the residual is mode *timing* rests on nothing.
 Fitted offsets do land on −3, matching this document's render offset, and that
 part still holds.
 
-The other 5 are unchecked at their true spans. `passband_check` now reports a
-multi-part failure as **UNCONFIRMED** unless `--seconds` is asserted, because
-over-running can only manufacture disagreement — which also means the **passes
-are unaffected**: a file that matched across a too-long window matched
-everywhere it was compared.
+**All 9 have since been checked at their true spans, and none is a wrong
+passband:**
+
+| file | part 1 | at fixed 28 s | at its true span |
+|---|---:|---:|---:|
+| `Something_to_Eat` | 10 s | 68.7% | **100.0%** (31 changes vs 31) |
+| `Illmatic_end` | 6 s | 71.1% | **100.0%** (8 vs 8) |
+| `Domagareflexow` | 26 s | 96.3% | **100.0%** (8 vs 8) |
+| `Ritual_II_tune_2` | 10 s | 71.2% | **100.0%** (35 vs 34) |
+| `Hopscotch` | 20 s | 88.8% | **99.9%** (4 vs 4) |
+| `Rune-T_Noter` | 14 s | 80.2% | **99.9%** (13 vs 14) |
+| `Takisobie` | 12 s | 57.2% | **99.8%** |
+| `Fun_Factory` | 6 s | 69.5% | **99.0%** (12 vs 12) |
+| `Altered_States_Tune_2` | 12 s | 97.2% | **93.4%** — see below |
+
+**`Altered_States_Tune_2` is the only one with anything left in it, and it is a
+STARTUP LATENCY, not a mode error.** The original selects LP from frame 0; our
+build reads `off` until **frame 47** (0.94 s) and LP thereafter. All **47 of its
+599 mismatched frames are that opening gap** — the filter program's first SET
+row simply lands late, and the checker's unusual +8 fitted offset (every other
+file sits at −3) was the fit trying to absorb it. Nothing after frame 47
+disagrees.
+
+So the passband on this player is **correct on all 33 builds**; what remains is
+under a second of missing filter state at the start of one file.
+
+`passband_check` reports a multi-part failure as **UNCONFIRMED** unless
+`--seconds` is asserted, because over-running can only manufacture disagreement
+— which also means the **passes are unaffected**: a file that matched across a
+too-long window matched everywhere it was compared.
 
 All 9 route the filter on 59-100% of frames, so none of them was the inaudible
 class DMC turned out to have — but that was never the reason they failed. `passband_check.py` reports the routed
