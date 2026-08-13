@@ -25,13 +25,22 @@ WHAT IT DOES NOT COVER, stated because it is easy to misread the totals:
   - **Part 1 only, and only when its span is KNOWN.** DMC's adaptive splitter
     emits parts of 2-20 s -- `Cant_Stop` has 114, `Alf_TV_Theme` 40 -- and the
     part->original-window mapping is printed at build time, not stored in the
-    SF2. Scoring part 1 against a fixed 20 s window therefore compares it
-    against ~15 s of music it never contained; the first draft of this sweep did
-    exactly that and reported `Cant_Stop` at 34.8/86.0/91.5, which measured the
-    window and not the build. Restricting that rule to multi-part songs was not
-    enough either: a single-part song's span is the WHOLE song and songs differ
-    in length, so forcing Balloon's 400 s onto `Zoom` scored it 24.4/27.7/23.9
-    at a confident n=19996.
+    SF2. Scoring
+    part 1 against a fixed 20 s window is therefore a guess, and the
+    magnitudes were measured rather than assumed. Part-1 spans across this
+    corpus run **6.9 s to 399.9 s**, so a fixed window over-runs some files and
+    falls short of others, and it is wrong in BOTH directions:
+
+        Alf_TV_Theme      span  6.9s   20s said 73.9/69.4/58.4   true 99.7/99.7/99.7
+        Camel_Riders_Inc  span  9.9s   20s said 49.3/20.4/43.2   true 85.1/40.9/81.9
+        Cant_Stop         span 17.9s   20s said 34.8/86.0/91.5   true 37.2/95.2/98.1
+        Blobby            span 67.9s   20s said v3 97.9          true v3 59.5
+        Blue_Monday_88    span 37.9s   20s said v1 87.8          true v1 65.8
+
+    The over-run cases understate (the window runs past part 1 into music it
+    never contained). The SHORT cases FLATTER -- `Blobby`'s 20 s stopped before
+    the divergence and reported 97.9% where its real 67.9 s part scores 59.5%.
+    A guessed window does not merely add noise; it can hide a defect.
 
     So the window must be ASSERTED. `--build` reads the real bounds off the
     builder's own stdout; `--seconds N` lets a caller assert one for a spot

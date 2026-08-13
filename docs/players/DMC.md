@@ -178,10 +178,24 @@ n=19996.
 
 > ⚠️ **THE WINDOW MUST BE ASSERTED, and by default nothing is scored.** DMC's
 > adaptive splitter emits parts of 2–20 s and the part→original-window mapping
-> is printed at build time, **not stored in the SF2**. The first draft of this
-> sweep scored part 1 against a fixed 20 s window and reported `Cant_Stop`
-> (114 parts) at 34.8/86.0/91.5 — a statement about the window, not the build,
-> across 53 of the 57 built songs. Restricting the rule to multi-part songs was
+> is printed at build time, **not stored in the SF2**. Part-1 spans across this
+> corpus run **6.9 s to 399.9 s**, so a fixed 20 s window is wrong in *both*
+> directions — and the direction that matters most is the flattering one:
+>
+> | file | true span | fixed 20 s said | true window |
+> |---|---:|---|---|
+> | `Alf_TV_Theme` | 6.9 s | 73.9/69.4/58.4 | **99.7/99.7/99.7** |
+> | `Camel_Riders_Inc` | 9.9 s | 49.3/20.4/43.2 | 85.1/40.9/81.9 |
+> | `Cant_Stop` | 17.9 s | 34.8/86.0/91.5 | 37.2/95.2/98.1 |
+> | `Blobby` | 67.9 s | v3 **97.9** | v3 **59.5** |
+> | `Blue_Monday_88` | 37.9 s | v1 **87.8** | v1 **65.8** |
+>
+> An over-running window understates; a SHORT one **hides a defect** —
+> `Blobby`'s 20 s stopped before the divergence. ⚠️ An earlier version of this
+> section said the fixed window cost `Cant_Stop` "~15 s of music it never
+> contained" and that a guessed window only deflates. Both were wrong: its part 1
+> is 17.9 s (a 2 s over-run), and part counts do not imply equal durations — the
+> later parts are the short ones. Restricting the rule to multi-part songs was
 > not enough either: a single part's span is the *whole song*, so Balloon's
 > 400 s forced onto `Zoom` scored it 24.4/27.7/23.9 at a confident n=19996.
 > `--build` reads the real bounds off the builder's stdout; `--seconds N`
