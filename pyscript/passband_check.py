@@ -228,6 +228,11 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--player", choices=sorted(PLAYERS), default="hardtrack")
     ap.add_argument("--seconds", type=int, default=28)
+    ap.add_argument("--files", nargs="*", metavar="NAME",
+                    help="check only these songs (no suffix)")
+    ap.add_argument("--limit", type=int, metavar="N",
+                    help="first N builds only -- a SAMPLE, and the summary says "
+                         "so; a sampled count is not a corpus verdict")
     ap.add_argument("--min", type=float, default=99.0, metavar="PCT",
                     help="fail below this frame-wise mode agreement")
     a = ap.parse_args(argv)
@@ -237,6 +242,13 @@ def main(argv=None):
     # `_`-prefixed names are scratch (A/B baselines, probes), never shipped.
     builds = sorted(b for b in glob.glob(os.path.join(build_dir, "*" + cfg["suffix"]))
                     if not os.path.basename(b).startswith("_"))
+    if a.files:
+        want = set(a.files)
+        builds = [b for b in builds
+                  if os.path.basename(b)[:-len(cfg["suffix"])] in want]
+    sampled = bool(a.limit) and a.limit < len(builds)
+    if a.limit:
+        builds = builds[:a.limit]
     if not builds:
         print(f"no {a.player} builds in {build_dir} -- nothing to check")
         return 2
@@ -301,6 +313,8 @@ def main(argv=None):
               f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s} {rshow:>7s}{note}")
 
     ok = len(builds) - len(bad) - len(unexercised) - len(dead)
+    if sampled:
+        print(f"\n!! SAMPLE of {len(builds)} -- not a corpus verdict")
     if dead:
         print(f"\n!! {len(dead)} file(s) have NO REFERENCE TRACE. siddump drove "
               f"no voice on the original, so a comparison would be against "

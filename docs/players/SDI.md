@@ -220,6 +220,37 @@ Moi_Funk 99.9/99.9/98.6, Kirby ~99.7). The lone residual is a **fast per-frame a
 voice class** (Bahbar v1/v2 ~92.7/90.4, Filthy_Hit v0 76) — genuinely tonal, the
 honest FM-capture ceiling (lifting it needs shared-MoN-engine FM work).
 
+### ⚠️ The `$D418` passband was never captured (fixed 2026-08-13)
+
+`HARDTRACK.md`'s cross-builder audit recorded **"SDI: low 100% — default was
+right by luck"**. That verdict came from one file. Across a 30-file sample,
+**15 fail**: the originals select **BP, LP+BP, LP+HP and LP+BP+HP**, and
+modulate up to 10 times, while every build rendered plain low-pass with the
+filter **routed on 100% of frames**.
+
+Unlike MoN, HardTrack and DMC this was **not a stale artifact** —
+`build_sdi_native_song.py` never passed a passband at all, so `_filt_set_row`
+defaulted to low-pass and no rebuild of the old corpus would have helped.
+Fixed by handing `build_native_song` the 3-tuple it expects. Verified across
+every failure class, all **0.0% → 100.0%** with the music unchanged:
+
+| file | original selects | before | after |
+|---|---|---|---|
+| `Ambient` | LP+BP | 0.0% | **100.0%** |
+| `Acid_Jazz` | LP+BP+HP | 0.0% | **100.0%** |
+| `Airwalk_II` | BP | 0.0% | **100.0%** |
+| `Alone_in_Space` | LP/LP+BP, 10 changes | 34.0% | **100.0%** (10 of 10 matched) |
+
+> ⚠️ **The V-wrapper path is deliberately still a 2-tuple.** Variant V is
+> driven through py65 and `v_traces` does not record `$D418` at all, so there is
+> no passband to pass. Those 6 builds keep the low-pass default; capturing it
+> means extending the py65 tracer. `pyscript/passband_check.py --player sdi`
+> reports them if their originals select otherwise — a stated gap beats a
+> 3-tuple of the wrong thing.
+
+**The corpus was NOT rebuilt.** 262 songs is hours, and every one of them still
+carries the low-pass default until it is. See `PATTERNS.md` F7.
+
 ### The corpus sweep (`pyscript/sdi_native_sweep.py`, 2026-08-12)
 
 The figures above came from `bin/_sdi_stageb_sweep.py` — **untracked**

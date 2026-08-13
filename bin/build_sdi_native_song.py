@@ -377,11 +377,24 @@ def main():
         print(f"  V wrapper: module init=${mod_init:04X} play=${mod_play:04X} "
               f"mult={m.lay.v_mult}; driving {nframes} frames via py65...")
         pf, filt, onsets = v_traces(d, la, mod_init, mod_play, m.lay.v_mult, nframes)
+        # 2-tuple ON PURPOSE: the V path is driven through py65 and `v_traces`
+        # does not record $D418 at all, so there is no passband to pass. Those
+        # builds keep the low-pass default and `pyscript/passband_check.py` will
+        # report them if their originals select otherwise. Capturing it here
+        # means extending the py65 tracer, which is a separate change; leaving a
+        # 3-tuple of the wrong thing would be worse than a stated gap.
         traces = (pf, filt)
     else:
         print(f"  tracing {secs}s...")
+        # The THIRD element is the $D418 passband. Without it `_filt_set_row`
+        # defaults to low-pass and every build renders low-pass whatever the
+        # tune selects -- the same defect fixed on MoN (464406a) and on
+        # HardTrack/DMC (cffc51e). SDI was left out because a one-file audit
+        # concluded its originals were low-pass; across a 30-file sample 15 are
+        # not, selecting BP / LP+BP / LP+HP / LP+BP+HP and modulating.
         traces = (F.per_frame(SID, ['-a0', f'-t{secs}']),
-                  BM.filter_trace(SID, 0, secs))
+                  BM.filter_trace(SID, 0, secs),
+                  BM.passband_trace(SID, 0, secs))
         onsets = measure_onsets(d, la, h.init_address, h.play_address,
                                 len(traces[0]))
         # onset-agreement gate vs siddump (multispeed/self-IRQ emulate too slow)
