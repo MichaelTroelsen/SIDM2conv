@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**981 songs / 7935 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**998 songs / 8405 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **949 songs / 7903 files** across 15 player dirs
+- `out/<player>/` native-build pipeline: **966 songs / 8373 files** across 15 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -27,22 +27,22 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 | Player | Composer | Pipeline | `out/` dir | Songs | SF2 Files | % of files |
 |--------|----------|----------|-----------|------:|----------:|-----------:|
-| SID Duzz' It (SDI) | Gallefoss/Tjelta | native (Stage B) | `out/sdi/` | 281 | 5227 | 66.1% |
-| DMC (Demo Music Creator) | Johannes Bjerregaard | native | `out/dmc/` | 57 | 943 | 11.9% |
-| Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 8.0% |
-| SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 4.6% |
-| HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 313 | 4.0% |
-| Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 206 | 2.6% |
-| Matt Gray | Matt Gray | native (Stage B) | `out/mattgray_native/` | 37 | 78 | 1.0% |
+| SID Duzz' It (SDI) | Gallefoss/Tjelta | native (Stage B) | `out/sdi/` | 281 | 5227 | 62.4% |
+| DMC (Demo Music Creator) | Johannes Bjerregaard | native | `out/dmc/` | 74 | 1413 | 16.9% |
+| Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 7.6% |
+| SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 4.3% |
+| HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 313 | 3.7% |
+| Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 206 | 2.5% |
+| Matt Gray | Matt Gray | native (Stage B) | `out/mattgray_native/` | 37 | 78 | 0.9% |
 | Martin Galway | Martin Galway | native | `out/galway_sf2/` | 40 | 40 | 0.5% |
 | Sound Monitor (Musicmaster) | Fun Fun | native | `out/soundmonitor/` | 11 | 27 | 0.3% |
-| Blackbird / lft | lft | native | `out/blackbird/` | 16 | 20 | 0.3% |
+| Blackbird / lft | lft | native | `out/blackbird/` | 16 | 20 | 0.2% |
 | Future Composer | Michael Troelsen | native (Stage B) | `out/fc/` | 5 | 19 | 0.2% |
 | Maniacs of Noise / Deenen | Charles Deenen | Driver 11 (Stage A) | `out/deenen_sf2/` | 15 | 15 | 0.2% |
 | Jeroen Kimmel (Hubbard-derived) | Jeroen Kimmel | Driver 11 (Stage A) | `out/kimmel_sf2/` | 9 | 9 | 0.1% |
 | HardTrack Composer | Longhair/Brush | Driver 11 (Stage A) | `out/hardtrack/` | 5 | 5 | 0.1% |
-| ROMUZAK V6.3 | Oliver Blasnik | native | `out/romuzak/` | 4 | 4 | 0.1% |
-| **Total** | | | **15 dirs** | **949** | **7903** | 100% |
+| ROMUZAK V6.3 | Oliver Blasnik | native | `out/romuzak/` | 4 | 4 | 0.0% |
+| **Total** | | | **15 dirs** | **966** | **8373** | 100% |
 
 ---
 
@@ -54,8 +54,8 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 |----------|------------------|------:|
 | Glenn Rune Gallefoss | SID Duzz' It (SDI) | 377 |
 | Glenn Rune Gallefoss (Shark) | SID Duzz' It (SDI) | 243 |
+| Johannes Bjerregaard | DMC (Demo Music Creator) | 71 |
 | Rob Hubbard | Rob Hubbard | 60 |
-| Johannes Bjerregaard | DMC (Demo Music Creator) | 55 |
 | Martin Galway | Martin Galway | 40 |
 | Matt Gray | Matt Gray | 37 |
 | Wojciech Radziejewski (Shogoon) | HardTrack Composer | 36 |
@@ -86,6 +86,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | G. R. Gallefoss & B. Vosseteig | SID Duzz' It (SDI) | 1 |
 | Glenn Rune Gallefoss & Bjarte V | SID Duzz' It (SDI) | 1 |
 | Jeroen Tel | Rob_Hubbard | 1 |
+| Johannes Bjerregaard & J. Tel | DMC (Demo Music Creator) | 1 |
 | Laxity & Shogoon | SidFactory_II/Laxity | 1 |
 | Linus Akesson (lft) | Blackbird / lft | 1 |
 | M. Troelsen (Fun Fun) & Chix | Soundmonitor | 1 |
@@ -101,10 +102,11 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 *The 15 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
 
-### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  57 songs / 943 SF2 files
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  74 songs / 1413 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
+| Ace II remake | DMC (Demo Music Creator) | 1 | Romuzak | 16 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
 | Again Its JB | DMC (Demo Music Creator) | 1 | Romuzak | 12 | Johannes Bjerregaard | 1989 Upfront |
 | Alf TV Theme | DMC (Demo Music Creator) | 1 | Romuzak | 40 | Johannes Bjerregaard | 1988 Maniacs of Noise |
 | Balloon | DMC (Demo Music Creator) | 1 | Romuzak | 1 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
@@ -113,13 +115,15 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Blue Monday 88 | DMC (Demo Music Creator) | 1 | Romuzak | 7 | Johannes Bjerregaard | 1989 The Dominators |
 | Camel Riders Inc | DMC (Demo Music Creator) | 1 | Romuzak | 12 | Johannes Bjerregaard (The Jerk) | 1987 The Jerk |
 | Cant Stop | DMC (Demo Music Creator) | 1 | Romuzak | 114 | Johannes Bjerregaard | 1988 Upfront |
+| Chase | DMC (Demo Music Creator) | 1 | Romuzak | 15 | Johannes Bjerregaard | 1988 Upfront |
 | Chase v2 | DMC (Demo Music Creator) | 1 | Romuzak | 11 | Johannes Bjerregaard | 1988 Johannes Bjerregaard |
-| Cute Tune | DMC (Demo Music Creator) | 1 | Romuzak | 38 | Johannes Bjerregaard | 1988-90 Johannes Bjerregaard |
+| Cute Tune | DMC (Demo Music Creator) | 1 | Romuzak | 32 | Johannes Bjerregaard | 1988-90 Johannes Bjerregaard |
 | Deel 2 | DMC (Demo Music Creator) | 1 | Romuzak | 8 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
 | Depeche Mode Songs | DMC (Demo Music Creator) | 5 | Romuzak | 6 | Johannes Bjerregaard | 1986 Danish Music Company |
 | DMC Demo IV tune 1 | DMC (Demo Music Creator) | 1 | Romuzak | 7 | Johannes Bjerregaard | 1988 Danish Music Company |
 | DMC Demo IV tune 2 | DMC (Demo Music Creator) | 1 | Romuzak | 15 | Johannes Bjerregaard | 1988 Danish Music Company |
 | DMC Demo IV tune 3 | DMC (Demo Music Creator) | 1 | Romuzak | 16 | Johannes Bjerregaard | 1988 Danish Music Company |
+| DMC Demo IV tune 5 | DMC (Demo Music Creator) | 1 | Romuzak | 4 | Johannes Bjerregaard | 1988 Danish Music Company |
 | Domino Dancing | DMC (Demo Music Creator) | 2 | Romuzak | 7 | Johannes Bjerregaard | 1988 Maniacs of Noise |
 | Dragon Sword | DMC (Demo Music Creator) | 1 | Romuzak | 7 | Johannes Bjerregaard | 2018 Johannes Bjerregaard |
 | Dreaming | DMC (Demo Music Creator) | 1 | Romuzak | 15 | Johannes Bjerregaard | 1988 Danish Music Company |
@@ -128,38 +132,52 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Dummynaytos | DMC (Demo Music Creator) | 1 | Romuzak | 1 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
 | Eagles | DMC (Demo Music Creator) | 25 | Romuzak | 7 | Johannes Bjerregaard | 1987 Hewson |
 | Fat 6 | DMC (Demo Music Creator) | 1 | Romuzak | 23 | Johannes Bjerregaard | 1988 Johannes Bjerregaard |
+| Fat Complete 2 | DMC (Demo Music Creator) | 1 | Romuzak | 43 | Johannes Bjerregaard | 1988 Johannes Bjerregaard |
 | First Try PSX | DMC (Demo Music Creator) | 1 | Romuzak | 47 | Johannes Bjerregaard | 1988 Johannes Bjerregaard |
+| Flimbos Quest main | DMC (Demo Music Creator) | 8 | Romuzak | 34 | Johannes Bjerregaard | 1990 System 3 |
 | Fourth Dimension | DMC (Demo Music Creator) | 1 | Romuzak | 6 | Johannes Bjerregaard | 1988 Danish Music Company |
 | French Frites | DMC (Demo Music Creator) | 1 | Romuzak | 64 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
 | Fruitbank | DMC (Demo Music Creator) | 28 | Romuzak | 11 | Johannes Bjerregaard | 1989 Mastertronic/Dig. Design |
+| Happy Jingle | DMC (Demo Music Creator) | 1 | Romuzak | 2 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
 | Hit the Baze | DMC (Demo Music Creator) | 1 | Romuzak | 10 | Johannes Bjerregaard | 1988 Danish Music Company |
 | In the Mood | DMC (Demo Music Creator) | 1 | Romuzak | 3 | Johannes Bjerregaard | 1988 Triton Technology |
 | Jazz 1 | DMC (Demo Music Creator) | 1 | Romuzak | 31 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
+| Jazz 2 | DMC (Demo Music Creator) | 1 | Romuzak | 32 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
+| Jazz 3 | DMC (Demo Music Creator) | 1 | Romuzak | 1 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
+| Jazz 4 | DMC (Demo Music Creator) | 1 | Romuzak | 34 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
+| Johannes Bjerregaard 01 | DMC (Demo Music Creator) | 1 | Romuzak | 37 | Johannes Bjerregaard | 1987 Johannes Bjerregaard |
+| Kamikaze | DMC (Demo Music Creator) | 2 | Romuzak | 7 | Johannes Bjerregaard | 1990 Codemasters/Digital Design |
 | M A C H | DMC (Demo Music Creator) | 9 | Romuzak | 2 | Johannes Bjerregaard | 1987 Starvision |
 | Mixerplot | DMC (Demo Music Creator) | 1 | Romuzak | 9 | Johannes Bjerregaard | 1989 Upfront |
 | MSI Demo | DMC (Demo Music Creator) | 1 | Romuzak | 36 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
 | Music Demo | DMC (Demo Music Creator) | 2 | Romuzak | 32 | Johannes Bjerregaard | 1988 Maniacs of Noise |
 | Myth Demo | DMC (Demo Music Creator) | 2 | Romuzak | 11 | Johannes Bjerregaard | 1989 Maniacs of Noise |
 | Namnam Special | DMC (Demo Music Creator) | 1 | Romuzak | 20 | Johannes Bjerregaard | 1988 Danish Music Company |
+| Nightdawn | DMC (Demo Music Creator) | 4 | Romuzak | 121 | Johannes Bjerregaard | 1988 ACE Software/Magic Bytes |
 | Omega Force One | DMC (Demo Music Creator) | 1 | Romuzak | 25 | Johannes Bjerregaard | 1988 64'er/Markt & Technik |
 | Predictable main | DMC (Demo Music Creator) | 1 | Romuzak | 4 | Johannes Bjerregaard | 1989 Bones/Maniacs of Noise |
 | Ragtime Anno 87 | DMC (Demo Music Creator) | 1 | Romuzak | 3 | Johannes Bjerregaard | 1987 Johannes Bjerregaard |
 | Roadblaster | DMC (Demo Music Creator) | 1 | Romuzak | 1 | Johannes Bjerregaard | 19?? Johannes Bjerregaard |
 | Rockbuster | DMC (Demo Music Creator) | 1 | Romuzak (1 stale legacy build excluded) | 16 | Johannes Bjerregaard | 1988 Danish Music Company |
+| Rosanna | DMC (Demo Music Creator) | 1 | Romuzak | 40 | Johannes Bjerregaard | 1989 Upfront |
 | Scandalous | DMC (Demo Music Creator) | 1 | Romuzak | 19 | Johannes Bjerregaard | 1989 The Dominators |
 | Shape | DMC (Demo Music Creator) | 1 | Romuzak | 38 | Johannes Bjerregaard | 1988 Upfront |
 | Slimbo4 | DMC (Demo Music Creator) | 2 | Romuzak | 11 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
+| Soap Theme | DMC (Demo Music Creator) | 1 | Romuzak | 30 | Johannes Bjerregaard | 1990 Johannes Bjerregaard |
 | Some Soul | DMC (Demo Music Creator) | 1 | Romuzak | 29 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
 | Spacegame Music | DMC (Demo Music Creator) | 1 | Romuzak | 2 | Johannes Bjerregaard | 1987 The Main Force 2772 |
 | Special Agent | DMC (Demo Music Creator) | 9 | Romuzak | 27 | Johannes Bjerregaard | 1987 Firebird |
 | Spy vs Spy III | DMC (Demo Music Creator) | 1 | Romuzak | 23 | Johannes Bjerregaard | 1987 Johannes Bjerregaard |
 | STII8 | DMC (Demo Music Creator) | 2 | Romuzak | 8 | Johannes Bjerregaard | 2014 Johannes Bjerregaard |
+| Stormlord | DMC (Demo Music Creator) | 5 | Romuzak | 10 | Johannes Bjerregaard & J. Tel | 1989 Hewson/Maniacs of Noise |
 | Stormlord V2 | DMC (Demo Music Creator) | 1 | Romuzak | 2 | Johannes Bjerregaard | 1989 Maniacs of Noise |
+| Sweet | DMC (Demo Music Creator) | 1 | Romuzak | 10 | Johannes Bjerregaard | 1988 Upfront/Starion |
 | Test | DMC (Demo Music Creator) | 2 | Romuzak | 10 | Johannes Bjerregaard | 1989 Johannes Bjerregaard |
 | Thunder Force | DMC (Demo Music Creator) | 4 | Romuzak | 8 | Johannes Bjerregaard | 1987 Rack-It |
 | Tiny Symphony | DMC (Demo Music Creator) | 1 | Romuzak | 5 | Johannes Bjerregaard | 1988 Danish Music Company |
 | Twilight Beyond | DMC (Demo Music Creator) | 1 | Romuzak | 4 | Johannes Bjerregaard | 1988 Danish Music Company |
 | Wanna Get Sick | DMC (Demo Music Creator) | 1 | Romuzak | 7 | Johannes Bjerregaard | 1989 Upfront |
+| When Will I Be Famous | DMC (Demo Music Creator) | 1 | Romuzak | 40 | Johannes Bjerregaard | 1988 Johannes Bjerregaard |
 | Who Is Robb Vol 1 | DMC (Demo Music Creator) | 1 | Romuzak | 15 | Johannes Bjerregaard (The Jerk) | 198? The Jerk |
 | Zoom | DMC (Demo Music Creator) | 19 | Romuzak | 1 | Johannes Bjerregaard | 1988 Discovery Software Int'l |
 

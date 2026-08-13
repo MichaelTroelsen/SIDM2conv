@@ -172,14 +172,15 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**949 songs built** across 15 native players (each song may span several SF2 parts).
+**966 songs built** across 15 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
-### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  57 songs / 944 SF2 files
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  74 songs / 1414 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
+| Ace II remake | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 16 |
 | Again Its JB | Johannes Bjerregaard | 1989 Upfront | 12 |
 | Alf TV Theme | Johannes Bjerregaard | 1988 Maniacs of Noise | 40 |
 | Balloon | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 1 |
@@ -188,13 +189,15 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Blue Monday 88 | Johannes Bjerregaard | 1989 The Dominators | 7 |
 | Camel Riders Inc | Johannes Bjerregaard (The Jerk) | 1987 The Jerk | 12 |
 | Cant Stop | Johannes Bjerregaard | 1988 Upfront | 114 |
+| Chase | Johannes Bjerregaard | 1988 Upfront | 15 |
 | Chase v2 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 11 |
-| Cute Tune | Johannes Bjerregaard | 1988-90 Johannes Bjerregaard | 38 |
+| Cute Tune | Johannes Bjerregaard | 1988-90 Johannes Bjerregaard | 32 |
 | Deel 2 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 8 |
 | Depeche Mode Songs | Johannes Bjerregaard | 1986 Danish Music Company | 6 |
 | DMC Demo IV tune 1 | Johannes Bjerregaard | 1988 Danish Music Company | 7 |
 | DMC Demo IV tune 2 | Johannes Bjerregaard | 1988 Danish Music Company | 15 |
 | DMC Demo IV tune 3 | Johannes Bjerregaard | 1988 Danish Music Company | 16 |
+| DMC Demo IV tune 5 | Johannes Bjerregaard | 1988 Danish Music Company | 4 |
 | Domino Dancing | Johannes Bjerregaard | 1988 Maniacs of Noise | 7 |
 | Dragon Sword | Johannes Bjerregaard | 2018 Johannes Bjerregaard | 7 |
 | Dreaming | Johannes Bjerregaard | 1988 Danish Music Company | 15 |
@@ -203,38 +206,52 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Dummynaytos | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 1 |
 | Eagles | Johannes Bjerregaard | 1987 Hewson | 7 |
 | Fat 6 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 23 |
+| Fat Complete 2 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 43 |
 | First Try PSX | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 47 |
+| Flimbos Quest main | Johannes Bjerregaard | 1990 System 3 | 34 |
 | Fourth Dimension | Johannes Bjerregaard | 1988 Danish Music Company | 6 |
 | French Frites | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 64 |
 | Fruitbank | Johannes Bjerregaard | 1989 Mastertronic/Dig. Design | 11 |
+| Happy Jingle | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 2 |
 | Hit the Baze | Johannes Bjerregaard | 1988 Danish Music Company | 10 |
 | In the Mood | Johannes Bjerregaard | 1988 Triton Technology | 3 |
 | Jazz 1 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 31 |
+| Jazz 2 | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 32 |
+| Jazz 3 | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 1 |
+| Jazz 4 | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 34 |
+| Johannes Bjerregaard 01 | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 37 |
+| Kamikaze | Johannes Bjerregaard | 1990 Codemasters/Digital Design | 7 |
 | M A C H | Johannes Bjerregaard | 1987 Starvision | 2 |
 | Mixerplot | Johannes Bjerregaard | 1989 Upfront | 9 |
 | MSI Demo | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 36 |
 | Music Demo | Johannes Bjerregaard | 1988 Maniacs of Noise | 32 |
 | Myth Demo | Johannes Bjerregaard | 1989 Maniacs of Noise | 11 |
 | Namnam Special | Johannes Bjerregaard | 1988 Danish Music Company | 20 |
+| Nightdawn | Johannes Bjerregaard | 1988 ACE Software/Magic Bytes | 121 |
 | Omega Force One | Johannes Bjerregaard | 1988 64'er/Markt & Technik | 25 |
 | Predictable main | Johannes Bjerregaard | 1989 Bones/Maniacs of Noise | 4 |
 | Ragtime Anno 87 | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 3 |
 | Roadblaster | Johannes Bjerregaard | 19?? Johannes Bjerregaard | 1 |
 | Rockbuster | Johannes Bjerregaard | 1988 Danish Music Company | 17 |
+| Rosanna | Johannes Bjerregaard | 1989 Upfront | 40 |
 | Scandalous | Johannes Bjerregaard | 1989 The Dominators | 19 |
 | Shape | Johannes Bjerregaard | 1988 Upfront | 38 |
 | Slimbo4 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 11 |
+| Soap Theme | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 30 |
 | Some Soul | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 29 |
 | Spacegame Music | Johannes Bjerregaard | 1987 The Main Force 2772 | 2 |
 | Special Agent | Johannes Bjerregaard | 1987 Firebird | 27 |
 | Spy vs Spy III | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 23 |
 | STII8 | Johannes Bjerregaard | 2014 Johannes Bjerregaard | 8 |
+| Stormlord | Johannes Bjerregaard & J. Tel | 1989 Hewson/Maniacs of Noise | 10 |
 | Stormlord V2 | Johannes Bjerregaard | 1989 Maniacs of Noise | 2 |
+| Sweet | Johannes Bjerregaard | 1988 Upfront/Starion | 10 |
 | Test | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 10 |
 | Thunder Force | Johannes Bjerregaard | 1987 Rack-It | 8 |
 | Tiny Symphony | Johannes Bjerregaard | 1988 Danish Music Company | 5 |
 | Twilight Beyond | Johannes Bjerregaard | 1988 Danish Music Company | 4 |
 | Wanna Get Sick | Johannes Bjerregaard | 1989 Upfront | 7 |
+| When Will I Be Famous | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 40 |
 | Who Is Robb Vol 1 | Johannes Bjerregaard (The Jerk) | 198? The Jerk | 15 |
 | Zoom | Johannes Bjerregaard | 1988 Discovery Software Int'l | 1 |
 

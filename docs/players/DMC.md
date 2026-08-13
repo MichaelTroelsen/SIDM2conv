@@ -203,6 +203,32 @@ n=19996.
 > `Deel_2` is the cautionary case — its part 1 happens to be exactly 20 s, so
 > the broken default gave it the right answer.
 
+**FIRST CORPUS FIGURE (2026-08-13, `--build`, all 88 files).** Every other DMC
+number in this document is a single file.
+
+| | |
+|---|---:|
+| **scored** | **72 of 88** |
+| refused | 14 (`DMC tables not located` — the documented NO-TABLES class) |
+| errored | 2 (one `WAVE overflow` builder cap, one assemble failure) |
+
+| metric | median over 216 voices | at 100 | below 90 |
+|---|---:|---:|---:|
+| **frequency** | **94.7** | 59 | **87** |
+| waveform | **100.0** | 113 | 66 |
+| pulse | **100.0** | 119 | 77 |
+
+Read with three conditions:
+
+- **`--build` scored 72 songs where only 57 had shipped artifacts** — 15 had
+  never been built at all. A build count and a corpus are different numbers.
+- **`n` spans 46 to 19,996 frames** (median 1,046), and **9 of the 72 scored
+  under the 250-frame floor**, carrying the `!` marker. Unlike SDI, where that
+  guard is inert, it fires here: a median pools a 1-second sting with a
+  400-second song.
+- **Part 1 only, freq/wf/pulse only.** 87 of 216 frequency voices sit below 90,
+  so the tail is large and unexplained, and `$D418` is not in this figure at all.
+
 It scores **freq/waveform/pulse only**, like the script it replaces. `$D418` is
 in none of them, which is exactly how the passband defect survived — use
 `pyscript/passband_check.py --player dmc` for that.
