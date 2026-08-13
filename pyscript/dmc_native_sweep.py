@@ -294,6 +294,30 @@ def main(argv=None):
         print(f"!! {len(thin)} scored over a thin window (marked `!`): "
               f"{', '.join(sorted(thin)[:8])}"
               f"{' ...' if len(thin) > 8 else ''}")
+    # A bare failure count is not a finding. Group by cause -- "16 files exceed
+    # a 256-row table" and "16 files crashed" are different pieces of work, and
+    # only one of them is a bug.
+    if refused or errored:
+        classes = {}
+        for k, v in results.items():
+            msg = v.get("refused") or v.get("error")
+            if not msg:
+                continue
+            if "not located" in msg:
+                key = "DMC tables not located (variant)"
+            elif "WAVE overflow" in msg:
+                key = "WAVE overflow (builder cap, >256 rows)"
+            elif "timeout" in msg.lower():
+                key = "timeout"
+            elif "onsets disagree" in msg:
+                key = "onsets disagree (multispeed / self-IRQ)"
+            else:
+                key = msg[:60]
+            classes.setdefault(key, []).append(k)
+        print("\nfailure classes:")
+        for key, files in sorted(classes.items(), key=lambda kv: -len(kv[1])):
+            print(f"  {len(files):4d}  {key}")
+
     # Medians per metric, over every voice of every scored file. Medians, not
     # means, matching how this repo already quotes SDI.
     for metric in ("freq", "wf", "pul"):

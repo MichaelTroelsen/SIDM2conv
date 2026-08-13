@@ -161,3 +161,13 @@ def test_an_unknown_failure_stays_an_error():
 def test_a_silent_build_failure_is_still_an_error():
     rec = sw._classify_build_failure("")
     assert rec["error"] == "build failed with no output"
+
+
+def test_wave_overflow_is_a_builder_cap_not_a_crash():
+    """`WAVE overflow: 288 rows > 256` is the same cap the SDI sweep hits on 16
+    files. It is neither a designed refusal (the builder wanted to build this
+    one) nor a crash, so it must stay visible as its own class rather than
+    vanish into a bare `errored` count."""
+    rec = sw._classify_build_failure("ValueError: WAVE overflow: 288 rows > 256")
+    assert "error" in rec
+    assert "WAVE overflow" in rec["error"], "the cause must survive to the report"
