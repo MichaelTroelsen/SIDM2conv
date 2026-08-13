@@ -194,7 +194,7 @@ def _agree_at(orig_modes, our_modes, off):
     return ok, n
 
 
-def compare(orig_modes, our_modes, offsets=OFFSETS):
+def compare(orig_modes, our_modes, offsets=OFFSETS, routed_seq=None):
     """Best-aligned frame-wise agreement, plus the two failure shapes.
 
     Returns (pct|None, n, orig_changes, our_changes, offset). `None` -- never
@@ -207,7 +207,7 @@ def compare(orig_modes, our_modes, offsets=OFFSETS):
     a different defect from selecting the wrong band.
     """
     if not orig_modes or not our_modes:
-        return None, 0, 0, 0, 0
+        return None, 0, 0, 0, 0, None
     # Maximise the RATE, not the raw match count: shifting shrinks the overlap,
     # so a count-maximiser always prefers offset 0 and a pure boot delay never
     # scores 100%. Ties go to the smallest shift, so a file that agrees nowhere
@@ -218,7 +218,7 @@ def compare(orig_modes, our_modes, offsets=OFFSETS):
         if n:
             cand.append((off, ok, n))
     if not cand:
-        return None, 0, 0, 0, 0
+        return None, 0, 0, 0, 0, None
     # A shift may not buy its rate by discarding the comparison: with offsets
     # bounded to a few frames against ~1400 this never binds, but it stops the
     # fit degenerating if either ever changes.
@@ -227,7 +227,19 @@ def compare(orig_modes, our_modes, offsets=OFFSETS):
     best_off, best_ok, best_n = max(cand, key=lambda c: (c[1] / c[2], -abs(c[0])))
     _, oc = describe(orig_modes)
     _, dc = describe(our_modes)
-    return 100.0 * best_ok / best_n, best_n, oc, dc, best_off
+    # Mismatches on frames where the ORIGINAL feeds no voice to the filter
+    # cannot be heard: the passband selects among silent outputs there. Counted
+    # at the winning offset, on the disagreeing frames only.
+    audible = None
+    if routed_seq is not None:
+        audible = 0
+        for i in range(len(orig_modes)):
+            j = i + best_off
+            if not (0 <= j < len(our_modes)):
+                continue
+            if orig_modes[i] != our_modes[j] and i < len(routed_seq) and routed_seq[i]:
+                audible += 1
+    return 100.0 * best_ok / best_n, best_n, oc, dc, best_off, audible
 
 
 def find_original(base, origs):
@@ -316,7 +328,9 @@ def main(argv=None):
         om = mode_sequence(of)
         routed = routed_fraction(of)
         dm = mode_sequence(artifact_frames(b, args))
-        pct, n, oc, dc, off = compare(om, dm)
+        routed_seq = [g["filtctl"] & 0x0F for _v, g in of[1:]
+                      if g.get("filtctl") is not None]
+        pct, n, oc, dc, off, audible = compare(om, dm, routed_seq=routed_seq)
         on, _ = describe(om) if om else (["n/a"], 0)
         dn, _ = describe(dm) if dm else (["n/a"], 0)
         shown = "n/a" if pct is None else f"{pct:.1f}"
@@ -335,6 +349,10 @@ def main(argv=None):
             # passband but feeds no voice into the filter, so the bits choose
             # among silent outputs.
             note = "   (no voice routed to the filter -- passband inaudible)"
+        elif audible == 0 and pct is not None and pct < a.min:
+            # Every disagreeing frame is one the original does not route.
+            note = (f"   (all {n - round(n * pct / 100)} mismatches on frames "
+                    f"the original does not route -- inaudible)")
         elif pct < a.min:
             # "original modulates, ours does not" is a LABEL for a failure, not
             # a trigger for one. Firing it independently of the agreement score
@@ -357,6 +375,8 @@ def main(argv=None):
                         else "   <== mode mismatch")
                 bad.append((base, why))
         rshow = "n/a" if routed is None else f"{100.0 * routed:.0f}%"
+        if audible is not None and pct is not None and pct < a.min:
+            rshow += f"/{audible}a"      # audible mismatches
         print(f"{base:<28s} {'/'.join(on):<14s} {'/'.join(dn):<14s} "
               f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s} {rshow:>7s}{note}")
 

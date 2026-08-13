@@ -47,15 +47,15 @@ def test_only_the_passband_bits_are_compared():
 def test_absent_register_is_not_agreement():
     """`score_pct`'s rule: an unmeasured comparison is None, never 100.0."""
     assert pb.mode_sequence(frames([0x1F, None, None])) == []
-    pct, n, _oc, _dc, _off = pb.compare([], [0x10])
+    pct, n, _oc, _dc, _off, _aud = pb.compare([], [0x10])
     assert pct is None and n == 0
-    pct, _n, _oc, _dc, _off = pb.compare([0x10], [])
+    pct, _n, _oc, _dc, _off, _aud = pb.compare([0x10], [])
     assert pct is None
 
 
 def test_shape_A_constant_but_different():
     """Altered_States_Tune_1 as shipped: original LP+BP, ours LP, every frame."""
-    pct, n, oc, dc, _off = pb.compare([0x30] * 100, [0x10] * 100)
+    pct, n, oc, dc, _off, _aud = pb.compare([0x30] * 100, [0x10] * 100)
     assert pct == 0.0 and n == 100
     assert oc == 0 and dc == 0, "neither side modulates -- the tell is the value"
 
@@ -65,14 +65,14 @@ def test_shape_B_original_modulates_ours_is_static():
     ours never does. Agreement stays HIGH because the original spends most of
     its time on the mode we hold -- the change counts are what expose it."""
     orig = [0x10] * 80 + [0x60] * 13 + [0x10] * 7   # leaves LP and comes back
-    pct, _n, oc, dc, _off = pb.compare(orig, [0x10] * 100)
+    pct, _n, oc, dc, _off, _aud = pb.compare(orig, [0x10] * 100)
     assert pct == 87.0, "87 of 100 frames still match -- high, and still broken"
     assert oc == 2 and dc == 0, "one departure and one return = 2 changes"
 
 
 def test_a_correct_build_agrees():
     orig = [0x10] * 50 + [0x60] * 50
-    pct, n, oc, dc, off = pb.compare(orig, list(orig))
+    pct, n, oc, dc, off, _aud = pb.compare(orig, list(orig))
     assert pct == 100.0 and n == 100 and oc == dc == 1 and off == 0
 
 
@@ -85,7 +85,7 @@ def test_describe_names_every_mode_present():
 def test_overlap_is_the_shorter_side():
     """Parts differ in length between the two sides; scoring past the end of one
     would compare against nothing."""
-    pct, n, _oc, _dc, _off = pb.compare([0x10] * 10, [0x10] * 4)
+    pct, n, _oc, _dc, _off, _aud = pb.compare([0x10] * 10, [0x10] * 4)
     assert n == 4 and pct == 100.0
 
 
@@ -96,7 +96,7 @@ def test_a_boot_offset_is_fitted_not_assumed():
     which is why the flaw survived the check's first run against real builds."""
     orig = [0x10] * 40 + [0x60] * 20 + [0x10] * 40
     late = [0x10] * 3 + orig[:-3]           # same programme, 3 frames late
-    pct, _n, oc, dc, off = pb.compare(orig, late)
+    pct, _n, oc, dc, off, _aud = pb.compare(orig, late)
     assert pct == 100.0, "a pure delay is not a wrong passband"
     assert off == 3 and oc == dc == 2
 
@@ -105,14 +105,14 @@ def test_the_fitted_offset_is_reported():
     """A large offset is itself a finding -- right band, arriving late -- and a
     different defect from selecting the wrong band. It must not be absorbed."""
     orig = [0x10] * 50 + [0x60] * 50
-    _pct, _n, _oc, _dc, off = pb.compare(orig, [0x10] * 6 + orig[:-6])
+    _pct, _n, _oc, _dc, off, _aud = pb.compare(orig, [0x10] * 6 + orig[:-6])
     assert off == 6
 
 
 def test_a_tie_keeps_the_unshifted_reading():
     """Two constants that agree nowhere agree nowhere at every offset. Picking
     a shifted one would quietly shrink n."""
-    pct, n, _oc, _dc, off = pb.compare([0x30] * 100, [0x10] * 100)
+    pct, n, _oc, _dc, off, _aud = pb.compare([0x30] * 100, [0x10] * 100)
     assert pct == 0.0 and n == 100 and off == 0
 
 
@@ -121,7 +121,7 @@ def test_the_fit_cannot_manufacture_agreement():
     anything. Two unrelated programmes must not reach agreement by shifting."""
     orig = [0x10] * 25 + [0x60] * 25 + [0x10] * 25 + [0x60] * 25
     ours = [0x40] * 100
-    pct, _n, _oc, _dc, _off = pb.compare(orig, ours)
+    pct, _n, _oc, _dc, _off, _aud = pb.compare(orig, ours)
     assert pct == 0.0
 
 
@@ -134,7 +134,7 @@ def test_a_modulating_original_does_not_condemn_a_100pct_build():
     cannot reach the gate anyway (`Hopscotch` sat at 87.2%)."""
     orig = [0x00] + [0x30] * 99
     ours = [0x30] * 100
-    pct, _n, oc, dc, _off = pb.compare(orig, ours)
+    pct, _n, oc, dc, _off, _aud = pb.compare(orig, ours)
     assert oc == 1 and dc == 0, "the shape that used to trigger the false flag"
     assert pct >= 99.0, "yet it agrees on all but the one power-on frame"
 
@@ -158,7 +158,7 @@ def test_an_unrouted_filter_makes_the_passband_inaudible():
     fr = [({}, {"filtctl": 0x00})] * 10
     assert pb.routed_fraction(fr) == 0.0
     # The mode comparison itself still reports the difference honestly.
-    pct, _n, _oc, _dc, _off = pb.compare([0x10] * 9, [0x00] * 9)
+    pct, _n, _oc, _dc, _off, _aud = pb.compare([0x10] * 9, [0x00] * 9)
     assert pct == 0.0, "the difference is still measured, just not counted"
 
 
@@ -226,7 +226,7 @@ def test_a_multipart_failure_is_unconfirmed_without_an_asserted_window():
     everywhere it was compared. Only failures are downgraded."""
     orig = [0x10] * 500                       # the original keeps going
     ours = ([0x10] * 250) + ([0x60] * 250)    # our part loops and diverges
-    pct, _n, _oc, _dc, _off = pb.compare(orig, ours)
+    pct, _n, _oc, _dc, _off, _aud = pb.compare(orig, ours)
     assert pct < 99.0, "the raw comparison sees a mismatch"
     # ...which is exactly the shape that must not be published as a defect
     # without knowing where part 1 ended.
@@ -258,3 +258,46 @@ def test_the_simulator_reference_has_siddumps_shape():
     assert {"freq", "wf", "pul"} <= set(voices[0])
     assert {"cutoff", "filtctl", "volmode"} <= set(glob_)
     assert pb.has_evidence(fr) is True, "the simulator drives it where siddump cannot"
+
+
+def test_routing_is_scored_on_the_MISMATCHING_frames():
+    """`Altered_States_Tune_2` was the last HardTrack residual, reported at
+    93.4% "routed 80%" -- which reads as a defect you can hear. All 47 of its
+    mismatched frames are frames where the ORIGINAL routes nothing: it holds
+    `$D417 = 0` for the first 50 frames while selecting LP, our build reads
+    `off` across exactly that stretch, and from the moment a voice is actually
+    fed to the filter the two agree.
+
+    A GLOBAL routed fraction cannot see that -- it answers "does this tune use
+    the filter at all" when the question is "does it use the filter WHERE WE
+    DISAGREE". The unrouted-severity rule already existed; it ran over the wrong
+    frames, which is why it caught three all-unrouted DMC files and missed this
+    one."""
+    orig = [0x10] * 100
+    ours = [0x00] * 40 + [0x10] * 60        # wrong for the first 40 frames
+    routed = [0] * 40 + [1] * 60            # ...which are exactly the unrouted ones
+    pct, _n, _oc, _dc, _off, audible = pb.compare(orig, ours, routed_seq=routed)
+    assert pct < 99.0, "the raw agreement is genuinely poor"
+    assert audible == 0, "and none of it can be heard"
+
+
+def test_a_mismatch_on_a_ROUTED_frame_still_counts():
+    """The guard must not swallow a real defect: same shape, but the original
+    feeds the filter throughout.
+
+    The wrong stretch sits in the MIDDLE on purpose. Put it at the start and the
+    offset fitter legitimately absorbs up to 8 frames of it (a leading defect is
+    indistinguishable from a late boot), which is the tool working -- but it
+    makes the count depend on the search range rather than on the defect."""
+    orig = [0x10] * 100
+    ours = [0x10] * 40 + [0x00] * 20 + [0x10] * 40
+    pct, _n, _oc, _dc, _off, audible = pb.compare(orig, ours, routed_seq=[1] * 100)
+    assert pct < 99.0
+    assert audible == 20, "every mismatching frame is routed, so every one counts"
+
+
+def test_audible_is_None_when_routing_was_not_supplied():
+    """Absent, not zero -- a caller with no routing data must not be told the
+    mismatches are inaudible."""
+    _pct, _n, _oc, _dc, _off, audible = pb.compare([0x10] * 10, [0x00] * 10)
+    assert audible is None

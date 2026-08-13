@@ -1366,8 +1366,20 @@ passband:**
 | `Fun_Factory` | 6 s | 69.5% | **99.0%** (12 vs 12) |
 | `Altered_States_Tune_2` | 12 s | 97.2% | **93.4%** — see below |
 
-**`Altered_States_Tune_2` is the only one with anything left in it, and it is a
-STARTUP LATENCY, not a mode error.** The original selects LP from frame 0; our
+**`Altered_States_Tune_2` has nothing audible left in it either.** The original
+holds `$D417 = 0` for its first 50 frames — **feeding no voice to the filter**
+— while selecting LP; our build reads `off` across exactly that stretch and
+agrees from the moment a voice is actually routed. **All 47 mismatched frames of
+599 are unrouted frames: zero audible mismatches.**
+
+The tool hid this by reporting the routed fraction **globally** (80% for this
+file), which answers "does this tune use the filter at all" when the question is
+"does it use the filter *where we disagree*". `passband_check` now counts
+mismatches on routed frames only and prints them as `80%/0a`. The unrouted rule
+already existed — it was running over the wrong frames, which is why it caught
+three all-unrouted DMC files and missed this one.
+
+The underlying difference is still a STARTUP LATENCY, not a mode error: The original selects LP from frame 0; our
 build reads `off` until **frame 47** (0.94 s) and LP thereafter. All **47 of its
 599 mismatched frames are that opening gap** — the filter program's first SET
 row simply lands late, and the checker's unusual +8 fitted offset (every other
