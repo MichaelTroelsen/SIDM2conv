@@ -84,6 +84,21 @@ def mode_sequence(frames):
             if f.get("volmode") is not None]
 
 
+def routed_fraction(frames):
+    """Fraction of frames where `$D417` feeds at least one voice to the filter.
+
+    Returned separately from the passband rather than folded into it, because
+    they answer different questions: the passband says WHICH filter output is
+    summed, routing says whether anything is in the filter to be summed. A
+    passband mismatch on a tune that routes nothing is inaudible by
+    construction, and the check has no business calling that a failure.
+    """
+    vals = [g["filtctl"] for _v, g in frames[1:] if g.get("filtctl") is not None]
+    if not vals:
+        return None
+    return sum(1 for v in vals if v & 0x0F) / len(vals)
+
+
 def describe(modes):
     """(names present, number of mode CHANGES). The change count is what
     separates "both sides sit on one constant" from "the original modulates and
@@ -194,7 +209,7 @@ def main(argv=None):
 
     args = ["-a0", f"-t{a.seconds}"]
     print(f"{'file':<28s} {'original':<14s} {'ours':<14s} "
-          f"{'oChg':>5s} {'dChg':>5s} {'off':>4s} {'agree':>7s}")
+          f"{'oChg':>5s} {'dChg':>5s} {'off':>4s} {'agree':>7s} {'routed':>7s}")
     bad = []
     for b in builds:
         base = os.path.basename(b)[:-len(cfg["suffix"])]
@@ -203,7 +218,9 @@ def main(argv=None):
             print(f"{base:<28s} NO ORIGINAL FOUND -- cannot check")
             bad.append((base, "no original"))
             continue
-        om = mode_sequence(siddump_frames_full(orig, args))
+        of = siddump_frames_full(orig, args)
+        om = mode_sequence(of)
+        routed = routed_fraction(of)
         dm = mode_sequence(artifact_frames(b, args))
         pct, n, oc, dc, off = compare(om, dm)
         on, _ = describe(om) if om else (["n/a"], 0)
@@ -213,6 +230,9 @@ def main(argv=None):
         if pct is None:
             note = "   <== no $D418 rows on one side"
             bad.append((base, "unmeasured"))
+        elif routed == 0.0:
+            # True difference, nil severity. Shown, never counted.
+            note = "   (no voice routed to the filter -- passband inaudible)"
         elif pct < a.min:
             # "original modulates, ours does not" is a LABEL for a failure, not
             # a trigger for one. Firing it independently of the agreement score
@@ -225,11 +245,13 @@ def main(argv=None):
                     else "   <== mode mismatch")
             bad.append((base, f"static vs {oc} changes" if oc and not dc
                         else f"{pct:.1f}%"))
+        rshow = "n/a" if routed is None else f"{100.0 * routed:.0f}%"
         print(f"{base:<28s} {'/'.join(on):<14s} {'/'.join(dn):<14s} "
-              f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s}{note}")
+              f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s} {rshow:>7s}{note}")
 
     print(f"\n{len(builds) - len(bad)}/{len(builds)} builds select the "
-          f"original's passband")
+          f"original's passband (or route nothing through the filter, where it "
+          f"cannot be heard)")
     if bad:
         # NOT "rebuild these, the builder is already correct". That was the
         # message until `Eagles`, `In_the_Mood` and `Roadblaster` came back at

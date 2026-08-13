@@ -128,7 +128,7 @@ on 2026-08-12, and `pyscript/passband_check.py --player dmc` scored **31 of 57**
 songs selecting the original's passband. `Balloon` — this document's headline —
 was among the failures, at **0.0%**.
 
-After rebuilding the 26 failures: **52 of 57**.
+After rebuilding the 26 failures: **55 of 57**.
 
 **The DMC fidelity script could never have caught this.** `bin/_dmc_fidelity.py`
 scores freq / waveform / pulse, and `$D418` is in none of them. Re-measured
@@ -139,10 +139,25 @@ HardTrack's builder had the same blind spot ("scores frequency and nothing
 else"). That is why the passband check is a separate tool over the ARTIFACT
 rather than another column in either scorer.
 
-**Five still fail, and three of them are NOT staleness.** `Eagles`,
-`In_the_Mood` and `Roadblaster` emit mode `off` — no passband selected at all —
-before *and* after a rebuild. That is a builder defect and it is open.
-`Domino_Dancing` sits just under the gate at 99.0%; `French_Frites` at 69.2%.
+**Two still fail:** `Domino_Dancing` just under the gate at 99.0%, and
+`French_Frites` at 69.2% — both route the filter, so both are real.
+
+**Three more were failures for three consecutive runs and should never have
+been.** `Eagles`, `In_the_Mood` and `Roadblaster` emit mode `off` — no passband
+at all — before *and* after a rebuild, so staleness was never their cause. The
+cause is that their filter is **completely static**: cutoff, `$D417` and `$D418`
+each hold one value for every frame, and the builder emits filter rows on
+*change*, so a filter set once at init produces **zero bundles** (`filter=0` in
+the build log against `filter=7` for a passing file) and the passband is never
+established.
+
+But the severity is nil, and that took a fourth run to see: **`$D417` = `$00`
+on all three — no voice is routed into the filter at all**, and the cutoff is 0.
+`$D418`'s mode bits choose which filter OUTPUT is summed; `$D417`'s low nibble
+chooses which voices are fed IN. With nothing fed in, the passband selects among
+three silent outputs. The register difference is real and **inaudible by
+construction**. `passband_check.py` now reports the routed fraction per file and
+declines to count a mismatch where the original routes nothing.
 
 > ⚠️ **This check reads part 1 only**, against the original's first 28 s. Most
 > DMC songs split into many parts (`Alf_TV_Theme` 40, `Balloon` 77 before the

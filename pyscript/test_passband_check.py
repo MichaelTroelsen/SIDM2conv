@@ -137,3 +137,26 @@ def test_a_modulating_original_does_not_condemn_a_100pct_build():
     pct, _n, oc, dc, _off = pb.compare(orig, ours)
     assert oc == 1 and dc == 0, "the shape that used to trigger the false flag"
     assert pct >= 99.0, "yet it agrees on all but the one power-on frame"
+
+
+def test_routing_fraction_reads_the_low_nibble_of_D417():
+    """`$D417` low nibble = which VOICES feed the filter. The high nibble is
+    resonance and must not be mistaken for routing."""
+    fr = [({}, {"filtctl": 0xF0})] + [({}, {"filtctl": 0xF0})] * 9
+    assert pb.routed_fraction(fr) == 0.0, "resonance alone routes nothing"
+    fr = [({}, {"filtctl": 0x00})] + [({}, {"filtctl": 0x01})] * 4 + [({}, {"filtctl": 0x00})] * 4
+    assert pb.routed_fraction(fr) == 0.5
+    assert pb.routed_fraction([({}, {"filtctl": None})] * 4) is None
+
+
+def test_an_unrouted_filter_makes_the_passband_inaudible():
+    """`Eagles`, `In_the_Mood`, `Roadblaster`: cutoff 0, `$D417` $00, `$D418`
+    mode 001/011 against our 000 on every frame. The register claim is true and
+    the severity is nil -- with nothing fed into the filter the passband bits
+    select among three silent outputs. The check called these failures three
+    separate times before this was noticed."""
+    fr = [({}, {"filtctl": 0x00})] * 10
+    assert pb.routed_fraction(fr) == 0.0
+    # The mode comparison itself still reports the difference honestly.
+    pct, _n, _oc, _dc, _off = pb.compare([0x10] * 9, [0x00] * 9)
+    assert pct == 0.0, "the difference is still measured, just not counted"

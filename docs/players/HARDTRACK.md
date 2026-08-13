@@ -1328,6 +1328,25 @@ The 9 that still fail (57-89%) have changed class entirely: every one now
 original's 87. What is wrong is the *timing* of the changes, not their absence.
 Fitted offsets land on **−3**, matching this document's own render offset.
 
+**All 9 route the filter on 59-100% of frames**, so none of them is the
+inaudible class DMC turned out to have. `passband_check.py` reports the routed
+fraction because `$D418`'s mode bits choose which filter OUTPUT is summed while
+`$D417`'s low nibble chooses which voices are fed IN — a passband mismatch on a
+tune that routes nothing cannot be heard, and three DMC files were counted as
+failures three times before that was noticed. It does not excuse anything here:
+
+| | agree | routed |
+|---|---:|---:|
+| `Something_to_Eat` | 68.7% | 100% |
+| `Illmatic_end` | 71.1% | 95% |
+| `Domagareflexow` | 96.3% | 99% |
+| `Fun_Factory` | 69.5% | 84% |
+| `Ritual_II_tune_2` | 71.2% | 84% |
+| `Rune-T_Noter` | 80.2% | 83% |
+| `Altered_States_Tune_2` | 97.2% | 75% |
+| `Hopscotch` | 88.8% | 72% |
+| `Takisobie` | 57.2% | 59% |
+
 `out/dmc/` was NOT rebuilt — 968 of its 984 `.sf2` predate `cffc51e`, and
 `passband_check.py --player dmc` exists to size that before anyone commits to a
 57-song rebuild.
