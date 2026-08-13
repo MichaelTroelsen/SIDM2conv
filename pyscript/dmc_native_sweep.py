@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""DMC (Demo Music Creator) native corpus sweep -- score every shipped build.
+
+`docs/players/DMC.md` quotes "Balloon: 77 parts merged into ONE 400s SF2,
+wf/pulse 100x3 over the FULL 400s (n=19996/voice) -- the best-evidenced number
+in the project", and `ACCURACY_MATRIX.md` carries it too. Until now every one of
+those figures came from `bin/_dmc_fidelity.py`, which is **untracked**
+(`.gitignore` excludes `bin/_*.py`) and scores **one part passed on argv**. So
+the project's best-evidenced number was not reproducible from a checkout, and
+nothing swept the corpus at all.
+
+That is the same defect `pyscript/soundmonitor_sweep.py` and
+`pyscript/sdi_native_sweep.py` were promoted to fix, and this is the third
+instance. It derives its corpus from the tracked SID directory rather than
+naming one.
+
+IT SCORES THE ARTIFACT, NOT A REBUILD. That is deliberate and it is the lesson
+this player just taught: `cffc51e` fixed the `$D418` passband in the builder on
+2026-08-10 and 968 of 984 shipped `.sf2` still predated it two days later, while
+DMC.md quoted the builder. A sweep that rebuilds before measuring would have
+reported the corpus healthy and told you nothing about what shipped. Use
+`--build` when you want the other question answered.
+
+WHAT IT DOES NOT COVER, stated because it is easy to misread the totals:
+  - **Part 1 only, and only when its span is KNOWN.** DMC's adaptive splitter
+    emits parts of 2-20 s -- `Cant_Stop` has 114, `Alf_TV_Theme` 40 -- and the
+    part->original-window mapping is printed at build time, not stored in the
+    SF2. Scoring part 1 against a fixed 20 s window therefore compares it
+    against ~15 s of music it never contained; the first draft of this sweep did
+    exactly that and reported `Cant_Stop` at 34.8/86.0/91.5, which measured the
+    window and not the build. Restricting that rule to multi-part songs was not
+    enough either: a single-part song's span is the WHOLE song and songs differ
+    in length, so forcing Balloon's 400 s onto `Zoom` scored it 24.4/27.7/23.9
+    at a confident n=19996.
+
+    So the window must be ASSERTED. `--build` reads the real bounds off the
+    builder's own stdout; `--seconds N` lets a caller assert one for a spot
+    check. With neither, NOTHING is scored -- every row says NEEDS BOUNDS. A
+    sweep that scores nothing is a nuisance; one that scores the wrong window
+    is a published number, and this project has retracted several of those.
+  - **freq / waveform / pulse only.** `$D418` is in none of them -- which is
+    precisely how the passband defect survived here for two days. Run
+    `pyscript/passband_check.py --player dmc` for that dimension; it is a
+    separate tool because folding it in here would leave the same blind spot in
+    a longer function.
+
+    py -3 pyscript/dmc_native_sweep.py
+    py -3 pyscript/dmc_native_sweep.py --files Balloon Rockbuster
+    py -3 pyscript/dmc_native_sweep.py --json out.json
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sidm2.fidelity_common import (  # noqa: E402
+    freq_to_semi, fmt_pct, psid_wrap, score_pct, siddump_per_frame,
+    underpowered)
+from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CORPUS_DIR = os.path.join(ROOT, "SID", "JohannesBjerregaard")
+BUILD_DIR = os.path.join(ROOT, "out", "dmc")
+
+# The builder boots a few frames after the original; every scorer in this repo
+# fits this rather than assuming it. Range matches `_dmc_fidelity.py`'s, so the
+# published numbers reproduce exactly.
+OFFSETS = range(-6, 12)
+
+
+def corpus_files(limit=None, names=None):
+    """The sweep corpus, DERIVED from the tracked SID directory.
+
+    Not a curated list -- a named list is what let "the best-evidenced number in
+    the project" rest on a single file measured by an untracked script.
+    """
+    if names:
+        return list(names)
+    out = sorted(os.path.splitext(os.path.basename(p))[0]
+                 for p in glob.glob(os.path.join(CORPUS_DIR, "*.sid")))
+    return out[:limit] if limit else out
+
+
+_PART1 = re.compile(r"part 1/\d+ \(\d+-\d+s, (\d+)-(\d+)f\)")
+
+
+def part1_span(text):
+    """Frames covered by part 1, read off the builder's own stdout.
+
+    Returns None when the line is absent -- a single-part build prints a
+    different shape, and callers must treat None as "unknown", never as zero.
+    """
+    m = _PART1.search(text)
+    return int(m.group(2)) - int(m.group(1)) if m else None
+
+
+def _probe(sf2_path):
+    """PSID-wrap a built .sf2 so siddump will play it."""
+    sf2 = open(sf2_path, "rb").read()
+    info = SF2DriverInfo()
+    sla = parse_sf2_blocks(bytearray(sf2), info)
+    probe = os.path.join(BUILD_DIR, "_dmc_sweep_probe.sid")
+    open(probe, "wb").write(psid_wrap(bytes(sf2[2:]), sla, 0x1000, 0x1003))
+    return probe
+
+
+def score_pair(orig, prb, secs):
+    """Per-voice freq/wf/pulse agreement at the best-fitting boot offset.
+
+    Returns ({voice: {metric: pct|None}}, n, offset). Percentages come from
+    `score_pct`, so a metric nothing exercised is None -- never 100.0, never
+    0.0. The frame count is returned so the caller can mark a thin comparison:
+    a DMC part can be a couple of seconds long and would otherwise print the
+    same confident 100.0 as `Balloon`'s 20,000 frames.
+    """
+    n = min(len(orig), len(prb), secs * 50) - 4
+    if n <= 0:
+        return None, 0, 0
+
+    def fit(d):
+        s = 0
+        for i in range(0, n, 2):                     # every other frame: the
+            j = d + i                                # offset fit does not need
+            if not (0 <= j < len(orig)):             # every one, and this is
+                continue                             # the hot loop
+            for vi in range(3):
+                a, b = orig[j][0][vi]["freq"], prb[i][0][vi]["freq"]
+                if a and b and freq_to_semi(a) == freq_to_semi(b):
+                    s += 1
+        return s
+
+    dly = max(OFFSETS, key=fit)
+    per = {}
+    counted = 0
+    for vi in range(3):
+        tot = {k: 0 for k in ("freq", "wf", "pul")}
+        ok = dict(tot)
+        for i in range(n):
+            j = dly + i
+            if not (0 <= j < len(orig)):
+                continue
+            o, p = orig[j][0][vi], prb[i][0][vi]
+            for k in tot:
+                if o[k] is None and p[k] is None:
+                    continue        # neither side ever wrote it: not a test
+                tot[k] += 1
+                if k == "freq":
+                    ok[k] += (o[k] is not None and p[k] is not None
+                              and freq_to_semi(o[k]) == freq_to_semi(p[k]))
+                else:
+                    ok[k] += o[k] == p[k]
+        per[vi] = {k: score_pct(ok[k], tot[k]) for k in tot}
+        counted = max(counted, tot["freq"])
+    return per, counted, dly
+
+
+def measure(name, secs, build=False, timeout=1800):
+    """One song -> a record. Distinguishes the outcomes that matter: scored,
+    never built, or source missing."""
+    sid = os.path.join(CORPUS_DIR, f"{name}.sid")
+    if not os.path.exists(sid):
+        return {"error": "no .sid in corpus dir"}
+    span = None
+    if build:
+        import subprocess
+        r = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "bin", "build_dmc_native_song.py"),
+             sid, "auto"], capture_output=True, text=True, cwd=ROOT, timeout=timeout)
+        if r.returncode != 0:
+            tail = [l for l in (r.stdout + r.stderr).splitlines() if l.strip()]
+            return {"error": tail[-1][:120] if tail else f"build rc={r.returncode}"}
+        span = part1_span(r.stdout + r.stderr)
+    parts = sorted(glob.glob(os.path.join(BUILD_DIR, f"{name}_part*.sf2")))
+    if not parts:
+        # NOT an error and NOT a zero: 32 of the 88 corpus files are NO-TABLES
+        # or FALLBACK and were never built. Scoring them 0 would make a build
+        # gap look like a fidelity gap.
+        return {"not_built": True}
+    if span is None and secs is None:
+        # Refuse rather than emit a plausible number. A part's span is not in
+        # the SF2 -- not for a multi-part song, and not for a single-part one
+        # either, whose span is the whole song and whose length varies. Forcing
+        # Balloon's 400 s onto `Zoom` scored it 24.4/27.7/23.9 with a confident
+        # n=19996; the window was measuring itself. See module docstring.
+        return {"needs_bounds": True, "parts": len(parts)}
+    win = (span // 50 if span else secs) if span is None or secs is None         else min(secs, max(1, span // 50))
+    win = max(1, win)
+    prb = _probe(parts[0])
+    orig = siddump_per_frame(sid, ["-a0", f"-t{win + 1}"])
+    got = siddump_per_frame(prb, [f"-t{win + 1}"])
+    per, n, dly = score_pair(orig, got, win)
+    if per is None:
+        return {"error": f"empty window (orig={len(orig)} probe={len(got)})"}
+    return {"voices": {str(v): per[v] for v in per}, "n": n, "offset": dly,
+            "parts": len(parts)}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--files", nargs="*", help="explicit song names (no .sid)")
+    ap.add_argument("--limit", type=int, help="first N corpus files only")
+    ap.add_argument("--seconds", type=int, default=None,
+                    help="ASSERT the window in seconds. Without it, and without "
+                         "--build, nothing is scored: a part's span is not in "
+                         "the SF2 and a guessed window measures itself. The "
+                         "published Balloon figure used 400.")
+    ap.add_argument("--build", action="store_true",
+                    help="rebuild before scoring (answers a DIFFERENT question: "
+                         "'is the builder right' rather than 'is what shipped right')")
+    ap.add_argument("--json", help="write the full per-file record here")
+    a = ap.parse_args(argv)
+
+    corpus = corpus_files(a.limit, a.files)
+    print(f"DMC native sweep -- {len(corpus)} file(s) from {CORPUS_DIR}", flush=True)
+    win_note = (f"{a.seconds}s window (asserted)" if a.seconds
+                else "window from the builder" if a.build
+                else "NO WINDOW GIVEN -- nothing will be scored")
+    print(f"  scoring PART 1 only, freq/wf/pulse only, {win_note}"
+          f"{' (rebuilding first)' if a.build else ' (as shipped)'}", flush=True)
+    results = {}
+    for i, name in enumerate(corpus, 1):
+        rec = measure(name, a.seconds, a.build)
+        results[name] = rec
+        if rec.get("voices"):
+            cells = []
+            for v in ("0", "1", "2"):
+                m = rec["voices"][v]
+                cells.append(f"v{int(v)+1} f{fmt_pct(m['freq'], n=rec['n'])}"
+                             f"/w{fmt_pct(m['wf'], n=rec['n'])}"
+                             f"/p{fmt_pct(m['pul'], n=rec['n'])}")
+            print(f"  [{i}/{len(corpus)}] {name:28s} dly={rec['offset']:+d} "
+                  f"{'  '.join(cells)}  n={rec['n']} parts={rec['parts']}", flush=True)
+        elif rec.get("not_built"):
+            print(f"  [{i}/{len(corpus)}] {name:28s} NOT BUILT", flush=True)
+        elif rec.get("needs_bounds"):
+            print(f"  [{i}/{len(corpus)}] {name:28s} NEEDS BOUNDS "
+                  f"({rec['parts']} parts; re-run with --build)", flush=True)
+        else:
+            print(f"  [{i}/{len(corpus)}] {name:28s} ERROR {rec.get('error')}",
+                  flush=True)
+
+    scored = {k: v for k, v in results.items() if v.get("voices")}
+    not_built = sum(1 for v in results.values() if v.get("not_built"))
+    needs = sum(1 for v in results.values() if v.get("needs_bounds"))
+    errored = len(results) - len(scored) - not_built - needs
+    print(f"\nscored {len(scored)}  not built {not_built}  "
+          f"needs bounds {needs}  errored {errored}  of {len(corpus)}")
+    if needs:
+        print(f"  ({needs} multi-part song(s) not scored: part 1's span is not "
+              f"in the SF2, and a fixed window measures itself. Use --build.)")
+    thin = [k for k, v in scored.items() if underpowered(v["n"])]
+    if thin:
+        print(f"!! {len(thin)} scored over a thin window (marked `!`): "
+              f"{', '.join(sorted(thin)[:8])}"
+              f"{' ...' if len(thin) > 8 else ''}")
+    # Medians per metric, over every voice of every scored file. Medians, not
+    # means, matching how this repo already quotes SDI.
+    for metric in ("freq", "wf", "pul"):
+        vals = sorted(m[metric] for v in scored.values()
+                      for m in v["voices"].values() if m[metric] is not None)
+        if not vals:
+            continue
+        mid = vals[len(vals) // 2] if len(vals) % 2 else \
+            (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
+        print(f"  {metric:>5s}: median {mid:6.1f}  over {len(vals)} voices, "
+              f"{sum(1 for x in vals if x >= 99.95)} at 100, "
+              f"{sum(1 for x in vals if x < 90)} below 90")
+    print("\nNOT a $D418 figure -- run pyscript/passband_check.py --player dmc")
+    if a.json:
+        json.dump(results, open(a.json, "w", encoding="utf-8"), indent=1)
+        print(f"wrote {a.json}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -164,11 +164,34 @@ declines to count a mismatch where the original routes nothing.
 > merge), so a clean result means "part 1's passband is right", never "the
 > song's is". A dirty result is conclusive; a clean one is not.
 
-> ⚠️ **`bin/_dmc_fidelity.py` is UNTRACKED** (`bin/_*.py` is gitignored), and it
-> is what produced every DMC number in this document including "the
-> best-evidenced number in the project". Not reproducible from a fresh clone —
-> the same defect `pyscript/soundmonitor_sweep.py` and
-> `pyscript/sdi_native_sweep.py` were promoted to fix. Promoting it is open work.
+### The tracked sweep (`pyscript/dmc_native_sweep.py`)
+
+Every DMC number above came from `bin/_dmc_fidelity.py`, which is **untracked**
+(`bin/_*.py` is gitignored) and scores one part named on argv — so "the
+best-evidenced number in the project" was not reproducible from a checkout, and
+nothing swept the corpus at all. Third instance of the defect
+`pyscript/soundmonitor_sweep.py` and `pyscript/sdi_native_sweep.py` were
+promoted to fix. The tracked sweep derives its corpus from
+`SID/JohannesBjerregaard/` and **reproduces `Balloon` exactly** —
+`dly=+4  v1 f 80.6/w100.0/p100.0  v2 f100.0/w100.0/p100.0  v3 f 97.7/w100.0/p100.0`,
+n=19996.
+
+> ⚠️ **THE WINDOW MUST BE ASSERTED, and by default nothing is scored.** DMC's
+> adaptive splitter emits parts of 2–20 s and the part→original-window mapping
+> is printed at build time, **not stored in the SF2**. The first draft of this
+> sweep scored part 1 against a fixed 20 s window and reported `Cant_Stop`
+> (114 parts) at 34.8/86.0/91.5 — a statement about the window, not the build,
+> across 53 of the 57 built songs. Restricting the rule to multi-part songs was
+> not enough either: a single part's span is the *whole song*, so Balloon's
+> 400 s forced onto `Zoom` scored it 24.4/27.7/23.9 at a confident n=19996.
+> `--build` reads the real bounds off the builder's stdout; `--seconds N`
+> asserts one for a spot check; with neither, every row says NEEDS BOUNDS.
+> `Deel_2` is the cautionary case — its part 1 happens to be exactly 20 s, so
+> the broken default gave it the right answer.
+
+It scores **freq/waveform/pulse only**, like the script it replaces. `$D418` is
+in none of them, which is exactly how the passband defect survived — use
+`pyscript/passband_check.py --player dmc` for that.
 
 ## Parser + decoder (`sidm2/dmc_parser.py`)
 
