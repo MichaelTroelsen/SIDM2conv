@@ -173,3 +173,38 @@ def test_every_player_whose_builder_was_fixed_is_checkable():
         cfg = pb.PLAYERS[player]
         assert cfg["suffix"].endswith((".sf2", ".sid"))
         assert cfg["origs"], "an empty origs glob silently finds no originals"
+
+
+def test_a_dead_reference_trace_is_refused_not_compared():
+    """Adding Blackbird produced, in order: "16/16 pass", then "16 files where
+    the original never routes a voice", then a measurement that our builds route
+    the filter on 56-100% of frames where the original routes 0% -- which reads
+    as a real audible defect and is not one. `SID/LFT/*.sid` produce NO trace
+    under siddump: no frequency, no waveform, and `$D418` = 0 (volume zero) for
+    every frame. Three labels deep before anyone asked whether the reference was
+    playing.
+
+    This repo already had the rule: the `zig64-gate-false-pass` fix was "assert
+    evidence exists before comparing", after a gate certified unverified SF2s by
+    comparing empty against empty."""
+    dead = [({vi: {"freq": 0, "wf": 0, "pul": 0} for vi in range(3)},
+             {"volmode": 0x00, "filtctl": 0x00, "cutoff": 0})] * 50
+    assert pb.has_evidence(dead) is False
+
+    live = list(dead)
+    live[10] = ({0: {"freq": 0x1234, "wf": 0x41, "pul": 0},
+                 1: {"freq": 0, "wf": 0, "pul": 0},
+                 2: {"freq": 0, "wf": 0, "pul": 0}},
+                {"volmode": 0x1F, "filtctl": 0x00, "cutoff": 0})
+    assert pb.has_evidence(live) is True, "one sounded voice is enough"
+
+
+def test_a_silent_tune_and_an_undriveable_file_look_identical():
+    """Which is exactly why the gate is on evidence rather than on the filter
+    registers: a full-length series of zeroes is byte-identical to 'this tune
+    never filters' and to 'siddump could not drive this file'."""
+    zeros = [({vi: {"freq": 0, "wf": 0, "pul": 0} for vi in range(3)},
+              {"volmode": 0x00, "filtctl": 0x00, "cutoff": 0})] * 30
+    assert pb.mode_sequence(zeros) == [0x00] * 29, "reads as a valid 'off'"
+    assert pb.routed_fraction(zeros) == 0.0, "reads as a valid 'routes nothing'"
+    assert pb.has_evidence(zeros) is False, "only this distinguishes them"

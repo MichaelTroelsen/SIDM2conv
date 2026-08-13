@@ -73,6 +73,17 @@ PLAYERS = {
     # builder being right is not the question this tool asks.
     "mon": {"dir": ("out", "mon"), "suffix": "_sub0_part01.sf2",
             "origs": "Tel_Jeroen"},
+    # These three builders do NOT call `passband_trace` at all, so they emit
+    # low-pass unconditionally. HARDTRACK.md's cross-builder audit called that
+    # "right by luck" for FC and SDI because their originals select plain
+    # low-pass -- a verdict reached from ONE file per player, which is the same
+    # sampling that made "missing passband reads as darker" wrong. Entries exist
+    # so the claim can be tested against a corpus instead of asserted.
+    "sdi": {"dir": ("out", "sdi"), "suffix": "_native_part01.sf2",
+            "origs": "Gallefoss_Glenn"},
+    "fc": {"dir": ("out", "fc"), "suffix": "_part01.sf2", "origs": "Fun_Fun"},
+    "blackbird": {"dir": ("out", "blackbird"), "suffix": "_native_part01.sf2",
+                  "origs": "LFT"},
 }
 
 MODE_NAMES = {0x00: "off", 0x10: "LP", 0x20: "BP", 0x30: "LP+BP",
@@ -88,6 +99,23 @@ def mode_sequence(frames):
     """
     return [f["volmode"] & 0x70 for _v, f in frames[1:]
             if f.get("volmode") is not None]
+
+
+def has_evidence(frames):
+    """Did this trace capture a playing tune at all?
+
+    A file siddump cannot drive returns a full-length series of zeroes, which is
+    byte-identical to "this tune never filters" and to "this tune is silent".
+    Comparing against it produces confident nonsense in whichever direction the
+    other side happens to differ. Requiring a sounded voice is the cheapest
+    honest gate: a tune with no frequency and no waveform on any voice for the
+    whole window was not playing.
+    """
+    for v, _g in frames[1:]:
+        for vi in range(3):
+            if v[vi].get("freq") or v[vi].get("wf"):
+                return True
+    return False
 
 
 def routed_fraction(frames):
@@ -217,6 +245,8 @@ def main(argv=None):
     print(f"{'file':<28s} {'original':<14s} {'ours':<14s} "
           f"{'oChg':>5s} {'dChg':>5s} {'off':>4s} {'agree':>7s} {'routed':>7s}")
     bad = []
+    unexercised = []
+    dead = []
     for b in builds:
         base = os.path.basename(b)[:-len(cfg["suffix"])]
         orig = find_original(base, cfg["origs"])
@@ -225,6 +255,13 @@ def main(argv=None):
             bad.append((base, "no original"))
             continue
         of = siddump_frames_full(orig, args)
+        if not has_evidence(of):
+            # NOT a result about this build. Refuse loudly rather than compare
+            # against silence -- see `has_evidence`.
+            print(f"{base:<28s} NO REFERENCE TRACE -- siddump drove no voice "
+                  f"on the ORIGINAL; nothing here can be compared")
+            dead.append(base)
+            continue
         om = mode_sequence(of)
         routed = routed_fraction(of)
         dm = mode_sequence(artifact_frames(b, args))
@@ -236,8 +273,16 @@ def main(argv=None):
         if pct is None:
             note = "   <== no $D418 rows on one side"
             bad.append((base, "unmeasured"))
+        elif routed == 0.0 and set(om) <= {0x00}:
+            # Nothing routed AND no passband ever selected: there is no filter
+            # behaviour here to reproduce. Counting this as a pass is the
+            # `exercised()` trap -- 0 == 0 reported as agreement.
+            unexercised.append(base)
+            note = "   (filter never exercised in this window -- NOT a pass)"
         elif routed == 0.0:
-            # True difference, nil severity. Shown, never counted.
+            # A real difference with nil severity: the original selects a
+            # passband but feeds no voice into the filter, so the bits choose
+            # among silent outputs.
             note = "   (no voice routed to the filter -- passband inaudible)"
         elif pct < a.min:
             # "original modulates, ours does not" is a LABEL for a failure, not
@@ -255,9 +300,23 @@ def main(argv=None):
         print(f"{base:<28s} {'/'.join(on):<14s} {'/'.join(dn):<14s} "
               f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s} {rshow:>7s}{note}")
 
-    print(f"\n{len(builds) - len(bad)}/{len(builds)} builds select the "
-          f"original's passband (or route nothing through the filter, where it "
-          f"cannot be heard)")
+    ok = len(builds) - len(bad) - len(unexercised) - len(dead)
+    if dead:
+        print(f"\n!! {len(dead)} file(s) have NO REFERENCE TRACE. siddump drove "
+              f"no voice on the original, so a comparison would be against "
+              f"silence. This is a TOOLING gap for that player, not a result: "
+              f"`SID/LFT/*` are validated against a simulator, not siddump.")
+        print(f"   {', '.join(sorted(dead)[:10])}"
+              f"{' ...' if len(dead) > 10 else ''}")
+    print(f"\n{ok}/{len(builds)} builds select the original's passband "
+          f"(or route nothing through the filter, where it cannot be heard)")
+    if unexercised:
+        print(f"  {len(unexercised)} file(s) NOT COUNTED EITHER WAY: the "
+              f"original never routes a voice and never selects a passband in "
+              f"this window, so there is nothing to reproduce. Widen "
+              f"--seconds before reading this as a corpus verdict.")
+        print(f"    {', '.join(sorted(unexercised)[:10])}"
+              f"{' ...' if len(unexercised) > 10 else ''}")
     if bad:
         # NOT "rebuild these, the builder is already correct". That was the
         # message until `Eagles`, `In_the_Mood` and `Roadblaster` came back at
