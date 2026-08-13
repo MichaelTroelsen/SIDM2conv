@@ -1447,11 +1447,38 @@ side, so it cannot be driving an all-muted residual. One untested confound
 remains — `residual/mix` is a ratio, so a quieter mix inflates it, and absolute
 levels were not checked.
 
-### About half the brightness gap is still open
+### The brightness gap is ONE FILE, and the corpus goes the other way
 
-After the fix the windowed step is roughly halved but still there (centroid
-−65/−146/−74 from 12 s on). That is the next lead, and it is a different
-mechanism from the passband.
+After the passband fix the windowed step on `Love_tune_2` is roughly halved but
+still there (centroid −65/−146/−74 from 12 s on). **That is a `Love_tune_2`
+fact and it does not generalise.** Measured across 9 tunes on 2026-08-13, each
+over a window inside its own part-1 span:
+
+| file | window | centroid Δ | rolloff Δ |
+|---|---:|---:|---:|
+| `Muminki_Rooooolz` | 28 s | **+172.5** | +500.7 |
+| `Ritual_II_tune_2` | 10 s | **+170.9** | +412.9 |
+| `Rune-T_Noter` | 14 s | +32.8 | +42.0 |
+| `Muza_Do_Dema` | 28 s | +28.9 | +64.4 |
+| `Takisobie` | 12 s | +18.7 | +100.8 |
+| `Walk_to_Soul` | 10 s | +11.7 | +140.8 |
+| `Something_to_Eat` | 10 s | +4.5 | +183.0 |
+| `Teekkno` | 28 s | −45.7 | −154.6 |
+| `Love_tune_2` | 28 s | **−51.4** | −169.6 |
+
+**Our render is darker on 2 of 9 and brighter on 7**, rolloff splitting the same
+way. So "the render is consistently darker, close the gap" is the wrong frame:
+there is a per-file spectral difference in both directions and no corpus-wide
+deficit to close. A mechanism proposed for a *darkness* gap has to explain
+`Muminki_Rooooolz` at **+172 Hz** as well.
+
+> ⚠️ **Every window here sits inside its file's part 1**, and that was nearly
+> got wrong a fourth time in one session. Five of these files have 10-14 s part
+> 1s and the first pass measured all nine over 28 s, past which our part loops
+> against the original's continuing music. The five moved substantially
+> (`Ritual_II_tune_2` +280.4 → +170.9, `Walk_to_Soul` +87.2 → +11.7,
+> `Takisobie` +84.8 → +18.7) though none changed sign. Quote a HardTrack audio
+> figure only with the part-1 span it was taken inside.
 
 Two things are already ruled out:
 
