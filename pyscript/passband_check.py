@@ -213,19 +213,30 @@ def main(argv=None):
         if pct is None:
             note = "   <== no $D418 rows on one side"
             bad.append((base, "unmeasured"))
-        elif oc and not dc:
-            note = "   <== original MODULATES, ours is static"
-            bad.append((base, f"static vs {oc} changes"))
         elif pct < a.min:
-            note = "   <== mode mismatch"
-            bad.append((base, f"{pct:.1f}%"))
+            # "original modulates, ours does not" is a LABEL for a failure, not
+            # a trigger for one. Firing it independently of the agreement score
+            # called `Alf_TV_Theme`, `Dragon_Sword` and `Slimbo4` broken at
+            # 100.0%: the original's only "change" is its initial off -> mode
+            # transition, and our build simply starts on the right mode. A
+            # genuinely static build against a modulating original cannot reach
+            # the threshold anyway -- `Hopscotch` sat at 87.2%.
+            note = ("   <== original MODULATES, ours is static" if oc and not dc
+                    else "   <== mode mismatch")
+            bad.append((base, f"static vs {oc} changes" if oc and not dc
+                        else f"{pct:.1f}%"))
         print(f"{base:<28s} {'/'.join(on):<14s} {'/'.join(dn):<14s} "
               f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s}{note}")
 
     print(f"\n{len(builds) - len(bad)}/{len(builds)} builds select the "
           f"original's passband")
     if bad:
-        print("FAILED -- rebuild these, the builder is already correct:")
+        # NOT "rebuild these, the builder is already correct". That was the
+        # message until `Eagles`, `In_the_Mood` and `Roadblaster` came back at
+        # 0.0% AFTER a rebuild, emitting mode `off` -- no passband at all. A
+        # rebuild distinguishes the two causes; it does not presume one.
+        print("FAILED -- rebuild these first; if it survives a rebuild the "
+              "builder is at fault, not the artifact:")
         for name, why in bad:
             print(f"  {name} ({why})")
         return 1

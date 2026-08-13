@@ -123,3 +123,17 @@ def test_the_fit_cannot_manufacture_agreement():
     ours = [0x40] * 100
     pct, _n, _oc, _dc, _off = pb.compare(orig, ours)
     assert pct == 0.0
+
+
+def test_a_modulating_original_does_not_condemn_a_100pct_build():
+    """`Alf_TV_Theme`, `Dragon_Sword` and `Slimbo4` were reported broken at
+    100.0% agreement. The original's only "mode change" is its initial
+    off -> LP+BP transition; our build starts already on LP+BP and matches every
+    frame that exists. Modulation-count is a LABEL for a failure, never a
+    trigger for one -- a genuinely static build against a modulating original
+    cannot reach the gate anyway (`Hopscotch` sat at 87.2%)."""
+    orig = [0x00] + [0x30] * 99
+    ours = [0x30] * 100
+    pct, _n, oc, dc, _off = pb.compare(orig, ours)
+    assert oc == 1 and dc == 0, "the shape that used to trigger the false flag"
+    assert pct >= 99.0, "yet it agrees on all but the one power-on frame"

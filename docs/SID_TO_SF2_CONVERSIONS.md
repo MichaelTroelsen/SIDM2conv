@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**981 songs / 7818 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**981 songs / 7935 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **949 songs / 7786 files** across 15 player dirs
+- `out/<player>/` native-build pipeline: **949 songs / 7903 files** across 15 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -27,12 +27,12 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 | Player | Composer | Pipeline | `out/` dir | Songs | SF2 Files | % of files |
 |--------|----------|----------|-----------|------:|----------:|-----------:|
-| SID Duzz' It (SDI) | Gallefoss/Tjelta | native (Stage B) | `out/sdi/` | 281 | 5227 | 67.1% |
-| DMC (Demo Music Creator) | Johannes Bjerregaard | native | `out/dmc/` | 57 | 943 | 12.1% |
-| Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 8.1% |
-| SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 4.7% |
+| SID Duzz' It (SDI) | Gallefoss/Tjelta | native (Stage B) | `out/sdi/` | 281 | 5227 | 66.1% |
+| DMC (Demo Music Creator) | Johannes Bjerregaard | native | `out/dmc/` | 57 | 943 | 11.9% |
+| Rob Hubbard | Rob Hubbard | native | `out/hubbard/` | 61 | 634 | 8.0% |
+| SID Duzz' It (SDI) | Gallefoss/Tjelta | Driver 11 (Stage A) | `out/sdi_sf2/` | 348 | 363 | 4.6% |
+| HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 313 | 4.0% |
 | Maniacs of Noise | Jeroen Tel | native | `out/mon/` | 27 | 206 | 2.6% |
-| HardTrack Composer | Longhair/Brush | native (Stage B) | `out/hardtrack_native/` | 33 | 196 | 2.5% |
 | Matt Gray | Matt Gray | native (Stage B) | `out/mattgray_native/` | 37 | 78 | 1.0% |
 | Martin Galway | Martin Galway | native | `out/galway_sf2/` | 40 | 40 | 0.5% |
 | Sound Monitor (Musicmaster) | Fun Fun | native | `out/soundmonitor/` | 11 | 27 | 0.3% |
@@ -42,7 +42,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Jeroen Kimmel (Hubbard-derived) | Jeroen Kimmel | Driver 11 (Stage A) | `out/kimmel_sf2/` | 9 | 9 | 0.1% |
 | HardTrack Composer | Longhair/Brush | Driver 11 (Stage A) | `out/hardtrack/` | 5 | 5 | 0.1% |
 | ROMUZAK V6.3 | Oliver Blasnik | native | `out/romuzak/` | 4 | 4 | 0.1% |
-| **Total** | | | **15 dirs** | **949** | **7786** | 100% |
+| **Total** | | | **15 dirs** | **949** | **7903** | 100% |
 
 ---
 
@@ -1035,43 +1035,43 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Muminki Rooooolz | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
 | Zakplus | HardTrack Composer | 1 | Driver 11.00 - The Standard | 1 | Wojciech Radziejewski (Shogoon) | 1999 Taboo |
 
-### HardTrack Composer — Longhair/Brush  ·  33 songs / 196 SF2 files
+### HardTrack Composer — Longhair/Brush  ·  33 songs / 313 SF2 files
 
 | Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
 |------|------------------|---------:|------------|------:|----------|----------|
-| Altered States Tune 1 | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
-| Altered States Tune 2 | HardTrack Composer | 1 | Romuzak | 14 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
-| Arizona Dream | HardTrack Composer | 2 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Altered States Tune 1 | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Altered States Tune 2 | HardTrack Composer | 1 | Romuzak | 17 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Arizona Dream | HardTrack Composer | 2 | Romuzak | 7 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
 | Astoria 7 tune 2 | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1996 Agony |
-| Domagareflexow | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1995 Samar Productions |
-| For Astoria 6 | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
-| Fun Factory | HardTrack Composer | 1 | Romuzak | 12 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
-| Griffin Score | HardTrack Composer | 4 | Romuzak | 20 | Wojciech Radziejewski (Shogoon) | 1993 Elysium |
-| Hopscotch | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo |
+| Domagareflexow | HardTrack Composer | 1 | Romuzak | 11 | Wojciech Radziejewski (Shogoon) | 1995 Samar Productions |
+| For Astoria 6 | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Fun Factory | HardTrack Composer | 1 | Romuzak | 22 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Griffin Score | HardTrack Composer | 4 | Romuzak | 21 | Wojciech Radziejewski (Shogoon) | 1993 Elysium |
+| Hopscotch | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo |
 | If I Was a Rich Man | HardTrack Composer | 1 | Romuzak | 1 | Shogoon & Longhair | 199? Elysium |
 | Illmatic end | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
-| Intrigue | HardTrack Composer | 1 | Romuzak | 1 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
-| Jazz and Weird Tekno | HardTrack Composer | 1 | Romuzak | 13 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Intrigue | HardTrack Composer | 1 | Romuzak | 5 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
+| Jazz and Weird Tekno | HardTrack Composer | 1 | Romuzak | 18 | Wojciech Radziejewski (Shogoon) | 1994 Taboo |
 | Jazzloor | HardTrack Composer | 1 | Romuzak | 4 | Shogoon & Longhair | 1994 Elysium |
 | Love tune 2 | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
 | Love tune 3 | HardTrack Composer | 1 | Romuzak | 11 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
 | Love tune 5 | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
-| Muminki Rooooolz | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
-| Muza Do Dema | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
-| Ritual II tune 1 | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
-| Ritual II tune 2 | HardTrack Composer | 1 | Romuzak | 7 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Muminki Rooooolz | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Muza Do Dema | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
+| Ritual II tune 1 | HardTrack Composer | 1 | Romuzak | 9 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
+| Ritual II tune 2 | HardTrack Composer | 1 | Romuzak | 14 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
 | Rune-T Noter | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1995 Taboo |
 | Shogoon-Rave | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 1994 Agony/Taboo |
-| Sling | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 2002 Elysium |
-| Something to Eat | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
+| Sling | HardTrack Composer | 1 | Romuzak | 5 | Wojciech Radziejewski (Shogoon) | 2002 Elysium |
+| Something to Eat | HardTrack Composer | 1 | Romuzak | 16 | Wojciech Radziejewski (Shogoon) | 1999 Elysium |
 | Takisobie | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1996 Taboo/Agony |
-| Teekkno | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
-| Timsoft Intro | HardTrack Composer | 1 | Romuzak | 8 | Wojciech Radziejewski (Shogoon) | 1994 Timsoft |
-| Trance | HardTrack Composer | 1 | Romuzak | 5 | Wojciech Radziejewski (Shogoon) | 1994 Agony |
-| Tribute to Laxity | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 2007 Shogoon |
-| Walk to Soul | HardTrack Composer | 1 | Romuzak | 3 | Wojciech Radziejewski (Shogoon) | 1996 Taboo |
-| What Can I Say Crap | HardTrack Composer | 1 | Romuzak | 5 | Wojciech Radziejewski (Shogoon) | 1993 Elysium |
-| Zakplus | HardTrack Composer | 1 | Romuzak | 2 | Wojciech Radziejewski (Shogoon) | 1999 Taboo |
+| Teekkno | HardTrack Composer | 1 | Romuzak | 4 | Wojciech Radziejewski (Shogoon) | 1995 Agony |
+| Timsoft Intro | HardTrack Composer | 1 | Romuzak | 13 | Wojciech Radziejewski (Shogoon) | 1994 Timsoft |
+| Trance | HardTrack Composer | 1 | Romuzak | 10 | Wojciech Radziejewski (Shogoon) | 1994 Agony |
+| Tribute to Laxity | HardTrack Composer | 1 | Romuzak | 10 | Wojciech Radziejewski (Shogoon) | 2007 Shogoon |
+| Walk to Soul | HardTrack Composer | 1 | Romuzak | 10 | Wojciech Radziejewski (Shogoon) | 1996 Taboo |
+| What Can I Say Crap | HardTrack Composer | 1 | Romuzak | 12 | Wojciech Radziejewski (Shogoon) | 1993 Elysium |
+| Zakplus | HardTrack Composer | 1 | Romuzak | 6 | Wojciech Radziejewski (Shogoon) | 1999 Taboo |
 
 ### Matt Gray — Matt Gray  ·  37 songs / 78 SF2 files
 

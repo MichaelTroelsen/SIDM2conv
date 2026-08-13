@@ -119,6 +119,42 @@ shift.
 (waveform), `$100B/$100E → $D402/3` (pulse), `$D416`/`$D418` (filter). DMC drives
 freq + waveform + pulse + filter — a full-featured player.
 
+## ⚠️ The `$D418` passband: 26 of 57 shipped builds were wrong
+
+`cffc51e` (2026-08-10) fixed the passband in **both** `build_dmc_native_song.py`
+and the HardTrack builder, and it was recorded only in `HARDTRACK.md`. DMC's
+artifacts were never rebuilt: 968 of 984 `out/dmc/*.sf2` still predated the fix
+on 2026-08-12, and `pyscript/passband_check.py --player dmc` scored **31 of 57**
+songs selecting the original's passband. `Balloon` — this document's headline —
+was among the failures, at **0.0%**.
+
+After rebuilding the 26 failures: **52 of 57**.
+
+**The DMC fidelity script could never have caught this.** `bin/_dmc_fidelity.py`
+scores freq / waveform / pulse, and `$D418` is in none of them. Re-measured
+after the rebuild, `Balloon` is **byte-identical to its published figures** —
+`v1 f 80.6/w100.0/p100.0, v2 f100.0/w100.0/p100.0, v3 f 97.7/w100.0/p100.0` —
+which is the point: a scorer blind to a register cannot report it wrong, and
+HardTrack's builder had the same blind spot ("scores frequency and nothing
+else"). That is why the passband check is a separate tool over the ARTIFACT
+rather than another column in either scorer.
+
+**Five still fail, and three of them are NOT staleness.** `Eagles`,
+`In_the_Mood` and `Roadblaster` emit mode `off` — no passband selected at all —
+before *and* after a rebuild. That is a builder defect and it is open.
+`Domino_Dancing` sits just under the gate at 99.0%; `French_Frites` at 69.2%.
+
+> ⚠️ **This check reads part 1 only**, against the original's first 28 s. Most
+> DMC songs split into many parts (`Alf_TV_Theme` 40, `Balloon` 77 before the
+> merge), so a clean result means "part 1's passband is right", never "the
+> song's is". A dirty result is conclusive; a clean one is not.
+
+> ⚠️ **`bin/_dmc_fidelity.py` is UNTRACKED** (`bin/_*.py` is gitignored), and it
+> is what produced every DMC number in this document including "the
+> best-evidenced number in the project". Not reproducible from a fresh clone —
+> the same defect `pyscript/soundmonitor_sweep.py` and
+> `pyscript/sdi_native_sweep.py` were promoted to fix. Promoting it is open work.
+
 ## Parser + decoder (`sidm2/dmc_parser.py`)
 
 Signature-locates the sector-ptr / sound / freq / track tables (relocation-safe, resolves

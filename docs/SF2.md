@@ -1110,43 +1110,43 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Muminki Rooooolz | Wojciech Radziejewski (Shogoon) | 1995 Agony | 1 |
 | Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 1 |
 
-### HardTrack Composer — Longhair/Brush  ·  `native (Stage B)`  ·  33 songs / 196 SF2 files
+### HardTrack Composer — Longhair/Brush  ·  `native (Stage B)`  ·  33 songs / 313 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
-| Altered States Tune 1 | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 6 |
-| Altered States Tune 2 | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 14 |
-| Arizona Dream | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 3 |
+| Altered States Tune 1 | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 9 |
+| Altered States Tune 2 | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 17 |
+| Arizona Dream | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 7 |
 | Astoria 7 tune 2 | Wojciech Radziejewski (Shogoon) | 1996 Agony | 9 |
-| Domagareflexow | Wojciech Radziejewski (Shogoon) | 1995 Samar Productions | 3 |
-| For Astoria 6 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 4 |
-| Fun Factory | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 12 |
-| Griffin Score | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 20 |
-| Hopscotch | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo | 4 |
+| Domagareflexow | Wojciech Radziejewski (Shogoon) | 1995 Samar Productions | 11 |
+| For Astoria 6 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 9 |
+| Fun Factory | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 22 |
+| Griffin Score | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 21 |
+| Hopscotch | Wojciech Radziejewski (Shogoon) | 1996 Agony/Taboo | 9 |
 | If I Was a Rich Man | Shogoon & Longhair | 199? Elysium | 1 |
 | Illmatic end | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 9 |
-| Intrigue | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 1 |
-| Jazz and Weird Tekno | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 13 |
+| Intrigue | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 5 |
+| Jazz and Weird Tekno | Wojciech Radziejewski (Shogoon) | 1994 Taboo | 18 |
 | Jazzloor | Shogoon & Longhair | 1994 Elysium | 4 |
 | Love tune 2 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 6 |
 | Love tune 3 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 11 |
 | Love tune 5 | Wojciech Radziejewski (Shogoon) | 1995 Agony | 4 |
-| Muminki Rooooolz | Wojciech Radziejewski (Shogoon) | 1995 Agony | 3 |
-| Muza Do Dema | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 3 |
-| Ritual II tune 1 | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 4 |
-| Ritual II tune 2 | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 7 |
+| Muminki Rooooolz | Wojciech Radziejewski (Shogoon) | 1995 Agony | 8 |
+| Muza Do Dema | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 8 |
+| Ritual II tune 1 | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 9 |
+| Ritual II tune 2 | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 14 |
 | Rune-T Noter | Wojciech Radziejewski (Shogoon) | 1995 Taboo | 8 |
 | Shogoon-Rave | Wojciech Radziejewski (Shogoon) | 1994 Agony/Taboo | 2 |
-| Sling | Wojciech Radziejewski (Shogoon) | 2002 Elysium | 2 |
-| Something to Eat | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 8 |
+| Sling | Wojciech Radziejewski (Shogoon) | 2002 Elysium | 5 |
+| Something to Eat | Wojciech Radziejewski (Shogoon) | 1999 Elysium | 16 |
 | Takisobie | Wojciech Radziejewski (Shogoon) | 1996 Taboo/Agony | 6 |
-| Teekkno | Wojciech Radziejewski (Shogoon) | 1995 Agony | 2 |
-| Timsoft Intro | Wojciech Radziejewski (Shogoon) | 1994 Timsoft | 8 |
-| Trance | Wojciech Radziejewski (Shogoon) | 1994 Agony | 5 |
-| Tribute to Laxity | Wojciech Radziejewski (Shogoon) | 2007 Shogoon | 4 |
-| Walk to Soul | Wojciech Radziejewski (Shogoon) | 1996 Taboo | 3 |
-| What Can I Say Crap | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 5 |
-| Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 2 |
+| Teekkno | Wojciech Radziejewski (Shogoon) | 1995 Agony | 4 |
+| Timsoft Intro | Wojciech Radziejewski (Shogoon) | 1994 Timsoft | 13 |
+| Trance | Wojciech Radziejewski (Shogoon) | 1994 Agony | 10 |
+| Tribute to Laxity | Wojciech Radziejewski (Shogoon) | 2007 Shogoon | 10 |
+| Walk to Soul | Wojciech Radziejewski (Shogoon) | 1996 Taboo | 10 |
+| What Can I Say Crap | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 12 |
+| Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 6 |
 
 ### Matt Gray — Matt Gray  ·  `native (Stage B)`  ·  37 songs / 78 SF2 files
 
