@@ -82,8 +82,11 @@ PLAYERS = {
     "sdi": {"dir": ("out", "sdi"), "suffix": "_native_part01.sf2",
             "origs": "Gallefoss_Glenn"},
     "fc": {"dir": ("out", "fc"), "suffix": "_part01.sf2", "origs": "Fun_Fun"},
+    # `ref: "sim"` -- siddump cannot drive an LFT rip, so the ORIGINAL side comes
+    # from the simulator BLACKBIRD.md validates against. It writes `$D418` from
+    # the tune's own filttable, which is exactly the register in question.
     "blackbird": {"dir": ("out", "blackbird"), "suffix": "_native_part01.sf2",
-                  "origs": "LFT"},
+                  "origs": "LFT", "ref": "sim"},
 }
 
 MODE_NAMES = {0x00: "off", 0x10: "LP", 0x20: "BP", 0x30: "LP+BP",
@@ -99,6 +102,33 @@ def mode_sequence(frames):
     """
     return [f["volmode"] & 0x70 for _v, f in frames[1:]
             if f.get("volmode") is not None]
+
+
+def sim_reference(orig_path, seconds):
+    """Per-frame reference from the Blackbird simulator, in siddump's shape.
+
+    Returned as `siddump_frames_full` output so `mode_sequence`,
+    `routed_fraction` and `has_evidence` all work unchanged -- the alternative
+    was a second comparison path, and two comparison paths is how the two sides
+    of a metric drift apart.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "bb_sim", os.path.join(ROOT, "bin", "blackbird_everyframe_sim.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bb_sim"] = mod          # @dataclass needs it importable
+    spec.loader.exec_module(mod)
+    _sim, frames, _recs = mod.run_sim(orig_path, seconds * 50)
+    out = []
+    for r in frames:
+        voices = {}
+        for vi in range(3):
+            b = vi * 7
+            voices[vi] = {"freq": r[b] | (r[b + 1] << 8), "wf": r[b + 4],
+                          "pul": r[b + 2] | ((r[b + 3] & 0x0F) << 8),
+                          "adsr": (r[b + 5] << 8) | r[b + 6]}
+        out.append((voices, {"cutoff": r[22], "filtctl": r[23], "volmode": r[24]}))
+    return out
 
 
 def has_evidence(frames):
@@ -272,7 +302,10 @@ def main(argv=None):
             print(f"{base:<28s} NO ORIGINAL FOUND -- cannot check")
             bad.append((base, "no original"))
             continue
-        of = siddump_frames_full(orig, args)
+        if cfg.get("ref") == "sim":
+            of = sim_reference(orig, a.seconds)
+        else:
+            of = siddump_frames_full(orig, args)
         if not has_evidence(of):
             # NOT a result about this build. Refuse loudly rather than compare
             # against silence -- see `has_evidence`.

@@ -230,3 +230,31 @@ def test_a_multipart_failure_is_unconfirmed_without_an_asserted_window():
     assert pct < 99.0, "the raw comparison sees a mismatch"
     # ...which is exactly the shape that must not be published as a defect
     # without knowing where part 1 ended.
+
+
+def test_blackbird_uses_the_simulator_as_its_reference():
+    """siddump cannot drive an LFT rip, which left the one player whose docs
+    describe a per-frame `$D418` rewrite unmeasurable -- and produced three
+    confident wrong readings before `has_evidence` stopped them.
+    `bin/blackbird_everyframe_sim.py` is the reference BLACKBIRD.md validates
+    against and models `$D418` directly (`self.w(24, self.filttable(y))`).
+    Against it, all 16 builds score 100.0%."""
+    assert pb.PLAYERS["blackbird"]["ref"] == "sim"
+    assert os.path.exists(os.path.join(
+        pb.ROOT, "bin", "blackbird_everyframe_sim.py"))
+
+
+def test_the_simulator_reference_has_siddumps_shape():
+    """Returned in `siddump_frames_full`'s shape on purpose, so
+    `mode_sequence`, `routed_fraction` and `has_evidence` all work unchanged. A
+    second comparison path is how the two sides of a metric drift apart."""
+    orig = os.path.join(pb.ROOT, "SID", "LFT", "Fargo.sid")
+    if not os.path.exists(orig):
+        return
+    fr = pb.sim_reference(orig, 1)
+    assert len(fr) == 50
+    voices, glob_ = fr[0]
+    assert set(voices) == {0, 1, 2}
+    assert {"freq", "wf", "pul"} <= set(voices[0])
+    assert {"cutoff", "filtctl", "volmode"} <= set(glob_)
+    assert pb.has_evidence(fr) is True, "the simulator drives it where siddump cannot"

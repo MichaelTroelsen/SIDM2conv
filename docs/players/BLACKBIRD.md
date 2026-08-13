@@ -73,6 +73,33 @@ files (see "Stage B1" through "B15" sections below); no
 still well below other players' native drivers) — see "What's genuinely
 proven vs. still open".
 
+## The `$D418` passband: correct, 16/16 — and unmeasurable until the reference was fixed
+
+The passband defect found on MoN, HardTrack, DMC and SDI does **not** affect this
+player: `pyscript/passband_check.py --player blackbird` scores **16 of 16 at
+100.0%**, mode sets and change counts matching (`Toy_Rocket` LP/BP/LP+BP,
+`Into_the_Unknown` off/LP/LP+BP, `To_Die_For_II` off/LP/BP), at a fitted −2
+offset.
+
+⚠️ **Getting there required fixing the reference, and the first three answers
+were all wrong.** siddump **cannot drive an LFT rip**: 0 frames with any
+frequency or waveform and `$D418` = 0 across 2,999 frames. Compared against
+that silence the check reported, in order, "16/16 pass", then "16 originals
+never route a voice", then **"our builds route the filter on 56–100% of frames
+where the original routes 0%"** — which reads as a real audible defect and was
+one commit from being published as one. An all-zero trace is byte-identical to
+"this tune never filters" and to "this file cannot be driven"; only asking
+whether a voice ever sounded separates them (`PATTERNS.md` F7, and the
+`zig64-gate-false-pass` rule this repo already had).
+
+The reference is `bin/blackbird_everyframe_sim.py` — the same simulator this
+document validates everything else against. It models the register directly
+(`self.regs` is a 25-byte `$D400-$D418` shadow; `self.w(24, self.filttable(y))`
+writes the tune's own filter-program byte), so it answers exactly the question
+siddump could not. `passband_check` declares it per player via `ref: "sim"` and
+returns it in siddump's shape, so the comparison code is shared rather than
+forked.
+
 ## Corpus scope
 
 `SID/LFT/` has 59 files by Linus Åkesson. Splitting by how closely each file's
