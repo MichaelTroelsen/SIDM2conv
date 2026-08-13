@@ -139,8 +139,17 @@ HardTrack's builder had the same blind spot ("scores frequency and nothing
 else"). That is why the passband check is a separate tool over the ARTIFACT
 rather than another column in either scorer.
 
-**Two still fail:** `Domino_Dancing` just under the gate at 99.0%, and
-`French_Frites` at 69.2% — both route the filter, so both are real.
+**One confirmed failure.** ⚠️ `Domino_Dancing`'s 99.0% is **withdrawn**: its
+part 1 spans 596 frames and the check compared 1,400, so past its end our part
+**looped** and showed 5 mode changes against the original's 1. At the 12 s its
+part actually spans it is **100.0%, 1 change against 1**. `French_Frites` is
+real — at its true 39 s span it still reads **49.6%**, holding LP+BP+HP while
+the original moves through HP and BP+HP. `DMC_Demo_IV_tune_5` reads 98.0% at
+10 s, and its 3 mode changes all occur with the **cutoff unchanged**, which is
+the one mechanism with support: a passband is only expressible where the builder
+emits a filter row, so a mode change that coincides with no cutoff change has
+nowhere to go. `Zoom`, which passes at 100%, changes mode only where the cutoff
+also moves.
 
 **Three more were failures for three consecutive runs and should never have
 been.** `Eagles`, `In_the_Mood` and `Roadblaster` emit mode `off` — no passband

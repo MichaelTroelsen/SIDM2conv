@@ -208,3 +208,25 @@ def test_a_silent_tune_and_an_undriveable_file_look_identical():
     assert pb.mode_sequence(zeros) == [0x00] * 29, "reads as a valid 'off'"
     assert pb.routed_fraction(zeros) == 0.0, "reads as a valid 'routes nothing'"
     assert pb.has_evidence(zeros) is False, "only this distinguishes them"
+
+
+def test_a_multipart_failure_is_unconfirmed_without_an_asserted_window():
+    """The window flaw, third occurrence in one session and second tool. The
+    check compared part 1 against a fixed 28 s for every file; HardTrack part 1s
+    are 6-12 s and DMC's `Domino_Dancing` is 12 s. Past its end our part LOOPS,
+    so the comparison ran our restarted part against the original's continuing
+    music and counted the difference as a defect:
+
+        Something_to_Eat   68.7% -> 100.0% at its real 10 s   (31 changes vs 31)
+        Illmatic_end       71.1% -> 100.0% at 6 s             (8 vs 8)
+        Domino_Dancing     99.0% -> 100.0% at 12 s            (1 vs 1)
+
+    Over-running can only MANUFACTURE disagreement, never hide it, so passes
+    need no such caveat -- a file that matched across a too-long window matched
+    everywhere it was compared. Only failures are downgraded."""
+    orig = [0x10] * 500                       # the original keeps going
+    ours = ([0x10] * 250) + ([0x60] * 250)    # our part loops and diverges
+    pct, _n, _oc, _dc, _off = pb.compare(orig, ours)
+    assert pct < 99.0, "the raw comparison sees a mismatch"
+    # ...which is exactly the shape that must not be published as a defect
+    # without knowing where part 1 ended.

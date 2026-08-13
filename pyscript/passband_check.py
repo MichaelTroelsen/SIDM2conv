@@ -227,7 +227,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--player", choices=sorted(PLAYERS), default="hardtrack")
-    ap.add_argument("--seconds", type=int, default=28)
+    ap.add_argument("--seconds", type=int, default=28,
+                    help="comparison window. Passing it explicitly ASSERTS that "
+                         "it fits part 1; without that a failure on a multi-part "
+                         "build is reported UNCONFIRMED, because our part loops "
+                         "inside a too-long window and manufactures mismatch")
     ap.add_argument("--files", nargs="*", metavar="NAME",
                     help="check only these songs (no suffix)")
     ap.add_argument("--limit", type=int, metavar="N",
@@ -259,6 +263,8 @@ def main(argv=None):
     bad = []
     unexercised = []
     dead = []
+    unconfirmed = []
+    asserted_window = any(a_.startswith("--seconds") for a_ in (argv or sys.argv[1:]))
     for b in builds:
         base = os.path.basename(b)[:-len(cfg["suffix"])]
         orig = find_original(base, cfg["origs"])
@@ -304,15 +310,32 @@ def main(argv=None):
             # transition, and our build simply starts on the right mode. A
             # genuinely static build against a modulating original cannot reach
             # the threshold anyway -- `Hopscotch` sat at 87.2%.
-            note = ("   <== original MODULATES, ours is static" if oc and not dc
-                    else "   <== mode mismatch")
-            bad.append((base, f"static vs {oc} changes" if oc and not dc
-                        else f"{pct:.1f}%"))
+            why = (f"static vs {oc} changes" if oc and not dc else f"{pct:.1f}%")
+            nparts = len(glob.glob(os.path.join(
+                build_dir, base + cfg["suffix"].replace("01", "*"))))
+            if nparts > 1 and not asserted_window:
+                # Our part 1 may have looped inside this window. Over-run can
+                # only MANUFACTURE disagreement, so this is not counted as a
+                # pass either -- it is simply not established.
+                unconfirmed.append((base, why, nparts))
+                note = f"   <== UNCONFIRMED ({nparts} parts; window may over-run part 1)"
+            else:
+                note = ("   <== original MODULATES, ours is static" if oc and not dc
+                        else "   <== mode mismatch")
+                bad.append((base, why))
         rshow = "n/a" if routed is None else f"{100.0 * routed:.0f}%"
         print(f"{base:<28s} {'/'.join(on):<14s} {'/'.join(dn):<14s} "
               f"{oc:5d} {dc:5d} {off:>4d} {shown:>7s} {rshow:>7s}{note}")
 
-    ok = len(builds) - len(bad) - len(unexercised) - len(dead)
+    ok = len(builds) - len(bad) - len(unexercised) - len(dead) - len(unconfirmed)
+    if unconfirmed:
+        print(f"\n{len(unconfirmed)} file(s) UNCONFIRMED -- multi-part builds "
+              f"whose part 1 may end inside this window, so the mismatch may be "
+              f"our own loop rather than the build. Re-run with an explicit "
+              f"--seconds that fits part 1 (`Domino_Dancing` reads 99.0% at 28s "
+              f"and 100.0% at the 12s its part actually spans).")
+        for name, why, nparts in unconfirmed:
+            print(f"    {name} ({why}, {nparts} parts)")
     if sampled:
         print(f"\n!! SAMPLE of {len(builds)} -- not a corpus verdict")
     if dead:

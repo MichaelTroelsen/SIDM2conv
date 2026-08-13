@@ -1323,13 +1323,34 @@ After rebuilding all 33:
 | before | **2** by construction (12 by the check) | 10 correct only because their original is LP-only |
 | after | **24 of 33** | all 10 static-wrong files → 100.0% |
 
-The 9 that still fail (57-89%) have changed class entirely: every one now
-**modulates**, and `Something_to_Eat` makes 88 mode changes against the
-original's 87. What is wrong is the *timing* of the changes, not their absence.
-Fitted offsets land on **−3**, matching this document's own render offset.
+⚠️ **The "9 remaining failures" reported here on 2026-08-13 are RETRACTED.**
+They were an artifact of the checking window, not defects. `passband_check`
+compared part 1 against a fixed 28 s for every file; HardTrack part 1s are
+**6-12 s**, and past its end our part **loops**, so the comparison ran our
+restarted part against the original's continuing music. Re-checked at each
+file's true part-1 span, read off the builder:
 
-**All 9 route the filter on 59-100% of frames**, so none of them is the
-inaudible class DMC turned out to have. `passband_check.py` reports the routed
+| file | at fixed 28 s | true part 1 | at its true span |
+|---|---|---|---|
+| `Something_to_Eat` | 68.7% | 10 s | **100.0%** (31 mode changes vs 31) |
+| `Illmatic_end` | 71.1% | 6 s | **100.0%** (8 vs 8) |
+| `Takisobie` | 57.2% | 12 s | **99.8%** |
+| `Fun_Factory` | 69.5% | 6 s | **99.0%** |
+
+`Something_to_Eat` was the headline example — "88 mode changes against the
+original's 87". At its real span it is **31 against 31**; the extra changes were
+our own loop. The claim that the residual is mode *timing* rests on nothing.
+Fitted offsets do land on −3, matching this document's render offset, and that
+part still holds.
+
+The other 5 are unchecked at their true spans. `passband_check` now reports a
+multi-part failure as **UNCONFIRMED** unless `--seconds` is asserted, because
+over-running can only manufacture disagreement — which also means the **passes
+are unaffected**: a file that matched across a too-long window matched
+everywhere it was compared.
+
+All 9 route the filter on 59-100% of frames, so none of them was the inaudible
+class DMC turned out to have — but that was never the reason they failed. `passband_check.py` reports the routed
 fraction because `$D418`'s mode bits choose which filter OUTPUT is summed while
 `$D417`'s low nibble chooses which voices are fed IN — a passband mismatch on a
 tune that routes nothing cannot be heard, and three DMC files were counted as
