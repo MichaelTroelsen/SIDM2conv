@@ -158,6 +158,30 @@ def score_pair(orig, prb, secs):
     return per, counted, dly
 
 
+_REFUSALS = (
+    "tables not located",
+    "cannot build",
+    "no sound table",
+    "onsets disagree",
+)
+
+
+def _classify_build_failure(text):
+    """Builder refusal (a result) vs unexpected failure (a fault).
+
+    The builder states its reason; anything matching one of the known refusal
+    phrases is recorded as `refused` with that reason rather than counted as an
+    error. Unknown failures stay errors -- a refusal list that swallows
+    everything would hide a real break.
+    """
+    tail = [l for l in text.splitlines() if l.strip()]
+    last = tail[-1][:160] if tail else ""
+    for phrase in _REFUSALS:
+        if phrase in text:
+            return {"refused": last or phrase}
+    return {"error": last or "build failed with no output"}
+
+
 def measure(name, secs, build=False, timeout=1800):
     """One song -> a record. Distinguishes the outcomes that matter: scored,
     never built, or source missing."""
@@ -171,8 +195,7 @@ def measure(name, secs, build=False, timeout=1800):
             [sys.executable, os.path.join(ROOT, "bin", "build_dmc_native_song.py"),
              sid, "auto"], capture_output=True, text=True, cwd=ROOT, timeout=timeout)
         if r.returncode != 0:
-            tail = [l for l in (r.stdout + r.stderr).splitlines() if l.strip()]
-            return {"error": tail[-1][:120] if tail else f"build rc={r.returncode}"}
+            return _classify_build_failure(r.stdout + r.stderr)
         span = part1_span(r.stdout + r.stderr)
     parts = sorted(glob.glob(os.path.join(BUILD_DIR, f"{name}_part*.sf2")))
     if not parts:
@@ -235,6 +258,9 @@ def main(argv=None):
                              f"/p{fmt_pct(m['pul'], n=rec['n'])}")
             print(f"  [{i}/{len(corpus)}] {name:28s} dly={rec['offset']:+d} "
                   f"{'  '.join(cells)}  n={rec['n']} parts={rec['parts']}", flush=True)
+        elif rec.get("refused"):
+            print(f"  [{i}/{len(corpus)}] {name:28s} "
+                  f"REFUSED ({rec['refused'][:70]})", flush=True)
         elif rec.get("not_built"):
             print(f"  [{i}/{len(corpus)}] {name:28s} NOT BUILT", flush=True)
         elif rec.get("needs_bounds"):
@@ -247,8 +273,9 @@ def main(argv=None):
     scored = {k: v for k, v in results.items() if v.get("voices")}
     not_built = sum(1 for v in results.values() if v.get("not_built"))
     needs = sum(1 for v in results.values() if v.get("needs_bounds"))
-    errored = len(results) - len(scored) - not_built - needs
-    print(f"\nscored {len(scored)}  not built {not_built}  "
+    refused = sum(1 for v in results.values() if v.get("refused"))
+    errored = len(results) - len(scored) - not_built - needs - refused
+    print(f"\nscored {len(scored)}  refused {refused}  not built {not_built}  "
           f"needs bounds {needs}  errored {errored}  of {len(corpus)}")
     if needs:
         print(f"  ({needs} multi-part song(s) not scored: part 1's span is not "

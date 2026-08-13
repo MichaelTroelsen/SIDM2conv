@@ -138,3 +138,26 @@ def test_an_asserted_window_is_honoured():
         return
     assert rec.get("voices"), "an asserted window must actually score"
     assert rec["n"] > 19000, "400s at 50fps"
+
+
+def test_a_builder_refusal_is_not_an_error():
+    """14 of 88 corpus files are NO-TABLES and 18 are FALLBACK. The builder
+    declining a variant it cannot locate is designed behaviour; counting it as a
+    fault reports 32 working refusals as 32 things going wrong. DMC.md carries
+    an 'ELIGIBLE IS NOT AN ACCURACY FIGURE' box because this distinction has
+    been lost here before."""
+    rec = sw._classify_build_failure(
+        "locating tables...\nDMC tables not located (variant?) - cannot build\n")
+    assert "refused" in rec and "error" not in rec
+    assert "not located" in rec["refused"]
+
+
+def test_an_unknown_failure_stays_an_error():
+    """A refusal list that swallows everything would hide a real break."""
+    rec = sw._classify_build_failure("Traceback...\nZeroDivisionError: division by zero\n")
+    assert "error" in rec and "refused" not in rec
+
+
+def test_a_silent_build_failure_is_still_an_error():
+    rec = sw._classify_build_failure("")
+    assert rec["error"] == "build failed with no output"
