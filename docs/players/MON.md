@@ -9,6 +9,33 @@ Covered tunes so far: **Hawkeye**, **Cybernoid**, **Cybernoid II**, **Myth**, **
 
 ---
 
+## ⚠️ The `$D418` passband fix landed in the builder; the artifacts kept the bug
+
+`464406a` (2026-08-08, *"MoN rebuilt every tune with a low-pass filter, whatever
+it selected"*) is where `passband_trace` was written. **131 of the 206 `out/mon`
+`.sf2` files, across 16 songs, still predate it.** Checked with
+`pyscript/passband_check.py --player mon`, which measures the ARTIFACT rather
+than the builder:
+
+**8 of 19 checkable builds select the wrong passband**, five of them at 0.0%
+with the filter routed on 100% of frames — `Daring_Dots`, `G_I_Hero`, `Ice_Age`,
+`M_A_C_C` and `Myth` all render plain LP where the original selects LP+BP or
+LP+HP. `Children_Songs`, `Gaplus` and `Pal_sine_hoener_tune_1` are the
+modulating class. `Supremacy` and `Viool_Tello` differ too but route **nothing**
+through the filter, so theirs is inaudible and is not counted.
+
+This is the **third** player found this way, after HardTrack (21 of 33 wrong)
+and DMC (26 of 57). In each case a session fixed the builder, never regenerated
+the output, and the player doc went on quoting the builder. The lesson is not
+about the filter: **a fix in a builder is not a fix in the corpus**, and nothing
+in this repo measured shipped artifacts until now.
+
+> ⚠️ **Do not blind-rebuild these.** `Myth` is a relocating compilation and needs
+> `bin/build_myth_native_song.py`, **not** the generic `build_mon_native_song.py`
+> — and `Myth` is one of the eight. MoN songs also carry subtune arguments.
+> Coverage is partial for the same reason: only 19 songs expose a
+> `_sub0_part01.sf2` for the checker to find.
+
 ## The MoN engine (reverse-engineered)
 
 MoN is a two-level **orderlist → pattern** player with a per-frame effects engine:

@@ -67,6 +67,12 @@ PLAYERS = {
                   "origs": "*"},
     "dmc": {"dir": ("out", "dmc"), "suffix": "_part01.sf2",
             "origs": "JohannesBjerregaard"},
+    # MoN is where `passband_trace` was WRITTEN (464406a, 2026-08-08, "MoN
+    # rebuilt every tune with a low-pass filter, whatever it selected") -- and
+    # 131 of its 206 artifacts across 16 songs still predate that fix. The
+    # builder being right is not the question this tool asks.
+    "mon": {"dir": ("out", "mon"), "suffix": "_sub0_part01.sf2",
+            "origs": "Tel_Jeroen"},
 }
 
 MODE_NAMES = {0x00: "off", 0x10: "LP", 0x20: "BP", 0x30: "LP+BP",

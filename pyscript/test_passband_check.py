@@ -160,3 +160,16 @@ def test_an_unrouted_filter_makes_the_passband_inaudible():
     # The mode comparison itself still reports the difference honestly.
     pct, _n, _oc, _dc, _off = pb.compare([0x10] * 9, [0x00] * 9)
     assert pct == 0.0, "the difference is still measured, just not counted"
+
+
+def test_every_player_whose_builder_was_fixed_is_checkable():
+    """The defect is not per-player, it is per-ARTIFACT-SET, and it has now
+    appeared three times: HardTrack 21 of 33 wrong, DMC 26 of 57, MoN 8 of 19.
+    Each time a session fixed the builder and left the output, and each time the
+    player doc quoted the builder. A player whose builder got `passband_trace`
+    but has no entry here cannot be checked at all."""
+    for player in ("hardtrack", "dmc", "mon"):
+        assert player in pb.PLAYERS
+        cfg = pb.PLAYERS[player]
+        assert cfg["suffix"].endswith((".sf2", ".sid"))
+        assert cfg["origs"], "an empty origs glob silently finds no originals"
