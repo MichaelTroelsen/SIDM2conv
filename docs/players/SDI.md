@@ -248,8 +248,36 @@ every failure class, all **0.0% → 100.0%** with the music unchanged:
 > reports them if their originals select otherwise — a stated gap beats a
 > 3-tuple of the wrong thing.
 
-**The corpus was NOT rebuilt.** 262 songs is hours, and every one of them still
-carries the low-pass default until it is. See `PATTERNS.md` F7.
+**Corpus rebuilt and re-checked (2026-08-13/14, 441 files, 23 chunks):**
+
+| | |
+|---|---:|
+| select the original's passband | **237 of 281** |
+| unexercised (original never routes and never selects one) | 7 |
+| unconfirmed (multi-part, window may over-run part 1) | 33 |
+| failed | **5** |
+
+Before the fix a 30-file sample was 12 pass / 15 fail. Build outcomes are
+unchanged by the fix — **261 built / 62 refused / 118 errored** against
+262/62/117 before, and per-variant fidelity medians move only where one variant-D
+file stopped building (A 99.9, B 99.9, C 98.1, D 96.3, DELTA 99.9, E 99.7,
+V 96.8). That is the expected result: `$D418` is in none of the freq+wf columns,
+so a build-rate change would have meant something was broken.
+
+⚠️ **Three of the five failures are `*_VE-4x` files — the V path, exactly as
+predicted.** `Different_Reality_VE-4x`, `Underwear_VE-4x` and
+`Implocation_VE-4x` each differ by **12 audible frames** at 98.6% (an `off →
+LP` startup difference); `Filthy_Hit_VE-4x` is the real one at **0.0% with 1,387
+audible frames**, selecting BP where we write LP. That is the documented cost of
+leaving `v_traces` alone, and it is now measured rather than assumed. The other
+two failures are `Coming_Soon` (90.9%) and `Lederhosen`, plus `Bahbar_v` which
+has no original to compare against.
+
+The 33 unconfirmed are multi-part files whose part 1 may end inside the 28 s
+window; resolving them needs a per-file asserted `--seconds`. Their mode SETS and
+change counts now track the originals closely (`Finish_Line` 56 vs 56,
+`Curse` 87 vs 84, `Homebrew` 85 vs 84), where before the fix every one of them
+was a flat `LP` with 0 changes.
 
 ### The corpus sweep (`pyscript/sdi_native_sweep.py`, 2026-08-12)
 
