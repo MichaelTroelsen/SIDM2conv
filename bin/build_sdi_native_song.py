@@ -202,9 +202,17 @@ def _v_module_addrs(d, la, init_addr):
 def v_traces(d, la, mod_init, mod_play, mult, nframes):
     """Drive the V module directly (siddump/measure_onsets can't -- play=$0000):
     py65 module init, then play x mult per video frame, snapshotting the SID.
-    Returns (per_frame, filter_trace, onsets) in the same shapes siddump_per_frame
-    / siddump_filter_trace / measure_onsets produce -- this IS the ground-truth
-    player output for a V rip."""
+    Returns (per_frame, filter_trace, passband, onsets) in the same shapes
+    siddump_per_frame / siddump_filter_trace / BM.passband_trace / measure_onsets
+    produce -- this IS the ground-truth player output for a V rip.
+
+    `passband` was NOT captured until 2026-08-14, and the omission was documented
+    rather than fixed: every V build kept `_filt_set_row`'s low-pass default, so
+    `Filthy_Hit_VE-4x` rendered LP over 1,387 audible frames where its original
+    selects BP, and three more differed by 12 frames each. It is the same class
+    as the MoN `Myth` gap (PATTERNS.md F7) -- a register the builder never
+    recorded, invisible to every freq/wf/pulse column -- and the fix is the same
+    one line, on the same clock as `cut` and `$D417`."""
     from sidm2.cpu6502_emulator import CPU6502Emulator
     cpu = CPU6502Emulator()
     cpu.load_memory(bytes(d), la)
@@ -222,7 +230,7 @@ def v_traces(d, la, mod_init, mod_play, mult, nframes):
                 return
 
     call(mod_init)
-    per, filt, onsets, prev = [], [], [[], [], []], [0, 0, 0]
+    per, filt, pb, onsets, prev = [], [], [], [[], [], []], [0, 0, 0]
     for fr in range(nframes):
         for _ in range(max(1, mult)):
             call(mod_play)
@@ -239,7 +247,10 @@ def v_traces(d, la, mod_init, mod_play, mult, nframes):
         cut = (cpu.mem[0xD415] & 7) | (cpu.mem[0xD416] << 3)
         per.append((st, cut))
         filt.append((cut, cpu.mem[0xD417]))
-    return per, filt, onsets
+        # mode bits 4-6 shifted down (1 low, 2 band, 4 high) -- BM.passband_trace's
+        # encoding exactly, so the two paths hand `build_native_song` one shape
+        pb.append((cpu.mem[0xD418] >> 4) & 0x07)
+    return per, filt, pb, onsets
 
 
 def build_song(shim, base, traces, span):
@@ -376,14 +387,33 @@ def main():
         nframes = dec_span
         print(f"  V wrapper: module init=${mod_init:04X} play=${mod_play:04X} "
               f"mult={m.lay.v_mult}; driving {nframes} frames via py65...")
-        pf, filt, onsets = v_traces(d, la, mod_init, mod_play, m.lay.v_mult, nframes)
-        # 2-tuple ON PURPOSE: the V path is driven through py65 and `v_traces`
-        # does not record $D418 at all, so there is no passband to pass. Those
-        # builds keep the low-pass default and `pyscript/passband_check.py` will
-        # report them if their originals select otherwise. Capturing it here
-        # means extending the py65 tracer, which is a separate change; leaving a
-        # 3-tuple of the wrong thing would be worse than a stated gap.
-        traces = (pf, filt)
+        pf, filt, pb, onsets = v_traces(
+            d, la, mod_init, mod_play, m.lay.v_mult, nframes)
+        # A 3-tuple like every other path since 2026-08-14. It used to be a
+        # 2-tuple on purpose -- `v_traces` recorded no $D418, so there was no
+        # passband to pass and the builds kept `_filt_set_row`'s low-pass
+        # default. That was a stated gap and it cost exactly what was predicted:
+        # `Filthy_Hit_VE-4x` at 0.0% over 1,387 audible frames, selecting BP.
+        traces = (pf, filt, pb)
+        # State what was captured. The V rip is the one family where siddump
+        # cannot drive the player, so this py65 list is the ONLY reference --
+        # and comparing a build against a reference nobody printed is how three
+        # confident wrong Blackbird readings happened (PATTERNS.md F7).
+        _PB = {0: 'off', 1: 'LP', 2: 'BP', 3: 'LP+BP', 4: 'HP', 5: 'LP+HP',
+               6: 'BP+HP', 7: 'ALL'}
+        _runs, _cur, _n = [], None, 0
+        for _v in pb:
+            if _v == _cur:
+                _n += 1
+            else:
+                if _cur is not None:
+                    _runs.append((_cur, _n))
+                _cur, _n = _v, 1
+        if _cur is not None:
+            _runs.append((_cur, _n))
+        print("  V passband ($D418 bits 4-6): "
+              + ", ".join(f"{_PB.get(v, v)} x{n}" for v, n in _runs[:8])
+              + (" ..." if len(_runs) > 8 else ""))
     else:
         print(f"  tracing {secs}s...")
         # The THIRD element is the $D418 passband. Without it `_filt_set_row`

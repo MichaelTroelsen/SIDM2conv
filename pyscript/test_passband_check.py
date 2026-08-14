@@ -301,3 +301,58 @@ def test_audible_is_None_when_routing_was_not_supplied():
     mismatches are inaudible."""
     _pct, _n, _oc, _dc, _off, audible = pb.compare([0x10] * 10, [0x00] * 10)
     assert audible is None
+
+
+# --- the variant-V reference -----------------------------------------------
+#
+# `Filthy_Hit_VE-4x` read 0.0% over 1,387 audible frames against siddump, and it
+# was not a build defect. The V wrapper declares `play=$0000` and installs its
+# own IRQ at `v_mult` calls per frame; siddump calls the player ONCE per frame,
+# so on a tune that alternates its passband WITHIN the frame the two sample
+# different instants. Measured on that file over 400 frames:
+#
+#     py65 mult=1 : off x6,  BP x384, LP x10     <- reproduces siddump
+#     py65 mult=4 : off x1,  BP x96,  LP x303    <- the tune's real rate
+#     siddump     : off x25, BP x375
+#
+# Driving the module at its real rate is the only reference that can adjudicate
+# a V build, and it is the same trace the builder captures from. These tests pin
+# the wiring, not the numbers -- the numbers need a build.
+
+
+def test_sdi_declares_a_per_file_reference():
+    """`sdi_v` must be per FILE. Making it per player would swap the reference
+    for all 281 SDI builds to fix 5, and the other five variants are driven
+    perfectly well by siddump."""
+    assert pb.PLAYERS["sdi"].get("ref") == "sdi_v"
+    assert hasattr(pb, "sdi_v_reference")
+
+
+def test_the_v_reference_declines_a_non_v_file():
+    """It returns None for anything that is not variant V, so the caller falls
+    back to siddump. A reference that answered for every SDI file would be a
+    silent corpus-wide change dressed as a four-file fix."""
+    import inspect
+    src = inspect.getsource(pb.sdi_v_reference)
+    assert 'variant' in src and 'return None' in src
+
+
+def test_the_v_reference_reconstructs_the_passband_in_d418_position():
+    """`v_traces` records $D418's mode bits already shifted DOWN, and
+    `mode_sequence` masks `& 0x70`. Handing the shifted-down value through
+    unshifted would read every BP as `off` and score a confident 0%."""
+    import inspect
+    src = inspect.getsource(pb.sdi_v_reference)
+    assert '<< 4' in src, "the passband must be put back in bits 4-6"
+
+
+def test_a_v_style_within_frame_alternation_is_not_scored_as_agreement():
+    """The shape the two references disagree about: a tune whose passband
+    alternates frame to frame against one that holds a single mode. Whichever is
+    right, they are not the same sequence and must not read as one."""
+    alternating = [0x20 if i % 2 else 0x10 for i in range(100)]
+    static = [0x20] * 100
+    pct, _n, oc, dc, _off, _aud = pb.compare(alternating, static,
+                                             routed_seq=[1] * 100)
+    assert pct is not None and pct < 60.0
+    assert oc > dc == 0, "the original modulates and ours does not"

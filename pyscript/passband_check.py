@@ -79,8 +79,16 @@ PLAYERS = {
     # low-pass -- a verdict reached from ONE file per player, which is the same
     # sampling that made "missing passband reads as darker" wrong. Entries exist
     # so the claim can be tested against a corpus instead of asserted.
+    # `ref: "sdi_v"` is per FILE, not per player: only the `*_VE-4x` variant-V
+    # rips need it. Their wrapper declares `play=$0000` and installs its own IRQ
+    # at `v_mult` calls per frame, so siddump -- which calls the player ONCE per
+    # frame -- samples a different instant of the same tune. On `Filthy_Hit` that
+    # is not a rounding difference: siddump reads BP for 375 of 400 frames while
+    # the tune at its real rate ends 303 of them on LP. Driving the module
+    # through py65 at `v_mult`, which is what the builder captures from, is the
+    # only reference that can adjudicate a V build.
     "sdi": {"dir": ("out", "sdi"), "suffix": "_native_part01.sf2",
-            "origs": "Gallefoss_Glenn"},
+            "origs": "Gallefoss_Glenn", "ref": "sdi_v"},
     "fc": {"dir": ("out", "fc"), "suffix": "_part01.sf2", "origs": "Fun_Fun"},
     # `ref: "sim"` -- siddump cannot drive an LFT rip, so the ORIGINAL side comes
     # from the simulator BLACKBIRD.md validates against. It writes `$D418` from
@@ -128,6 +136,48 @@ def sim_reference(orig_path, seconds):
                           "pul": r[b + 2] | ((r[b + 3] & 0x0F) << 8),
                           "adsr": (r[b + 5] << 8) | r[b + 6]}
         out.append((voices, {"cutoff": r[22], "filtctl": r[23], "volmode": r[24]}))
+    return out
+
+
+def sdi_v_reference(orig_path, seconds):
+    """Per-frame reference for a variant-V SDI rip, in siddump's shape.
+
+    Returns None for any file that is not variant V, so the caller falls back to
+    siddump -- the other five SDI variants are driven perfectly well by it and
+    swapping their reference would change 276 rows to fix 4.
+
+    The passband is reconstructed as `pb << 4`: `v_traces` records `$D418`'s
+    mode bits already shifted down, and `mode_sequence` masks `& 0x70`, so the
+    two line up exactly. `$D418`'s low nibble (master volume) is not part of
+    this comparison and is left at 0 rather than invented.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "sdi_build", os.path.join(ROOT, "bin", "build_sdi_native_song.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["sdi_build"] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except SystemExit:
+        # the builder runs main() on import when given no argv it understands;
+        # everything needed is defined by then
+        pass
+    from sidm2.sdi_parser import SDIModule
+    d, la, h = mod.load_sid(orig_path)
+    m = SDIModule(d, la)
+    if getattr(m.lay, "variant", None) != "V":
+        return None
+    mi, mp = mod._v_module_addrs(d, la, h.init_address)
+    if mi is None:
+        return None
+    per, filt, pb, _onsets = mod.v_traces(
+        d, la, mi, mp, m.lay.v_mult, seconds * 50)
+    out = []
+    for i, (st, cut) in enumerate(per):
+        voices = {vi: {"freq": st[vi]["freq"], "wf": st[vi]["wf"],
+                       "pul": st[vi]["pul"], "adsr": 0} for vi in range(3)}
+        out.append((voices, {"cutoff": cut, "filtctl": filt[i][1],
+                             "volmode": (pb[i] & 0x07) << 4}))
     return out
 
 
@@ -314,8 +364,12 @@ def main(argv=None):
             print(f"{base:<28s} NO ORIGINAL FOUND -- cannot check")
             bad.append((base, "no original"))
             continue
-        if cfg.get("ref") == "sim":
+        ref = cfg.get("ref")
+        if ref == "sim":
             of = sim_reference(orig, a.seconds)
+        elif ref == "sdi_v":
+            # per-file: None for the five non-V variants, which siddump drives
+            of = sdi_v_reference(orig, a.seconds) or siddump_frames_full(orig, args)
         else:
             of = siddump_frames_full(orig, args)
         if not has_evidence(of):

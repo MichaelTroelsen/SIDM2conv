@@ -273,6 +273,49 @@ leaving `v_traces` alone, and it is now measured rather than assumed. The other
 two failures are `Coming_Soon` (90.9%) and `Lederhosen`, plus `Bahbar_v` which
 has no original to compare against.
 
+### RESOLVED 2026-08-14 — and only half of it was the builder
+
+`v_traces` now records `$D418` on the same clock as `cut` and `$D417`, and the V
+path hands `build_native_song` a 3-tuple like every other path. It also **prints
+the passband runs it captured**: the V rip is the one family where siddump
+cannot drive the player, so that list is the only reference there is, and
+comparing a build against a reference nobody printed is how three confident
+wrong Blackbird readings happened (`PATTERNS.md` F7).
+
+With the capture in, `Filthy_Hit_VE-4x` moved 0.0% → **25.8%** and stayed a
+failure. Dumping both sequences rather than believing either one:
+
+| reference | first 400 frames |
+|---|---|
+| py65 at `mult=1` | `off x6, BP x384, LP x10` |
+| **py65 at `mult=4`** (the tune's real rate) | `off x1, BP x96, LP x303` |
+| siddump | `off x25, BP x375` |
+
+**siddump cannot adjudicate a V rip.** The wrapper declares `play=$0000` and
+installs its own IRQ at `v_mult` calls per frame; siddump calls the player
+**once** per frame. On a tune that alternates its passband *within* the frame
+that is not a rounding difference — 375 of 400 frames BP against 303 of 400
+ending on LP — and the mult=1 run reproducing siddump is what identifies the
+call rate as the whole of the disagreement.
+
+So `passband_check` gained what Blackbird already had: a reference that drives
+the tune. `ref: "sdi_v"` is per **FILE**, not per player — `sdi_v_reference`
+returns `None` for the five non-V variants so they keep siddump, because
+swapping their reference would have changed 276 rows to fix 5.
+
+| file | before | after, at its own part-1 span |
+|---|---:|---:|
+| `Filthy_Hit_VE-4x` | 0.0% (1,387 audible) | **100.0%**, routed 100% |
+| `Different_Reality_VE-4x` | 98.6% | **100.0%** |
+| `Underwear_VE-4x` | 98.6% | **100.0%** |
+| `Implocation_VE-4x` | 98.6% | **100.0%** |
+| `Pultost_VE-4x` | — | **100.0%** |
+
+Corpus: **237 → 241 of 281**, failures 5 → 3 (`Bahbar_v` has no original,
+`Coming_Soon` 90.9%, `Lederhosen`). The other 276 rows are unchanged, which is
+the point of the per-file reference. Pinned by
+`pyscript/test_passband_check.py`.
+
 The 33 unconfirmed are multi-part files whose part 1 may end inside the 28 s
 window; resolving them needs a per-file asserted `--seconds`. Their mode SETS and
 change counts now track the originals closely (`Finish_Line` 56 vs 56,
