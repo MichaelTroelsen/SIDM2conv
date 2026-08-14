@@ -1886,6 +1886,12 @@ def emit_one(m, br, out_path, label):
     # dives, HardTrack percussion) — see _fm_scale_ok
     B.FM_SCALED = 1 if _fm_scale_ok(m) else 0
     B.HP_ENGINE = 1 if getattr(m, "hp_engine", 0) else 0
+    # HardTrack's per-note SR restart: the ROM zeroes SR at row dispatch and
+    # rewrites the instrument AD/SR when the note reaches the SID, so every note
+    # is preceded by N frames of SR=0. B.HARD_RESTART is the wrong tool (it
+    # zeroes AD too, and AD is already right) and a row type cannot express it --
+    # the write lands between two row boundaries. 0 = off for every other player.
+    B.SR_PREKILL = int(getattr(m, "sr_prekill", 0) or 0)
     # Hubbard v2 fractional tempo (the swallow counter): the shim sets
     # swallow = (period, frames-until-first-skip) per part window
     B.TEMPO_SWALLOW = 1 if getattr(m, "swallow", None) else 0

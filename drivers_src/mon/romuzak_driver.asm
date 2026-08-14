@@ -201,6 +201,11 @@ HPVAL     = $1940        ; per-instrument pulseval byte (32) — poked by the em
 HPFX      = $1960        ; per-instrument fx byte (32) — bit3 = fast-PWM mode
 HPW_LO    = $1980        ; per-instrument LIVE pulse lo (32) — init = instrument PW
 HPW_HI    = $19A0        ; per-instrument LIVE pulse hi (32)
+VGCUR     = $1889        ; per-voice: the $D404 byte wave_step actually wrote
+                         ;   this frame (3, SR_PREKILL only). sr_pre cannot
+                         ;   recompute it -- WAVE[VWI] is wrong by then, because
+                         ;   wave_step INCs VWI on the frame a row's count
+                         ;   expires, which is exactly the pre-fetch frame.
 HRC       = $1886        ; per-voice: HARD_RESTART re-arm countdown (3) — the $7D
                          ;   row kills AD/SR, then re-arms them 1 frame BEFORE the
                          ;   next trigger (the ROM re-arms at fetch; a same-frame
@@ -325,6 +330,15 @@ iv:     lda #$41
         jsr next_pattern         ; sets vsp[x] + vtrans[x] from the orderlist
         dex
         bpl iv
+.if SR_PREKILL
+        ldx #$02                 ; sr_rearm reads VAD/VSR before the first
+sri_l:  lda #$00                 ;   set_instr. NOT in the loop above: two more
+        sta VAD,x                ;   `sta abs,x` there put `bpl iv` 3 bytes out
+        sta VSR,x                ;   of branch range.
+        sta VGCUR,x              ; gate reads OFF until wave_step runs
+        dex
+        bpl sri_l
+.endif
         lda #$00                 ; filter program idle until a flag-$40 note
         sta F_ACT
         sta F_MODE
@@ -545,6 +559,9 @@ wsp_wf:
 .endif
         ldy sidbase,x
         sta SID+4,y
+.if SR_PREKILL
+        sta VGCUR,x              ; remember the effective gate for sr_pre
+.endif
         dec VWCNT,x              ; consume one frame; on expiry step to the next row
         bne ws_next
         inc VWI,x
@@ -908,6 +925,9 @@ fm_l:
         jsr fm_hrarm
 fmh_n:
 .endif
+.if SR_PREKILL
+        jsr sr_pre               ; per-note lookahead: SR=0 the SR_PREKILL frames
+.endif                           ;   before this voice's next fetch (see sr_pre)
 .if NOTE_PREAMBLE
         ldy NPRE,x               ; preamble frame: freq $0000 + FREEZE the FM state
         beq fml_n                ;   (no CNT/ACC consumption — the note's freq stream
@@ -1119,6 +1139,9 @@ vparse:
         sta vsp_hi,x
         lda pending_dur
         sta vhold,x
+.if SR_PREKILL
+        jsr sr_rearm             ; the fetch rewrites the instrument AD/SR, which
+.endif                           ;   undoes sr_pre's kill (the ROM does the same)
 vnext:
         inx
         cpx #$03
@@ -1468,7 +1491,7 @@ set_instr_v:
         sta SID+5,y
         lda tmpf+1
         sta SID+6,y
-.if HARD_RESTART
+.if HARD_RESTART + SR_PREKILL
         lda tmpf                 ; remember for the per-retrigger ADSR re-arm
         sta VAD,x
         lda tmpf+1
@@ -1870,6 +1893,49 @@ fm_hrarm:
 fmh_rts:
         rts
 .endif
+.if SR_PREKILL
+; --- SR pre-kill: the per-note lookahead HardTrack needs and a row type cannot
+;     express. HardTrack's ROM zeroes $D406 at ROW DISPATCH and rewrites the
+;     instrument AD/SR when the note reaches the SID SR_PREKILL frames later, so
+;     every note is preceded by two frames of SR=0 -- the classic hard restart,
+;     measured as 92/98/148 SR mismatches over Love_tune_2's 28s part 1 with
+;     nothing here, and 2/8/58 with this. The two-frame width is MEASURED: every
+;     SR=$00 run in the originals is exactly 2 frames, in every file checked.
+;
+;     It is NOT B.HARD_RESTART: the $7D row zeroes AD as well, and AD is already
+;     right (0/10/20). This kills SR only, leaves AD/gate/waveform alone, and
+;     needs no row -- the write lands between two row boundaries, where Stage B
+;     has no row to spend (30,477 rows, 90 of them rests).
+;
+;     Fires on the frame zp_tcnt == SR_PREKILL for a voice whose vhold is 0, i.e.
+;     one that FETCHES at the next row tick (the same predicate the SEEK pulse
+;     hold uses). sr_rearm then restores AD/SR on the fetch itself. A voice that
+;     fetches a rest gets its SR back one frame later than it lost it, which is
+;     the pre-patch behaviour minus two frames.
+sr_pre:
+        lda zp_tcnt
+        cmp #SR_PREKILL
+        bne srp_rts
+        lda vhold,x              ; 0 = this voice parses at the next row tick
+        bne srp_rts
+        lda VGCUR,x              ; this frame's effective $D404 (wave_step ran
+        and #$01                 ;   first). Gate ON means the note is still
+        bne srp_rts              ;   SOUNDING, and SR=$00 zeroes SUSTAIN as well
+        ldy sidbase,x            ;   as release: the envelope drops to 0 and only
+        lda #$00                 ;   a gate RISE re-attacks it, so one mistimed
+        sta SID+6,y              ;   kill silences the rest of a held note while
+srp_rts:                         ;   every later register still reads correct
+        rts                      ;   (4 such frames cost -24 dB at 27.1s here).
+
+sr_rearm:
+        ldy sidbase,x
+        lda VAD,x                ; value-neutral unless sr_pre just fired: nothing
+        sta SID+5,y              ;   else in this driver writes $D405/$D406
+        lda VSR,x
+        sta SID+6,y
+        rts
+.endif
+
 .if NOTE_PREAMBLE
 ; NOTE_PREAMBLE pulse re-arm (out-of-line: the main bank is at the $16CC cap):
 ; on the preamble frame the reset value was already written (the engine writes
@@ -2008,6 +2074,11 @@ fm_slon:
         ; $1A00 is the only hard wall.
         .cerror HP_ENGINE && (* > $1940), "out-of-line code overlaps HP engine tables ($1940)"
         .cerror * > $1a00, "out-of-line code overruns the edit area ($1A00)"
+        ; VGCUR records the $D404 byte wave_step wrote, and under RELEASE_WF
+        ; that byte is the instrument's RELEASE waveform written VERBATIM -- it
+        ; may keep bit0 set through a rest, so sr_pre's gate test would read a
+        ; gated-off voice as sounding and never fire.
+        .cerror SR_PREKILL && RELEASE_WF, "SR_PREKILL cannot read the gate under RELEASE_WF"
 
 .if DIGI_SPIKE
 .include "digi_addrs.inc"

@@ -1,151 +1,135 @@
-# Handoff — SIDM2 session, 2026-08-12/14
+# Handoff — SIDM2 session, 2026-08-14
 
 <original_task>
-Opened with **"read what next"** on the previous handoff, then **"do the task on
-the list"** and repeated **"continue"**. No pre-set scope. The user asked once
-for a task listing with model and subtask/main labels, launched one `/subtask`
-fork (SDI passband fix) and stopped it after it had applied the edit correctly,
-and twice said **"push"**.
+Opened with **"read what next"**, then **"do the task on the list"** — which was
+the single filed item, **#16 HardTrack brightness gap**, whose one unattempted
+step the previous handoff named exactly: *build the HRC per-note lookahead, then
+A/B the audio.* No other scope was given.
 </original_task>
 
 <work_completed>
 
-**31 commits**, `c1c85cb..2b18197`, all pushed to `origin/master`. Tree clean.
-Suite at HEAD: **2436 passed, 8 skipped, 2 xfailed, 0 failures**.
+**The experiment is run and the answer is no.** The lookahead is built, it fixes
+the registers, it improves the corpus, and it makes `Love_tune_2` — the one file
+the brightness gap was ever about — **worse**.
 
-## The finding: a fix in a BUILDER is not a fix in the CORPUS
+## What shipped
 
-`PATTERNS.md` **F7** is the durable write-up. Four players had shipped artifacts
-contradicting their own documentation, and nothing noticed because **every
-fidelity scorer in this repo is structurally blind to `$D418`** —
-`Balloon` re-measures byte-identical before and after its fix.
+`SR_PREKILL` in `drivers_src/mon/romuzak_driver.asm`, **off by default**,
+`HT_SR_PREKILL=2` to enable per build. It zeroes `$D406` on the frame
+`zp_tcnt == SR_PREKILL` for a voice whose `vhold` is 0 (it FETCHES at the next
+row tick — the same predicate the SEEK pulse hold uses) and whose gate is
+currently off; `sr_rearm` restores the instrument AD/SR on the fetch itself. No
+row is spent, which was the point: the write lands between two row boundaries.
 
-`pyscript/passband_check.py` measures the ARTIFACT. Final state:
+The width is **measured, not guessed** — every `SR=$00` run in the originals is
+exactly two frames (159 runs on `Love_tune_2`, 378 `Muminki_Rooooolz`, 328
+`Something_to_Eat`, 142 `Muza_Do_Dema`, 23 `Teekkno`).
 
-| player | cause | result |
-|---|---|---|
-| Blackbird | none — was never broken | **16/16**, via its simulator |
-| MoN | 7 stale artifacts + **`Myth` a builder gap** | **17/19** (2 unexercised) |
-| HardTrack | 31 of 33 artifacts predated `cffc51e` | **25/33**; all 9 residuals explained, none a wrong passband |
-| DMC | 968 of 984 `.sf2` predated it | **50/74**; 2 genuine defects |
-| SDI | **builder never passed a passband at all** | fixed + corpus rebuilt → **237/281** |
+- `pyscript/hardtrack_sr_prekill_ab.py` — **tracked** 9-tune A/B, builds both
+  sides itself, each tune inside its own asserted part-1 span.
+- `pyscript/test_hardtrack_sr_prekill.py` — 6 tests. Suite **2,442 passing**.
 
-Two builder gaps, both invisible to every existing scorer: **SDI** (never passed
-a 3-tuple) and **`Myth`** (its own builder, py65 `capture()`, fixed on the same
-clock as `ftr`).
+## The result
 
-## Other work
+| | off → on |
+|---|---|
+| SR mismatching frames, 9 tunes | **2,966 → 1,170** (6 of 9 essentially zero) |
+| mean \|centroid error\| | 67.2 → **52.7 Hz** |
+| mean \|rolloff error\| | 182.9 → **136.2 Hz** |
+| centroid closer to the original | **5 of 9**; further on 4 |
+| **`Love_tune_2` centroid** | **−57.9 → −101.4 Hz** ⚠️ |
 
-- **The SDI Stage B sweep was measuring nothing.** The previous session's run
-  printed `built 161 … of 441`; it was a **274-file A–O sample** — 167 files
-  returned `STATUS_DLL_INIT_FAILED` and were recorded as per-file failures. Full
-  corpus after the chunked re-run: **262 built**, medians A/B/DELTA 99.9, E 99.7,
-  C 98.1, **D 95.9 (7 of its own 15 voices below 90)**, V 96.8.
-- **`pyscript/dmc_native_sweep.py`** replaces untracked `bin/_dmc_fidelity.py`,
-  reproduces `Balloon` exactly, and **refuses to score without an asserted
-  window**. First DMC corpus figure: **72 of 88**, freq median 94.7 / wf 100.0 /
-  pulse 100.0 over 216 voices, 87 voices below 90, 9 songs under the 250-frame
-  floor.
-- **`fidelity_common.launch_failure()`** — shared by all three sweeps.
-- **`HT_NO_PASSBAND=1`** — lets the passband be A/B'd against today's builder.
-- **The passband fix is CORRECTNESS, not audio.** 8-tune A/B: centroid closer on
-  4/8, rolloff **worse** (2/8), only A-weighted level consistent (7/8).
-- **The HardTrack brightness gap is ONE FILE.** Across 9 tunes measured inside
-  their own part-1 spans, our render is darker on **2** and brighter on **7**
-  (to +172 Hz). No corpus-wide deficit exists to close.
+`Love_tune_2` per-voice SR goes 92/98/148 → 2/8/58 and every survivor is the
+*reverse* direction, so the named defect is gone rather than reduced — and the
+file still gets darker. The SR-tail hypothesis is confirmed in **direction** and
+shown to **overshoot**: binned by the original's own level, we were **+1.26 dB**
+too loud on its −35..−28 dBFS frames and land at **−0.48**, buying that with
+0.32 dB on the loud frames.
+
+## The finding that reframes the open work
+
+**The restart is per-INSTRUMENT, not per-note.** Keyed by the AD/SR pair written
+at each note-on: `Love_tune_2` 159/159 restarted, `Muminki_Rooooolz` 378/378,
+**`Teekkno` 23 of 245**. Its ADSR `$0ffc` restarts on 1 of 222 note-ons while
+`$099d`/`$099e`/`$cccc` restart 9/10, 7/7, 4/4. Firing unconditionally is what
+costs `Teekkno` 42 → 468 and flips its centroid sign.
+
+Two candidate selectors **ruled out**: instrument **field-5 bit 4** (the player
+reads field 5 exactly three times with masks `$03`/`$10`/`$80` in 33 of 33, and
+`$10`'s only consumer is the filter re-arm guard — disassembly-confirmed), and
+**gate state** (the two pre-note frames are gate-off on the restarting and the
+non-restarting file alike).
 
 </work_completed>
 
 <attempted_approaches>
 
-## Read this first: the same error, five times, in three tools
+## Two traps, both invisible to the register comparison
 
-**Comparing a build's part 1 against a window longer than the part.** Past its
-end our part LOOPS against the original's continuing music, and the difference
-scores as a defect.
+1. **The kill must be gated on the voice being SILENT.** `SR=$00` zeroes
+   *sustain* as well as release: the envelope falls to zero and only a gate RISE
+   re-attacks it, so one mistimed kill silences the rest of a held note **while
+   every later register still reads correct**. Four such frames cost **−24 dB**
+   across 27.1–28.0 s on `Love_tune_2`. The SR diff showed "4 frames"; the audio
+   showed a hole. Never sign this off in the register domain alone.
+2. **The gate cannot be recomputed from `WAVE[VWI]`.** `wave_step` INCs `VWI` on
+   the frame a row's count expires — exactly the pre-fetch frame `sr_pre` runs
+   on — so the recomputed byte is the *next* row's. The first guard therefore
+   blocked **100%** of the kills instead of 4 of 244, and looked like "the fix
+   does nothing". The driver now stashes the `$D404` byte it actually wrote in
+   `VGCUR ($1889)`.
 
-1. `dmc_native_sweep` scored part 1 against a fixed 20 s window. DMC parts are
-   2–20 s; `Cant_Stop` read 34.8/86.0/91.5 — the window, across 53 of 57 songs.
-2. I then claimed a guessed window only *deflates*. **Wrong** — spans run
-   6.9 s–399.9 s, so a short window **flatters**: `Blobby`'s 20 s reported 97.9%
-   on a voice whose real 67.9 s part scores 59.5%.
-3. `passband_check` had the identical bug. I published **"9 HardTrack
-   mode-TIMING failures"** and retracted it: at true spans `Something_to_Eat`
-   68.7→**100.0** (31 changes vs 31, not 88 vs 87), `Illmatic_end` 71.1→**100.0**,
-   `Domino_Dancing` 99.0→**100.0**.
-4. Then the **audio** measurements for the brightness re-scope — caught before
-   publishing only because #3 had just happened.
-5. And it made the "mode change needs a filter row" hypothesis look *better*
-   than it was: I checked its counterexample at 28 s and saw 1 mode change where
-   its true 39 s span has 2.
+## Smaller ones
 
-**Over-running can only MANUFACTURE disagreement, never hide it.** So every
-"N of M correct" figure survives; only failures were downgraded. Multi-part
-failures now report UNCONFIRMED unless `--seconds` is asserted.
-
-## Four more wrong readings, all mine
-
-- **Three confident Blackbird conclusions drawn against silence** — "16/16
-  pass", then "16 originals never route a voice", then "our builds route the
-  filter 56–100% where the original routes 0%", which reads as a real audible
-  defect. `SID/LFT/*.sid` produce NO trace under siddump. Fixed with
-  `has_evidence()`; the reference is now the simulator.
-- **Three DMC files called failures three times** before I checked `$D417`:
-  they route nothing, so the passband selects among silent outputs.
-- **A severity rule running over the wrong frames.** The unrouted check was
-  GLOBAL, so it caught all-unrouted files and missed every partial case —
-  `Altered_States_Tune_2`'s 47 mismatches are *all* unrouted.
-- **A "static vs modulating" rule that fired regardless of score**, condemning
-  three files at 100.0%.
-
-## Dead ends
-
-- `Cant_Stop`'s part 1 is 17.9 s, not the ~5 s I assumed from its 114 parts.
-  **Part counts do not imply equal durations.**
-- A loop-detector for inferring part spans false-positived on `Balloon`.
-- **Heredoc backslash trap, 4×**: `python - <<'PY'` eats one backslash level.
-  **Write patch scripts with the Write tool** when they contain backslashes.
+- A first cut zeroed `VAD`/`VSR` inside the init loop and pushed `bpl iv` **3
+  bytes out of branch range**. Moved to its own loop after the branch.
+- **The heredoc backslash trap bit again**, exactly as the last handoff warned:
+  `py -3 - <<'PY'` ate one level of `\r\n` and wrote literal newlines into a
+  patch script. Write patch scripts with the Write tool.
+- `drivers_src/mon/romuzak_driver.asm` is **CRLF**; a patcher that reads it with
+  `newline=''` and matches `\n` anchors silently finds nothing.
 
 </attempted_approaches>
 
 <critical_context>
 
-- **`passband_check.py --player {hardtrack,dmc,mon,sdi,fc,blackbird}`** compares
-  `$D418` bits 4-6 only (low nibble is volume), fits the boot offset over
-  `range(-4, 9)`, and refuses four ways: no reference trace, filter never
-  exercised, all-mismatches-unrouted, multi-part failure without an asserted
-  window. `ref: "sim"` selects a simulator reference per player.
-- **Routing matters as much as mode**, and on the MISMATCHING frames:
-  `$D417`'s low nibble picks which voices enter the filter.
-- **The cross-builder audit in HARDTRACK.md checked CODE and sampled ONE FILE
-  per player.** Both limits cost something — it is why SDI shipped a
-  low-pass-only corpus. Corrected there and in `ACCURACY_MATRIX.md`.
-- Environment: Windows, `py -3` (3.14), `pytest-timeout` NOT installed. Chunk
-  long corpus runs (~20 files) — a single parent died at ~275 files.
+- **Every window is that file's own part-1 span** (`Love_tune_2` 28 s,
+  `Ritual_II_tune_2`/`Walk_to_Soul`/`Something_to_Eat` 10 s, `Takisobie` 12 s,
+  `Rune-T_Noter` 14 s). Past a part's end our build LOOPS against the original's
+  continuing music. This is the error the previous session made five times.
+- **Inertness verified by hash, not by argument**: `Monty_on_the_Run` (Hubbard,
+  `HARD_RESTART=1`), `Final_Luv` (Sound Monitor, `HARD_RESTART=0`) and
+  `Love_tune_2` itself all rebuild **byte-identical** with the flag off. Both
+  branches of the `.if HARD_RESTART + SR_PREKILL` change are covered.
+- `.cerror SR_PREKILL && RELEASE_WF` — `sr_pre` reads the gate straight off the
+  written `$D404`, which that path substitutes.
+- Full write-up: `docs/players/HARDTRACK.md`, "The per-note lookahead was BUILT,
+  and it is NOT the brightness fix".
 
 </critical_context>
 
 <current_state>
 
-HEAD `2b18197`, `master`, pushed, tree clean, suite 2436.
+Suite 2,442 passing. Version unchanged at 3.27.0 (this session's cadence — the
+last 25 commits carry no bump).
 
 | task | state |
 |---|---|
-| #16 HardTrack brightness gap | **RE-SCOPED, open.** No corpus-wide deficit; ~half remains on `Love_tune_2` alone. Decisive experiment unattempted: build the **HRC per-note lookahead**, then A/B the audio. ADSR 88–94% is the named candidate; `hard_restart=1` is provably wrong. *Opus, main.* |
+| #16 HardTrack brightness gap | **Decisive experiment DONE, question re-pointed.** No corpus-wide deficit; the lookahead is not `Love_tune_2`'s fix. What is now open is narrower and better posed: **which instruments get the SR restart.** It needs the player's own code (`docs/guides/RETRODEBUGGER_GUIDE.md`), not another measurement — `Teekkno` is the discriminating file. With that selector the pre-kill becomes correct everywhere and can ship on. *Opus, main.* |
 
-**Open, unfiled:**
+**Still open from the previous handoff, untouched:**
 
-- **`Filthy_Hit_VE-4x`** — 0.0%, 1,387 audible frames. The V path's py65
-  `v_traces` records no `$D418`; extending it would close the last real SDI
-  passband gap. The other 3 V files differ by only 12 frames each.
-- **33 SDI files UNCONFIRMED** — need a per-file asserted `--seconds`.
-- **`French_Frites`** decodes badly generally (freq 24.1/34.4/26.3) — a DMC
-  decode question, not a filter one. Belongs with the corpus tail: **87 of 216**
-  frequency voices below 90.
-- **`Altered_States_Tune_2`'s 47-frame first-filter-row latency** — inaudible,
-  unexplained.
-- A **startup-latency generalisation** was attempted and **discarded as
-  under-controlled** (compared at offset 0 with a flat window). Redo it with
-  per-file spans and fitted offsets or not at all.
+- **`Filthy_Hit_VE-4x`** — 0.0%, 1,387 audible frames. The SDI V path's py65
+  `v_traces` records no `$D418`; extending it closes the last real SDI passband
+  gap (the other 3 V files differ by only 12 frames each). *Delegable.*
+- **33 SDI files UNCONFIRMED** — each needs a per-file asserted `--seconds`.
+  *Delegable, mechanical, chunk at ~20 files.*
+- **DMC corpus tail: 87 of 216 frequency voices below 90**, incl.
+  `French_Frites` (24.1/34.4/26.3) — a decode question, not a filter one.
+- `Altered_States_Tune_2`'s 47-frame first-filter-row latency — inaudible,
+  unexplained. Low value.
+- A **startup-latency generalisation** was discarded as under-controlled. Redo
+  it with per-file spans and fitted offsets or not at all.
 
 </current_state>

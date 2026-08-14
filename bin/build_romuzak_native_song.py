@@ -289,6 +289,10 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         # Hubbard v2 IRREGULAR tempo: per-frame stretch bitmap (generalized
         # swallow) — used when the real schedule isn't a single periodic skip
         f.write(f"TEMPO_SCHED = {getattr(B, 'TEMPO_SCHED', 0)}\n")
+        # per-note SR lookahead (HardTrack): zero $D406 this many frames before a
+        # voice's next row fetch, restore the instrument AD/SR on the fetch. 0 =
+        # off, which is every other player — see sr_pre in the driver.
+        f.write(f"SR_PREKILL = {getattr(B, 'SR_PREKILL', 0)}\n")
         # $D418 master volume (low nibble), OR-ed with the filter passband on
         # every music frame. Defaults to $0f, which the driver hardcoded until it
         # turned out not every tune plays at full volume: Supremacy's three

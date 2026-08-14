@@ -1140,6 +1140,11 @@ remains the only decisive experiment — but it is now a **less** promising one
 than the doc previously implied, because the register that was supposed to be
 the cause does not move the energy in the predicted direction.
 
+> **RUN, 2026-08-14.** The lookahead is built (`SR_PREKILL`) and the prediction
+> above held: it fixes the registers (2,966 → 1,170 mismatching frames over nine
+> tunes) and makes `Love_tune_2` *darker*, not brighter. See
+> "The per-note lookahead was BUILT, and it is NOT the brightness fix" below.
+
 ---
 
 ## The ADSR residual: an SR-only row was BUILT and REVERTED (v3.25.0)
@@ -1204,6 +1209,117 @@ release tails on gate-off frames.
 
 Reverted; the driver and both builders are byte-identical to before, and the
 rebuilt part 1 reproduces 92.8/92.9/95.1 exactly.
+
+---
+
+## The per-note lookahead was BUILT, and it is NOT the brightness fix (2026-08-14)
+
+The experiment above ("build the `HRC` per-note lookahead and A/B the audio
+directly — that remains the only decisive experiment") has been run. It is
+`SR_PREKILL` in `drivers_src/mon/romuzak_driver.asm`, it ships **off**, and
+`HT_SR_PREKILL=2` turns it on per build. Reproduce the whole A/B with
+`py -3 pyscript/hardtrack_sr_prekill_ab.py` — tracked, so unlike the DMC
+figures it is not quoting a script that was never in the repo.
+
+**The width is measured, not guessed.** Every `SR=$00` run in the originals is
+*exactly two frames*: 159 runs on `Love_tune_2`, 378 on `Muminki_Rooooolz`, 328
+on `Something_to_Eat`, 142 on `Muza_Do_Dema`, 23 on `Teekkno`. Nothing else.
+
+It fires on the frame `zp_tcnt == SR_PREKILL` for a voice whose `vhold` is 0 —
+one that FETCHES at the next row tick, the same predicate the SEEK pulse hold
+already uses — and `sr_rearm` restores the instrument AD/SR on the fetch itself.
+No row is spent, which is the whole point: the write lands between two row
+boundaries, where Stage B has none to give.
+
+### What it does to the registers
+
+| file | window | SR mismatching frames, off → on |
+|---|---:|---:|
+| `Muminki_Rooooolz` | 28 s | 750 → **0** |
+| `Something_to_Eat` | 10 s | 234 → **0** |
+| `Ritual_II_tune_2` | 10 s | 125 → **3** |
+| `Takisobie` | 12 s | 166 → **14** |
+| `Rune-T_Noter` | 14 s | 235 → **21** |
+| `Love_tune_2` | 28 s | 338 → **68** |
+| `Walk_to_Soul` | 10 s | 299 → **83** |
+| `Muza_Do_Dema` | 28 s | 777 → **513** |
+| `Teekkno` | 28 s | 42 → **468** ⚠ |
+| **total** | | **2,966 → 1,170** |
+
+Summed over three voices at the render's −3 alignment. On `Love_tune_2` the
+per-voice figure is 92/98/148 → 2/8/58, and **every** survivor is the reverse
+direction (we zero where the player does not), so the defect the doc named is
+gone rather than reduced.
+
+### What it does to the audio — and this is the answer
+
+Mean |centroid error| **67.2 → 52.7 Hz**, mean |rolloff error| **182.9 → 136.2
+Hz** across the nine tunes. Closer to the original on **5 of 9**, further on 4.
+
+**But it makes `Love_tune_2` worse: centroid −57.9 → −101.4 Hz, rolloff −160.7
+→ −255.1.** That is the one file the brightness gap was ever about, so the
+answer to the filed question is **no** — the lookahead is a correctness fix that
+happens to help the corpus, not the fix for the residual it was proposed for.
+
+The SR-tail hypothesis is nevertheless confirmed *in direction* and shown to
+**overshoot**. Per-frame RMS on `Love_tune_2`, binned by the ORIGINAL's own level:
+
+| the original's level | frames | off, ours − orig | on, ours − orig |
+|---|---:|---:|---:|
+| −35..−28 dBFS (tails, quiet passages) | 295 | **+1.26 dB** | **−0.48 dB** |
+| −28..0 dBFS (the music) | 1,099 | −1.87 dB | −2.19 dB |
+
+We really were ringing too loud where the player cuts the tail dead, and the fix
+more than halves that error. It costs 0.32 dB on the loud frames to buy it, and
+on this tune that trade reads as *darker*, not *tighter*.
+
+### `Teekkno` refutes "every note", and field 5 is not the selector
+
+Keyed by the AD/SR pair written on each note-on, over part 1:
+
+| file | note-ons | preceded by an `SR=$00` restart |
+|---|---:|---:|
+| `Love_tune_2` | 159 | **159 (100%)** |
+| `Muminki_Rooooolz` | 378 | **378 (100%)** |
+| `Teekkno` | 245 | **23 (9%)** |
+
+So the restart is a **per-instrument** property, not a per-note or per-song one,
+and `Teekkno` is the file that discriminates: its ADSR `$0ffc` restarts on 1 of
+222 note-ons while `$099d`/`$099e`/`$cccc` restart on 9/10, 7/7 and 4/4. Firing
+unconditionally is what costs `Teekkno` 42 → 468 and flips its centroid sign.
+
+Two candidate selectors are already **ruled out**:
+
+- **Instrument field 5 bit 4.** The player reads field 5 exactly three times per
+  module with masks `$03`, `$10` and `$80` in 33 of 33, and `$10`'s only consumer
+  is the filter re-arm guard (disassembled above under `skip_filter_rearm`).
+- **Gate state.** The two pre-note frames are gate-off in every case measured, on
+  the file that restarts and the file that does not alike.
+
+Finding the real selector is the open work. It needs the player's own code, not
+another measurement — `docs/guides/RETRODEBUGGER_GUIDE.md` is the tool for it.
+
+### Two traps, both invisible to the register comparison
+
+1. **`sr_pre` must be gated on the voice being SILENT.** `SR=$00` zeroes
+   *sustain* as well as release; the envelope falls to zero and only a gate RISE
+   re-attacks it, so one mistimed kill silences the rest of a held note **while
+   every later register still reads correct**. Four such frames on `Love_tune_2`
+   cost **−24 dB** across 27.1–28.0 s. The SR diff saw 4 frames; the audio saw a
+   hole. Never ship this measured only in the register domain.
+2. **The gate cannot be recomputed from `WAVE[VWI]`.** `wave_step` INCs `VWI` on
+   the frame a row's count expires — which is exactly the pre-fetch frame
+   `sr_pre` runs on, so the recomputed byte is the *next* row's, and the first
+   attempt at the guard blocked 100% of the kills instead of 4 of 244. The driver
+   now stashes the `$D404` byte it actually wrote in `VGCUR`.
+
+### Safety
+
+Verified byte-identical with the flag off: `Monty_on_the_Run` (Hubbard,
+`HARD_RESTART=1`), `Final_Luv` (Sound Monitor, `HARD_RESTART=0`) and
+`Love_tune_2` itself. `pyscript/test_hardtrack_sr_prekill.py` pins that every
+byte of the feature sits inside a `.if SR_PREKILL` block, that the kill touches
+`$D406` and never `$D405`, and that the gate test precedes the store. Suite 2,442.
 
 ---
 
@@ -1512,7 +1628,10 @@ over a window inside its own part-1 span:
 | `Love_tune_2` | 28 s | **−51.4** | −169.6 |
 
 **Our render is darker on 2 of 9 and brighter on 7**, rolloff splitting the same
-way. So "the render is consistently darker, close the gap" is the wrong frame:
+way. (The SR pre-kill section above re-measures this same nine-file table with
+the lookahead on: it pulls the seven bright files toward the original and pushes
+the two dark ones further away, which is the same asymmetry seen from the other
+side.) So "the render is consistently darker, close the gap" is the wrong frame:
 there is a per-file spectral difference in both directions and no corpus-wide
 deficit to close. A mechanism proposed for a *darkness* gap has to explain
 `Muminki_Rooooolz` at **+172 Hz** as well.

@@ -91,6 +91,14 @@ class HardTrackShim:
     snap_gate = True          # snap each capture to the real gate rise (+-2 frames)
     hp_engine = 0             # pulse sweeps are captured, not modelled
     filter_tie = 0
+    # Per-note SR restart. HardTrack writes SR=$00 at ROW DISPATCH and the
+    # instrument AD/SR when the note reaches the SID PIPE frames later, leaving
+    # exactly two frames of SR=0 before every note (measured: 68/68/108 SR
+    # mismatches on Love_tune_2, every one of them on a gate-OFF frame, ours=$3a
+    # -> orig=$00). See sr_pre in drivers_src/mon/romuzak_driver.asm and the
+    # rung-4 section of docs/players/HARDTRACK.md for what it is and is not
+    # worth. HT_SR_PREKILL=N overrides; 0 disables.
+    sr_prekill = int(os.environ.get('HT_SR_PREKILL', '0'))
     # HardTrack percussion produces real per-frame Hz deltas in $40xx-$43xx
     # (Love_tune_2 voice 2: a $4300 drum dive), which is exactly the range the
     # driver's SCALED-vibrato entry marker claims. Leaving the marker on froze
