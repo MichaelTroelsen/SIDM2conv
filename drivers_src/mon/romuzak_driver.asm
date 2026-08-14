@@ -1918,6 +1918,12 @@ sr_pre:
         bne srp_rts
         lda vhold,x              ; 0 = this voice parses at the next row tick
         bne srp_rts
+        lda VIFLAGS,x            ; $04 = the ENDING note's instrument ends with a
+        and #$04                 ;   hard restart. VIFLAGS still holds it: the
+        beq srp_rts              ;   next fetch has not run set_instr yet. In
+                                 ;   HardTrack this is instrument field 5 mode 2,
+                                 ;   and a mode-0 instrument gets a PLAIN gate-off
+                                 ;   (Teekkno: 23 of 245 note-ons, not 245).
         lda VGCUR,x              ; this frame's effective $D404 (wave_step ran
         and #$01                 ;   first). Gate ON means the note is still
         bne srp_rts              ;   SOUNDING, and SR=$00 zeroes SUSTAIN as well

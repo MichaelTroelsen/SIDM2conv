@@ -97,8 +97,10 @@ class HardTrackShim:
     # mismatches on Love_tune_2, every one of them on a gate-OFF frame, ours=$3a
     # -> orig=$00). See sr_pre in drivers_src/mon/romuzak_driver.asm and the
     # rung-4 section of docs/players/HARDTRACK.md for what it is and is not
-    # worth. HT_SR_PREKILL=N overrides; 0 disables.
-    sr_prekill = int(os.environ.get('HT_SR_PREKILL', '0'))
+    # worth. ON by default since 2026-08-14: gated on the ENDING note's
+    # instrument mode it improves every corpus file measured and regresses none.
+    # HT_SR_PREKILL=0 disables, which is how the A/B is taken.
+    sr_prekill = int(os.environ.get('HT_SR_PREKILL', '2'))
     # HardTrack percussion produces real per-frame Hz deltas in $40xx-$43xx
     # (Love_tune_2 voice 2: a $4300 drum dive), which is exactly the range the
     # driver's SCALED-vibrato entry marker claims. Leaving the marker on froze
@@ -206,7 +208,13 @@ class HardTrackShim:
         return {'ad': ins.ad, 'sr': ins.sr,
                 'waveform': (wp[0][0] if wp else 0) or 0x41,
                 'pw': ins.pulse_width or 0x800, 'pulseval': 0, 'fx': 0,
-                'wave_prog': 0, 'flags': ins.flags, 'raw': list(ins.raw)}
+                'wave_prog': 0, 'flags': ins.flags, 'raw': list(ins.raw),
+                # mode 2 = this instrument's note ENDS with SR=$00 + gate off.
+                # It is the selector for SR_PREKILL and it is per instrument:
+                # Teekkno restarts 23 of 245 note-ons where Love_tune_2 and
+                # Muminki_Rooooolz restart every one, and mode explains all
+                # three exactly. See Instrument.ends_with_hard_restart.
+                'sr_restart': 1 if ins.ends_with_hard_restart else 0}
 
 
 def song_span_frames(shim):

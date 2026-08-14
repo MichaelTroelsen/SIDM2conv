@@ -1140,10 +1140,10 @@ remains the only decisive experiment — but it is now a **less** promising one
 than the doc previously implied, because the register that was supposed to be
 the cause does not move the energy in the predicted direction.
 
-> **RUN, 2026-08-14.** The lookahead is built (`SR_PREKILL`) and the prediction
-> above held: it fixes the registers (2,966 → 1,170 mismatching frames over nine
-> tunes) and makes `Love_tune_2` *darker*, not brighter. See
-> "The per-note lookahead was BUILT, and it is NOT the brightness fix" below.
+> **RUN, 2026-08-14.** The lookahead is built (`SR_PREKILL`, now ON by default)
+> and the prediction above held: it fixes the registers (2,966 → 728 mismatching
+> frames over nine tunes once gated on instrument mode) and makes `Love_tune_2`
+> *darker*, not brighter. See the two sections below.
 
 ---
 
@@ -1273,7 +1273,7 @@ We really were ringing too loud where the player cuts the tail dead, and the fix
 more than halves that error. It costs 0.32 dB on the loud frames to buy it, and
 on this tune that trade reads as *darker*, not *tighter*.
 
-### `Teekkno` refutes "every note", and field 5 is not the selector
+### `Teekkno` refutes "every note" — and mode 2 IS the selector
 
 Keyed by the AD/SR pair written on each note-on, over part 1:
 
@@ -1288,7 +1288,7 @@ and `Teekkno` is the file that discriminates: its ADSR `$0ffc` restarts on 1 of
 222 note-ons while `$099d`/`$099e`/`$cccc` restart on 9/10, 7/7 and 4/4. Firing
 unconditionally is what costs `Teekkno` 42 → 468 and flips its centroid sign.
 
-Two candidate selectors are already **ruled out**:
+Two candidate selectors were **ruled out** on the way:
 
 - **Instrument field 5 bit 4.** The player reads field 5 exactly three times per
   module with masks `$03`, `$10` and `$80` in 33 of 33, and `$10`'s only consumer
@@ -1296,8 +1296,7 @@ Two candidate selectors are already **ruled out**:
 - **Gate state.** The two pre-note frames are gate-off in every case measured, on
   the file that restarts and the file that does not alike.
 
-Finding the real selector is the open work. It needs the player's own code, not
-another measurement — `docs/guides/RETRODEBUGGER_GUIDE.md` is the tool for it.
+The answer was the third mask, `$03` — see the next section.
 
 ### Two traps, both invisible to the register comparison
 
@@ -1316,12 +1315,115 @@ another measurement — `docs/guides/RETRODEBUGGER_GUIDE.md` is the tool for it.
 ### Safety
 
 Verified byte-identical with the flag off: `Monty_on_the_Run` (Hubbard,
-`HARD_RESTART=1`), `Final_Luv` (Sound Monitor, `HARD_RESTART=0`) and
-`Love_tune_2` itself. `pyscript/test_hardtrack_sr_prekill.py` pins that every
-byte of the feature sits inside a `.if SR_PREKILL` block, that the kill touches
-`$D406` and never `$D405`, and that the gate test precedes the store. Suite 2,442.
+`HARD_RESTART=1`), `Final_Luv` (Sound Monitor, `HARD_RESTART=0`), MoN's
+`Cybernoid_II`, and `Love_tune_2` itself.
+`pyscript/test_hardtrack_sr_prekill.py` pins that every byte of the feature sits
+inside a `.if SR_PREKILL` block, that the kill touches `$D406` and never `$D405`,
+and that both gates precede the store.
 
 ---
+
+## The selector is instrument mode 2, and the fix is ON by default (2026-08-14)
+
+The section above left one thing open — *which* instruments get the restart —
+and answered it wrongly by omission, because firing on every note is what cost
+`Teekkno` 42 → 468. The selector is **instrument field 5 bits 0–1 == 2**, the
+`mode` the parser had named and never explained.
+
+Both of the player's `LDA #$00 / STA $D406,y` sites are guarded by the PREVIOUS
+frame's mode, held per voice:
+
+```
+$11ca  lda F5,y / and #$03 / pha      ; this instrument's mode
+$11d0  lda mode,x / sta prevmode,x    ; shift: prev <- cur, once per frame
+$11d7  pla / sta mode,x
+$11da  lda prevmode,x / cmp #$02
+$11df  beq $11e9                      ; -> lda #$00 / sta $D406,y + gate off
+$11e1  lda #$fe / sta gmask,x         ; else a PLAIN gate-off
+
+$12da  lda legato,x / bne skip        ; the note-FETCH path: the same kill,
+$12e2  lda prevmode,x / bne $12ea     ;   on a non-legato fetch
+```
+
+Three things follow, and each one had to be got right:
+
+- **It belongs to the note that is ENDING**, not the one starting. Keyed on the
+  starting note the rule scores 4 of 6 ADSR keys on `Teekkno`; keyed on the
+  ending note it scores **242 of 242**.
+- **The corpus carries only modes 0 and 2** (134 and 792 instruments across 38
+  files), so the fetch site's `bne` is the same test as the note-end site's
+  `cmp #$02`.
+- **It is not `skip_filter_rearm`.** Bit 4 suppresses a filter re-arm and reaches
+  nothing else — that reading stands. The real hard restart was in the two bits
+  next to it, which is why field 5's three masks (`$03`, `$10`, `$80`) were the
+  right inventory and the wrong conclusion.
+
+Measured against the players' own output, keyed on the ending note:
+
+| file | note-ons | predicted correctly | false positives |
+|---|---:|---:|---:|
+| `Teekkno` | 242 | **242 (100%)** | 0 |
+| `Love_tune_2` | 158 | **158 (100%)** | 0 |
+| `Muminki_Rooooolz` | 375 | **375 (100%)** | 0 |
+| `Walk_to_Soul` | 340 | 331 (97.4%) | 0 |
+| `Muza_Do_Dema` | 145 | 139 (95.9%) | 0 |
+
+**Zero false positives in 1,260 note-ons.** The residual on the last two is
+one-directional — restarts the rule does not predict, never restarts it invents
+— and the ADSR-pair proxy used to attribute an instrument is itself part of it.
+
+### Wiring
+
+`Instrument.ends_with_hard_restart` → the shim's `sr_restart` → instrument col2
+bit **`$04`** → `sr_pre` tests `VIFLAGS,x`. `VIFLAGS` still holds the ending
+note's instrument at that moment, because the next fetch has not run `set_instr`
+yet — the same reason the write has no row to live on. The emitter masks `$04`
+out unless `SR_PREKILL` is set, so a build without the feature is byte-identical
+whatever a shim asks for.
+
+### What it does, gated
+
+| | unconditional | mode-2 gated |
+|---|---:|---:|
+| SR mismatching frames, the 9 tunes | 2,966 → 1,170 | 2,966 → **728** |
+| `Teekkno`, the discriminating file | 42 → **468** | 42 → **26** |
+| mean \|centroid error\| | 52.7 Hz | **51.4 Hz** |
+| mean \|rolloff error\| | 136.2 Hz | **132.6 Hz** |
+
+`Love_tune_2` still reads darker (−56.6 → −102.7 Hz centroid) and that is still
+the honest cost: the fix makes the envelope right and spends brightness doing it.
+Its release-tail level error is more than halved in exchange (+1.26 → −0.42 dB
+on the frames where the original sits at −35..−28 dBFS).
+
+### The whole corpus, and the rebuild
+
+Registers only (`--all --no-audio`), each file over the part-1 span its own build
+reports — 33 files, three chunks:
+
+| chunk | files | SR mismatching frames, off → on |
+|---|---:|---:|
+| 1 | 8 | 3,351 → 363 |
+| 2 | 11 | 4,439 → 794 |
+| 3 | 14 | 4,607 → 637 |
+| **all** | **33** | **12,397 → 1,794**, WORSE on **0** |
+
+Not one file regresses, which is what turned this from an experiment into a
+default. The Stage B fidelity sweep is **byte-identical** off vs on — raw 91.04%,
+audible 88.25%, 9,265 net misses either way — because the fix does not touch
+frequency; it is a safety check, not a win, and reading it as one would be the
+`0 == 0` mistake `fidelity_common` exists to prevent.
+
+**Shipped ON** (`HT_SR_PREKILL=0` disables, which is how the A/B is taken), and
+the corpus was rebuilt with it: `py -3 pyscript/hardtrack_native_rebuild.py`
+clears `out/hardtrack_native/` and rebuilds all **33 of 33** at the default
+window, 313 parts. `passband_check --player hardtrack` still reads **25/33** with
+the same 8 UNCONFIRMED multi-part files, so nothing there moved.
+
+*A fix in the builder is not a fix in the corpus* (`PATTERNS.md` F7) — that is
+why the rebuild is a tracked script and not a sentence in a commit message.
+
+---
+
 
 ## Rung 4: the first listening pass (v3.25.0)
 

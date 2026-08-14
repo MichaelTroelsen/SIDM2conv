@@ -250,6 +250,38 @@ class Instrument:
     def mode(self) -> int:
         return self.raw[5] & 0x03
 
+    @property
+    def ends_with_hard_restart(self) -> bool:
+        """Mode 2: this instrument's note ends with SR=$00 + gate off.
+
+        Field 5's `$03` mask was named `mode` and left unexplained until
+        2026-08-14. Both of the player's `LDA #$00 / STA $D406,y` sites are
+        guarded by the PREVIOUS frame's mode, held per voice:
+
+            $11ca  lda F5,y / and #$03 / pha    ; this instrument's mode
+            $11d0  lda mode,x / sta prevmode,x  ; shift: prev <- cur
+            $11d7  pla / sta mode,x
+            $11da  lda prevmode,x / cmp #$02
+            $11df  beq $11e9                    ; -> lda #$00 / sta $D406,y
+            $11e1  lda #$fe / sta gmask,x       ; else a PLAIN gate-off
+
+            $12da  lda legato,x / bne skip      ; the note-FETCH path: same kill
+            $12e2  lda prevmode,x / bne $12ea   ; on a non-legato fetch
+
+        So it is a property of the note that is ENDING, not the one starting,
+        and the corpus carries only modes 0 and 2 (134 and 792 instruments), so
+        the second site's `bne` is the same test as the first's `cmp #$02`.
+
+        Measured against the players' own output, keyed on the ending note:
+        Teekkno 242/242, Love_tune_2 158/158, Muminki_Rooooolz 375/375 note-ons
+        predicted correctly, with ZERO false positives across 1,260 note-ons in
+        five files (Muza_Do_Dema 95.9% and Walk_to_Soul 97.4% miss a handful in
+        the safe direction). It is what `skip_filter_rearm` was mistaken for:
+        bit 4 suppresses a filter re-arm and nothing else, and the real hard
+        restart was in the two bits next to it all along.
+        """
+        return self.mode == 2
+
 
 class HardTrackModule:
     """A parsed HardTrack Composer module."""

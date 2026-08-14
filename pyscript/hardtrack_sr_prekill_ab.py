@@ -34,8 +34,10 @@ it from the builder's own `part 1/N (0-Xs)` line.
 Chunk long runs (--first/--last): a single parent process died at ~275 builds.
 """
 import argparse
+import glob
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -75,18 +77,29 @@ WORK = os.path.join("out", "_ht_sr_prekill")
 ALIGN = -3
 
 
+# `part 1/6 (0-28s, 0-1400f): ...` -- the builder's own span for part 1. Read
+# it from the SAME subprocess call that produced the build, never from a
+# separate run and never guessed: measuring past a part's end is the error this
+# whole file warns about.
+PART1 = re.compile(r"part 1/\d+ \(0-(\d+)s")
+
+
 def build(stem, prekill):
-    """Build part 1 with SR_PREKILL=`prekill`; return the wrapper .sid path."""
+    """Build part 1 with SR_PREKILL=`prekill`.
+
+    Returns (wrapper .sid path, part-1 span in seconds, error).
+    """
     sid = os.path.join(SID_DIR, stem + ".sid")
     env = dict(os.environ, HT_SR_PREKILL=str(prekill))
     r = subprocess.run(["py", "-3", "bin/build_hardtrack_native_song.py", sid],
                        capture_output=True, text=True, env=env, cwd=ROOT)
     out = os.path.join(OUT_DIR, stem + "_part01.sid")
     if not os.path.exists(out):
-        return None, (r.stdout[-300:] + r.stderr[-300:]).strip()
+        return None, None, (r.stdout[-300:] + r.stderr[-300:]).strip()
+    m = PART1.search(r.stdout or "")
     keep = os.path.join(WORK, "%s_k%d.sid" % (stem, prekill))
     shutil.copyfile(out, keep)
-    return keep, None
+    return keep, (int(m.group(1)) if m else None), None
 
 
 def features(path, secs, tag):
@@ -128,41 +141,74 @@ def main(argv=None):
     ap.add_argument("--prekill", type=int, default=2,
                     help="frames of SR=$00 before a fetch (2 is the MEASURED "
                          "width: every run in the originals is exactly 2)")
+    ap.add_argument("--all", action="store_true",
+                    help="every SID/Shogoon file the builder accepts, each over "
+                         "the part-1 span its OWN build reports, instead of the "
+                         "nine-tune brightness table")
+    ap.add_argument("--no-audio", action="store_true",
+                    help="registers only -- skips the renders, which is most of "
+                         "the wall clock on a corpus run")
     a = ap.parse_args(argv)
     os.makedirs(WORK, exist_ok=True)
+
+    cases = CASES
+    if a.all:
+        cases = [(os.path.basename(p)[:-4], None)
+                 for p in sorted(glob.glob(os.path.join(SID_DIR, "*.sid")))]
 
     print("%-20s %4s | %17s | %17s | %13s"
           % ("file", "win", "centroid off/on", "rolloff  off/on", "SR off/on"))
     rows = []
-    for stem, secs in CASES[a.first:a.last]:
+    for stem, secs in cases[a.first:a.last]:
         sid = os.path.join(SID_DIR, stem + ".sid")
         if not os.path.exists(sid):
             print("%-20s MISSING" % stem)
             continue
-        off, err = build(stem, 0)
+        off, span, err = build(stem, 0)
         if off is None:
-            print("%-20s BUILD FAILED (off): %s" % (stem, err))
+            if not a.all:               # a refused rip is expected in --all
+                print("%-20s BUILD FAILED (off): %s" % (stem, err))
             continue
-        on, err = build(stem, a.prekill)
+        if secs is None:
+            if span is None:
+                print("%-20s SKIPPED: no part-1 span in the build output" % stem)
+                continue
+            secs = span
+        elif span is not None and span < secs:
+            # never measure past the part the build actually covers
+            print("%-20s NOTE: asserted %ds > built span %ds, using %ds"
+                  % (stem, secs, span, span))
+            secs = span
+        on, _, err = build(stem, a.prekill)
         if on is None:
             print("%-20s BUILD FAILED (on): %s" % (stem, err))
             continue
 
-        fo = features(sid, secs, "orig")
-        fb = features(off, secs, "off")
-        fp = features(on, secs, "on")
         nfr = secs * 50
-        row = (stem, secs,
-               fb.centroid_hz_mean - fo.centroid_hz_mean,
-               fp.centroid_hz_mean - fo.centroid_hz_mean,
-               fb.rolloff85_hz_mean - fo.rolloff85_hz_mean,
-               fp.rolloff85_hz_mean - fo.rolloff85_hz_mean,
-               sr_mismatch(sid, off, nfr), sr_mismatch(sid, on, nfr))
+        sb, sp = sr_mismatch(sid, off, nfr), sr_mismatch(sid, on, nfr)
+        if a.no_audio:
+            row = (stem, secs, 0.0, 0.0, 0.0, 0.0, sb, sp)
+            print("%-20s %3ds | %35s | %6d %6d"
+                  % (stem, secs, "(--no-audio)", sb, sp))
+        else:
+            fo = features(sid, secs, "orig")
+            fb = features(off, secs, "off")
+            fp = features(on, secs, "on")
+            row = (stem, secs,
+                   fb.centroid_hz_mean - fo.centroid_hz_mean,
+                   fp.centroid_hz_mean - fo.centroid_hz_mean,
+                   fb.rolloff85_hz_mean - fo.rolloff85_hz_mean,
+                   fp.rolloff85_hz_mean - fo.rolloff85_hz_mean, sb, sp)
+            print("%-20s %3ds | %+7.1f %+7.1f | %+7.1f %+7.1f | %6d %6d" % row)
         rows.append(row)
-        print("%-20s %3ds | %+7.1f %+7.1f | %+7.1f %+7.1f | %6d %6d" % row)
         sys.stdout.flush()
 
-    if len(rows) > 1:
+    if len(rows) > 1 and a.no_audio:
+        worse = [r[0] for r in rows if r[7] > r[6]]
+        print("\nSR mismatching frames %d -> %d over %d files; WORSE on %d %s"
+              % (sum(r[6] for r in rows), sum(r[7] for r in rows), len(rows),
+                 len(worse), worse[:6]))
+    elif len(rows) > 1:
         cb = np.mean([abs(r[2]) for r in rows])
         cp = np.mean([abs(r[3]) for r in rows])
         rb = np.mean([abs(r[4]) for r in rows])

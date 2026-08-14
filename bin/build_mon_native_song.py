@@ -1461,6 +1461,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
 
     def instr_of(mon_i, wp, flag, filt):
         ins = m.instrument(mon_i)
+        # col2 bit $04: this instrument's note ends with a hard restart. It goes
+        # into `flag`, which is already part of the dedup key below, so two
+        # instruments that differ only in it stay separate slots. Only a shim
+        # that sets 'sr_restart' can raise it, and only an SR_PREKILL build lets
+        # it through the emitter's mask — so every other player's output is
+        # unchanged by construction.
+        if ins.get('sr_restart'):
+            flag |= 0x04
         ad, sr, raw = ins['ad'], ins['sr'], ins['waveform'] or 0x41
         relwf = _relwf_of(m, mon_i)
         key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None, relwf)
