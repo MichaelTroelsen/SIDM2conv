@@ -14,6 +14,7 @@ Usage:  py -3 bin/build_mon_native_song.py [SID/Tel_Jeroen/Hawkeye.sid] [subtune
 """
 import bisect
 import os
+import re
 import shutil
 import sys
 
@@ -1862,6 +1863,34 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             instr_src, instr_relwf)
 
 
+_SPAN_RE = re.compile(r"part (\d+)/(\d+) \((\d+)-(\d+)s")
+
+
+def _write_span(out_path, label):
+    """Record the seconds this part covers, beside the artifact.
+
+    Every scorer that compares a part against the original needs to know where
+    the part ENDS: past it our build LOOPS while the original plays on, and the
+    difference scores as a defect. Nothing on disk carried that -- the span
+    existed only in this label, which was printed and thrown away, so
+    `passband_check` had to report 41 multi-part builds UNCONFIRMED and ask a
+    human for 41 numbers it had already computed.
+
+    A `.span` sidecar next to the `.sf2` costs nothing (`out/` is gitignored),
+    is written by the ONE emitter every native builder goes through, and is
+    absent for single-window builds, which is the honest signal that no span
+    was established rather than a default that would be believed.
+    """
+    m = _SPAN_RE.search(label or "")
+    if not m:
+        return
+    try:
+        with open(out_path + ".span", "w") as f:
+            f.write("%s %s\n" % (m.group(3), m.group(4)))
+    except OSError:
+        pass                              # a span we could not write is not fatal
+
+
 def emit_one(m, br, out_path, label):
     """Assemble + wrap one build result (segs, bundles, instrs, ...) into an SF2."""
     (segs, bundles, instrs, wave_programs, instr_flags, filter_programs,
@@ -2021,6 +2050,7 @@ def emit_one(m, br, out_path, label):
     pla = sf2_parser.parse_sf2_blocks(bytearray(sf2), di)
     if gen.filter_addr >= 0xC000:                # approaching the $D000 memory wall
         flags += " MEMWALL"
+    _write_span(out_path, label)
     print(f"  {label}: instr={len(instrs)} bundles={len(bundles)} filter={nfilt} "
           f"{len(sf2)}B top~${gen.filter_addr:04X} parse={'OK' if pla == B.LOAD_BASE else 'FAIL'}{flags}")
     return gen.filter_addr

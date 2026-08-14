@@ -399,6 +399,50 @@ check, not the test suite.
 
 ---
 
+### F8. The artifact must record the window it was built for
+
+**Symptom**: a scorer compares one part of a multi-part build against the
+original and cannot say whether a mismatch is real, because past that part's end
+our build LOOPS while the original plays on. The honest response is to refuse —
+`passband_check` reported 41 builds UNCONFIRMED across two players — but a
+refusal that needs a human to supply 41 numbers is a refusal that never gets
+resolved. Those rows sat unestablished for two sessions.
+
+**Detection**: the number was never unknown. Every native builder labels each
+part `part N/M (A-Bs)` and **prints** it; nothing wrote it down. If a scorer is
+asking a human for a figure the builder computed an hour earlier, the gap is
+storage, not knowledge.
+
+**Fix**: `emit_one` — the one emitter every native builder goes through — drops a
+`.span` sidecar beside each artifact. Three properties earn their keep:
+
+- **One-directional.** A recorded span may only NARROW the window, never widen it
+  past `--seconds`. Over-run can only MANUFACTURE disagreement, so narrowing is
+  safe in a way widening is not. (`window_for`, pinned.)
+- **Absent ≠ zero.** No sidecar means the row stays UNCONFIRMED. An artifact
+  built before the mechanism existed must not silently adopt a default.
+- **It says so.** Rows measured over a derived window print `[Ns = its own part
+  1]`, because a reader cannot otherwise tell which number they are looking at.
+
+**Result on HardTrack**: 25 → **32 of 33**. Seven of the eight unconfirmed rows
+were pure window artifacts — `Something_to_Eat` 68.7% → **100.0%** at its true
+10 s, `Illmatic_end` 71.1% → **100.0%**, `Takisobie` 57.2% → **99.8%** — and the
+eighth (`Fun_Factory`, 99.0%, 3 audible frames) is a real marginal difference
+that the noise had been hiding.
+
+⚠️ **The first run derived nothing, silently.** Half the players in `PLAYERS`
+are keyed on the `.sid` PSID wrapper and half on the `.sf2`; the sidecar is
+written beside the `.sf2`, so every HardTrack lookup missed and read as "no span
+recorded" — indistinguishable from working correctly. A lookup that can fail
+open needs a positive signal that it fired, which is what the `[Ns = its own
+part 1]` marker became.
+
+**Seen in**: HardTrack, SDI (`bin/build_mon_native_song.py` `_write_span`,
+`pyscript/passband_check.py` `part_span`/`window_for`, pinned by
+`pyscript/test_passband_check.py`).
+
+---
+
 ## Adding an entry
 One screenful max: symptom → detection → exploit/fix → players seen in.
 If a technique is rediscovered in a new arc, add the sighting here *in the

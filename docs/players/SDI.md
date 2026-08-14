@@ -316,8 +316,34 @@ Corpus: **237 → 241 of 281**, failures 5 → 3 (`Bahbar_v` has no original,
 the point of the per-file reference. Pinned by
 `pyscript/test_passband_check.py`.
 
-The 33 unconfirmed are multi-part files whose part 1 may end inside the 28 s
-window; resolving them needs a per-file asserted `--seconds`. Their mode SETS and
+### The unconfirmed rows are resolved — 29 → 0 (2026-08-14)
+
+They never needed a human to assert 29 windows: the builder had computed each
+one and printed it. `emit_one` now writes a `.span` sidecar beside every part and
+`passband_check` narrows each file to its own part 1 (`PATTERNS.md` F8;
+`part_span`/`window_for` in `fidelity_common`).
+
+**241 → 258 of 281**, with 27 rows measured over a derived window. Failures went
+**3 → 7**, and that is the mechanism working rather than a regression: over-run
+can only MANUFACTURE disagreement, never conceal it, so resolving a window turns
+unknowns into passes *and* exposes the genuine defects the noise was covering.
+
+| newly established | part 1 | verdict |
+|---|---:|---|
+| `Juba-Jazz` | 72 s | **52.8%**, 661 audible frames — real |
+| `Tanks_3000` | 32 s | **94.9%**, static where the original modulates 12x, 72 audible — real |
+| `Funk_Facet` | 24 s | **99.0%**, 12 audible frames — real, marginal |
+| `Arabia` | 18 s | **98.2%** — real |
+| `Finish_Line` | 22 s | **100.0%** (44 changes on both sides) |
+| `Homebrew` | 14 s | **100.0%** (42 changes both sides) |
+
+⚠️ **`Juba-Jazz` and `Tanks_3000` were never at risk of over-run at all** — their
+part 1 is LONGER than the 28 s window, so nothing could loop inside it. The old
+rule "multi-part ⇒ unconfirmed" was over-cautious in one direction and blind in
+the other; the sidecar replaces a proxy with the actual question.
+
+The old text: *the 33 unconfirmed are multi-part files whose part 1 may end
+inside the 28 s window; resolving them needs a per-file asserted `--seconds`.* Their mode SETS and
 change counts now track the originals closely (`Finish_Line` 56 vs 56,
 `Curse` 87 vs 84, `Homebrew` 85 vs 84), where before the fix every one of them
 was a flat `LP` with 0 changes.

@@ -707,6 +707,61 @@ def format_coverage(dim_keys):
 # run rows: the unit an A/B compares
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Part-1 spans: where a windowed build actually ends
+# ---------------------------------------------------------------------------
+
+def part_span(build_path):
+    """Seconds part 1 of this build actually covers, or None.
+
+    The builders write a `.span` sidecar beside every part they emit (the label
+    already said so; it was printed and thrown away). Reading it turns 41
+    UNCONFIRMED rows into measured ones without asking a human for numbers the
+    build had already computed.
+
+    None means NO span was recorded -- an older artifact, or a builder whose
+    label carries no window. That must stay distinguishable from a span of 0:
+    defaulting to the global window is exactly the over-run this guards.
+    """
+    # Half the players in PLAYERS are keyed on the `.sid` PSID wrapper and half
+    # on the `.sf2` -- `emit_one` writes the sidecar beside the `.sf2` it built,
+    # so a `.sid`-keyed player must look there too. Getting this wrong is silent:
+    # every span reads absent and every row stays UNCONFIRMED, which is exactly
+    # what the first run of this did across all 33 HardTrack builds.
+    cands = [build_path + ".span"]
+    if build_path.lower().endswith(".sid"):
+        cands.append(build_path[:-4] + ".sf2.span")
+    for c in cands:
+        try:
+            with open(c) as f:
+                t0, t1 = f.read().split()[:2]
+        except (OSError, ValueError):
+            continue
+        t0, t1 = int(t0), int(t1)
+        return t1 if t1 > t0 else None
+    return None
+
+
+def window_for(span, seconds):
+    """The comparison window for one build: (seconds, derived).
+
+    The rule is deliberately ONE-DIRECTIONAL. A recorded span may only NARROW
+    the window; it may never widen it past `--seconds`. Over-running a part is
+    the error this whole guard exists for -- past its end our build LOOPS while
+    the original plays on, and the difference scores as a defect -- and it cost
+    five retracted readings across three tools in one session. Narrowing can
+    only ever remove manufactured disagreement, so it is safe in a way widening
+    is not.
+
+    `derived` is True only when a span actually changed the window, so the
+    report can say which rows were measured over their own part rather than
+    leaving the reader to assume it.
+    """
+    if span and span < seconds:
+        return span, True
+    return seconds, False
+
+
 def output_digest(paths):
     """sha256 (12 hex) over the artifacts a run BUILT, or None if any is missing.
 

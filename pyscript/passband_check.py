@@ -53,7 +53,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sidm2.fidelity_common import siddump_frames_full, psid_wrap  # noqa: E402
+from sidm2.fidelity_common import (  # noqa: E402
+    siddump_frames_full, psid_wrap, part_span, window_for)
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -349,7 +350,6 @@ def main(argv=None):
         print(f"no {a.player} builds in {build_dir} -- nothing to check")
         return 2
 
-    args = ["-a0", f"-t{a.seconds}"]
     print(f"{'file':<28s} {'original':<14s} {'ours':<14s} "
           f"{'oChg':>5s} {'dChg':>5s} {'off':>4s} {'agree':>7s} {'routed':>7s}")
     bad = []
@@ -359,6 +359,13 @@ def main(argv=None):
     asserted_window = any(a_.startswith("--seconds") for a_ in (argv or sys.argv[1:]))
     for b in builds:
         base = os.path.basename(b)[:-len(cfg["suffix"])]
+        # A recorded span beats the global window, and it beats it in ONE
+        # direction: never widen past --seconds, because a longer window is the
+        # over-run this whole guard exists for. An explicit --seconds still
+        # wins, so an operator can always narrow further.
+        span = None if asserted_window else part_span(b)
+        secs, derived = window_for(span, a.seconds)
+        args = ["-a0", f"-t{secs}"]
         orig = find_original(base, cfg["origs"])
         if not orig:
             print(f"{base:<28s} NO ORIGINAL FOUND -- cannot check")
@@ -366,10 +373,10 @@ def main(argv=None):
             continue
         ref = cfg.get("ref")
         if ref == "sim":
-            of = sim_reference(orig, a.seconds)
+            of = sim_reference(orig, secs)
         elif ref == "sdi_v":
             # per-file: None for the five non-V variants, which siddump drives
-            of = sdi_v_reference(orig, a.seconds) or siddump_frames_full(orig, args)
+            of = sdi_v_reference(orig, secs) or siddump_frames_full(orig, args)
         else:
             of = siddump_frames_full(orig, args)
         if not has_evidence(of):
@@ -418,16 +425,19 @@ def main(argv=None):
             why = (f"static vs {oc} changes" if oc and not dc else f"{pct:.1f}%")
             nparts = len(glob.glob(os.path.join(
                 build_dir, base + cfg["suffix"].replace("01", "*"))))
-            if nparts > 1 and not asserted_window:
+            if nparts > 1 and not asserted_window and span is None:
                 # Our part 1 may have looped inside this window. Over-run can
                 # only MANUFACTURE disagreement, so this is not counted as a
-                # pass either -- it is simply not established.
+                # pass either -- it is simply not established. With a recorded
+                # span there is nothing to be unsure about: the window IS part 1.
                 unconfirmed.append((base, why, nparts))
                 note = f"   <== UNCONFIRMED ({nparts} parts; window may over-run part 1)"
             else:
                 note = ("   <== original MODULATES, ours is static" if oc and not dc
                         else "   <== mode mismatch")
                 bad.append((base, why))
+        if derived:
+            note += f"   [{secs}s = its own part 1]"
         rshow = "n/a" if routed is None else f"{100.0 * routed:.0f}%"
         if audible is not None and pct is not None and pct < a.min:
             rshow += f"/{audible}a"      # audible mismatches

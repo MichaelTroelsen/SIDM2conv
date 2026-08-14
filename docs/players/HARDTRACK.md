@@ -1312,6 +1312,44 @@ The answer was the third mask, `$03` — see the next section.
    attempt at the guard blocked 100% of the kills instead of 4 of 244. The driver
    now stashes the `$D404` byte it actually wrote in `VGCUR`.
 
+## The 8 UNCONFIRMED passband rows are resolved — 7 were the window (2026-08-14)
+
+`passband_check` reported eight multi-part builds UNCONFIRMED: their part 1 may
+end inside the comparison window, past which our build LOOPS against the
+original's continuing music. The refusal was right and it was also stuck —
+resolving it needed a human to supply eight numbers the builder had computed an
+hour earlier and printed.
+
+It no longer does. `emit_one` writes a `.span` sidecar beside every part it
+emits, and `passband_check` narrows each file's window to its own part 1
+(`PATTERNS.md` F8; `part_span`/`window_for` live in `fidelity_common`).
+
+| file | at the global 28 s | at its own part 1 |
+|---|---:|---:|
+| `Something_to_Eat` | 68.7% | **100.0%** (10 s) |
+| `Illmatic_end` | 71.1% | **100.0%** (6 s) |
+| `Ritual_II_tune_2` | 71.2% | **100.0%** (10 s) |
+| `Domagareflexow` | 96.3% | **100.0%** (26 s) |
+| `Hopscotch` | 88.8% | **99.9%** (20 s) |
+| `Rune-T_Noter` | 80.2% | **99.9%** (14 s) |
+| `Takisobie` | 57.2% | **99.8%** (12 s) |
+| `Fun_Factory` | 69.5% | **99.0%** (6 s) — REAL, 3 audible frames |
+
+**25 → 32 of 33.** Seven were pure window artifacts, exactly as the guard's own
+reasoning predicted: over-run can only MANUFACTURE disagreement, so nothing that
+was passing could break and nothing that was failing could be flattered. The
+eighth is a real marginal difference the noise had been hiding — `Fun_Factory`
+disagrees on 3 frames the original actually routes, which is now the only
+HardTrack passband residual.
+
+25 rows print `[Ns = its own part 1]`. That marker is not decoration: the first
+run of this derived **nothing** and said so in no way at all, because half the
+players are keyed on the `.sid` wrapper and half on the `.sf2` while the sidecar
+sits beside the `.sf2`. A lookup that fails open reads exactly like one that
+worked.
+
+---
+
 ### Safety
 
 Verified byte-identical with the flag off: `Monty_on_the_Run` (Hubbard,

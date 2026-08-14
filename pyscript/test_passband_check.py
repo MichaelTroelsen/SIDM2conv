@@ -22,6 +22,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 import passband_check as pb  # noqa: E402
 
@@ -356,3 +357,89 @@ def test_a_v_style_within_frame_alternation_is_not_scored_as_agreement():
                                              routed_seq=[1] * 100)
     assert pct is not None and pct < 60.0
     assert oc > dc == 0, "the original modulates and ours does not"
+
+
+# --- the part-1 span sidecar -----------------------------------------------
+#
+# The span was always known and always thrown away: every native builder labels
+# each part `part N/M (A-Bs)` and PRINTS it. Nothing wrote it down, so this check
+# had to report 41 multi-part builds UNCONFIRMED and ask a human for 41 numbers
+# the build had already computed. `emit_one` now drops a `.span` beside each
+# artifact and `part_span` reads it.
+
+
+def test_the_window_may_only_narrow():
+    """A recorded span narrows; it must NEVER widen past --seconds.
+
+    Over-run is the error the whole guard exists for -- past a part's end our
+    build LOOPS against the original's continuing music -- and it produced five
+    retracted readings in three tools in one session. Narrowing can only remove
+    manufactured disagreement; widening can only create it."""
+    assert pb.window_for(12, 28) == (12, True)      # narrower span wins
+    assert pb.window_for(60, 28) == (28, False)     # longer span is IGNORED
+    assert pb.window_for(28, 28) == (28, False)     # equal is not "derived"
+
+
+def test_no_span_means_the_global_window():
+    """Absent is not zero. An artifact built before the sidecar existed must
+    fall back and stay UNCONFIRMED, not silently adopt a default."""
+    assert pb.window_for(None, 28) == (28, False)
+    assert pb.window_for(0, 28) == (28, False)
+
+
+def test_part_span_reads_the_sidecar(tmp_path):
+    b = tmp_path / "Song_part01.sf2"
+    b.write_bytes(b"")
+    (tmp_path / "Song_part01.sf2.span").write_text("0 6\n")
+    assert pb.part_span(str(b)) == 6
+
+
+def test_part_span_refuses_a_degenerate_or_missing_sidecar(tmp_path):
+    """A zero-length or unparsable span is NO span. Returning 0 would read as
+    'compare nothing' and score a confident, empty agreement."""
+    b = tmp_path / "Song_part01.sf2"
+    b.write_bytes(b"")
+    assert pb.part_span(str(b)) is None          # no sidecar at all
+    (tmp_path / "Song_part01.sf2.span").write_text("6 6\n")
+    assert pb.part_span(str(b)) is None          # t1 == t0
+    (tmp_path / "Song_part01.sf2.span").write_text("garbage\n")
+    assert pb.part_span(str(b)) is None
+
+
+def test_the_emitter_writes_a_span_only_for_a_windowed_label(tmp_path):
+    """Single-window builders label their output `<base> 0-28s` with no `part
+    N/M`, and they must produce NO sidecar -- a span nobody established is worse
+    than none, because the reader would believe it."""
+    sys.path.insert(0, os.path.join(ROOT, "bin"))
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "bmns", os.path.join(ROOT, "bin", "build_mon_native_song.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bmns"] = mod
+    spec.loader.exec_module(mod)
+
+    out = str(tmp_path / "x.sf2")
+    mod._write_span(out, "part 1/2 (0-6s) SDI Stage B")
+    assert open(out + ".span").read().split() == ["0", "6"]
+
+    out2 = str(tmp_path / "y.sf2")
+    mod._write_span(out2, "Commando 0-28s")
+    assert not os.path.exists(out2 + ".span")
+
+
+def test_the_span_regex_matches_every_builders_label():
+    """One regex has to cover SDI, HardTrack, DMC, FC, MattGray, MoN and Myth,
+    whose labels differ after the window."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "bmns2", os.path.join(ROOT, "bin", "build_mon_native_song.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bmns2"] = mod
+    spec.loader.exec_module(mod)
+    for label, want in (
+            ("part 1/2 (0-6s) SDI Stage B", ("0", "6")),
+            ("part 3/6 (58-80s, 2900-4000f)", ("58", "80")),
+            ("part 1/4 (0-28s)", ("0", "28")),
+    ):
+        m = mod._SPAN_RE.search(label)
+        assert m and (m.group(3), m.group(4)) == want, label

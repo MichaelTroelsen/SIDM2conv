@@ -67,8 +67,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sidm2.fidelity_common import (  # noqa: E402
-    freq_to_semi, fmt_pct, psid_wrap, score_pct, siddump_per_frame,
-    underpowered)
+    freq_to_semi, fmt_pct, part_span, psid_wrap, score_pct,
+    siddump_per_frame, underpowered)
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -207,17 +207,28 @@ def measure(name, secs, build=False, timeout=1800):
             return _classify_build_failure(r.stdout + r.stderr)
         span = part1_span(r.stdout + r.stderr)
     parts = sorted(glob.glob(os.path.join(BUILD_DIR, f"{name}_part*.sf2")))
+    if span is None and parts:
+        # The builder records each part's window beside the artifact (`.span`,
+        # written by build_mon_native_song._write_span). Reading it retires most
+        # of the `needs_bounds` class WITHOUT a rebuild: the span was never
+        # unknown, it was printed and thrown away. Frames, to match part1_span.
+        secs_span = part_span(parts[0])
+        if secs_span:
+            span = secs_span * 50
     if not parts:
         # NOT an error and NOT a zero: 32 of the 88 corpus files are NO-TABLES
         # or FALLBACK and were never built. Scoring them 0 would make a build
         # gap look like a fidelity gap.
         return {"not_built": True}
     if span is None and secs is None:
-        # Refuse rather than emit a plausible number. A part's span is not in
-        # the SF2 -- not for a multi-part song, and not for a single-part one
-        # either, whose span is the whole song and whose length varies. Forcing
-        # Balloon's 400 s onto `Zoom` scored it 24.4/27.7/23.9 with a confident
-        # n=19996; the window was measuring itself. See module docstring.
+        # Refuse rather than emit a plausible number. Without a `.span` sidecar
+        # a part's window is not recoverable from the SF2 -- not for a
+        # multi-part song, and not for a single-part one either, whose span is
+        # the whole song and whose length varies. Forcing Balloon's 400 s onto
+        # `Zoom` scored it 24.4/27.7/23.9 with a confident n=19996; the window
+        # was measuring itself. See module docstring. An artifact built before
+        # the sidecar existed still lands here, which is correct: absent is not
+        # zero, and a rebuild (or --build) is what establishes it.
         return {"needs_bounds": True, "parts": len(parts)}
     win = (span // 50 if span else secs) if span is None or secs is None         else min(secs, max(1, span // 50))
     win = max(1, win)
