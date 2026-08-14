@@ -100,11 +100,24 @@ _PART1 = re.compile(r"part 1/\d+ \(\d+-\d+s, (\d+)-(\d+)f\)")
 def part1_span(text):
     """Frames covered by part 1, read off the builder's own stdout.
 
-    Returns None when the line is absent -- a single-part build prints a
-    different shape, and callers must treat None as "unknown", never as zero.
+    Takes the LAST `part 1/N` line, not the first. The DMC builder prints a
+    discarded single-part trial before the adaptive split settles:
+
+        part 1/1 (0-90s, 0-4500f)     <- trial, thrown away
+        part 1/2 (0-7s, 0-395f)       <- the part actually emitted
+
+    `search()` took the trial, so `Happy_Jingle`'s 7-second part 1 was scored
+    over 90 seconds and read 23.4/16.1/8.1 where it is really 98.3/100.0/98.8.
+    Past its end our part LOOPS against the original's continuing music and the
+    difference scores as a defect -- the same error this module's own docstring
+    documents, surviving in the one place that parses it back.
+
+    Prefer `part_span` (the `.span` sidecar) over this: the sidecar is written
+    by the code that emitted the artifact, and a record beats a re-parse of a
+    log. Returns None when no line is present -- never zero.
     """
-    m = _PART1.search(text)
-    return int(m.group(2)) - int(m.group(1)) if m else None
+    ms = list(_PART1.finditer(text))
+    return int(ms[-1].group(2)) - int(ms[-1].group(1)) if ms else None
 
 
 def _probe(sf2_path):
@@ -207,11 +220,13 @@ def measure(name, secs, build=False, timeout=1800):
             return _classify_build_failure(r.stdout + r.stderr)
         span = part1_span(r.stdout + r.stderr)
     parts = sorted(glob.glob(os.path.join(BUILD_DIR, f"{name}_part*.sf2")))
-    if span is None and parts:
-        # The builder records each part's window beside the artifact (`.span`,
-        # written by build_mon_native_song._write_span). Reading it retires most
-        # of the `needs_bounds` class WITHOUT a rebuild: the span was never
-        # unknown, it was printed and thrown away. Frames, to match part1_span.
+    if parts:
+        # The artifact's OWN record wins over re-parsing the builder's stdout.
+        # `_write_span` is called by the emitter with the window it just built,
+        # so it cannot pick up a discarded trial split the way a log scrape can
+        # -- which is exactly how `Happy_Jingle` came to be scored over 90s of a
+        # 7s part. It also retires the `needs_bounds` class without a rebuild.
+        # Frames, to match part1_span.
         secs_span = part_span(parts[0])
         if secs_span:
             span = secs_span * 50

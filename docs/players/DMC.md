@@ -243,6 +243,64 @@ Read with three conditions:
 - **Part 1 only, freq/wf/pulse only.** 87 of 216 frequency voices sit below 90,
   so the tail is large and unexplained, and `$D418` is not in this figure at all.
 
+### ⚠️ The tail was a WINDOW, and the tail is now split by cause (2026-08-15)
+
+**A quarter of it was the sweep measuring past the part it was scoring.**
+`part1_span()` read the span back out of the builder's stdout with `re.search`,
+which takes the FIRST `part 1/N` line — and the DMC builder prints a discarded
+single-part trial before its adaptive split settles:
+
+```
+part 1/1 (0-90s, 0-4500f)     <- trial, thrown away
+part 1/2 (0-7s, 0-395f)       <- the part actually emitted
+```
+
+So `Happy_Jingle`'s **7-second** part 1 was scored over **90 seconds**, and past
+7 s our part LOOPS against the original's continuing music. It read
+**23.4/16.1/8.1**; measured over its own part it is **98.3/100.0/98.8 with zero
+presence mismatch**. `Depeche_Mode_Songs` read 37.9/31.6/29.0 and is
+**100.0/100.0/94.5**. Both figures are RETRACTED.
+
+Fixed two ways, and the second is the durable one: `part1_span` takes the last
+match, and the `.span` sidecar the emitter writes now takes **precedence over
+re-parsing the log** — a record written by the code that emitted the artifact
+cannot pick up a decision that was thrown away. (`PATTERNS.md` F8.)
+
+**Corrected corpus** (`pyscript/dmc_native_sweep.py`, 74 scored, 222 voices):
+
+| metric | before | after |
+|---|---:|---:|
+| freq median | 94.7 | **97.3** |
+| freq at 100 | 60 | **76** |
+| **freq below 90** | **89** | **64** |
+| wf at 100 | 116 | **141** |
+| pulse at 100 | 122 | **145** |
+
+### What the 64 actually are
+
+A single number could not say whether this was one defect or several. It is
+several, and only one of them is about pitch:
+
+| class | voices | songs |
+|---|---:|---|
+| **underpowered** (`n` below the 250-frame floor) | 22 | not a score at all |
+| **pitch-only** (wf & pulse ≥ 99.5) | **6** | 5 |
+| **whole-build** (wf & pulse also < 90) | **22** | 17 |
+| mixed | 14 | |
+
+- **Pitch-only — the real frequency residual**: `Balloon` v0 **80.6** (n=19,996,
+  the flagship build), `Namnam_Special` v1 81.0 / v2 88.8, `Again_Its_JB` v0
+  81.8, `Blobby` v0 88.9, `DMC_Demo_IV_tune_2` v1 88.7. Six voices, five songs.
+- **Whole-build** is a different queue: `Flimbos_Quest_main` is **silent** — 589
+  frames where the original sounds and our build never writes a frequency at
+  all, on every voice, at every offset from −40 to +400. `Roadblaster` v0/v2
+  58.6/62.0 over 15,996 frames. These are build failures; pitch is a symptom,
+  exactly as `French_Frites` already showed on one file and this now generalises.
+
+**Read the old "87 of 216, large and unexplained" as superseded.** The work it
+implied — hunt one pitch mechanism — was the wrong shape.
+
+
 It scores **freq/waveform/pulse only**, like the script it replaces. `$D418` is
 in none of them, which is exactly how the passband defect survived — use
 `pyscript/passband_check.py --player dmc` for that.

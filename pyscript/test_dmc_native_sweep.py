@@ -105,31 +105,61 @@ def test_part1_span_is_read_from_the_builders_own_output():
         "absent must be None -- a caller treating it as 0 would score nothing"
 
 
-def test_a_multipart_song_is_not_scored_against_a_guessed_window():
-    """The mutation this guards is the first draft of this sweep: it scored
-    part 1 of `Cant_Stop` (114 parts, ~8 s) against the original's first 20 s and
+def test_a_song_without_a_recorded_span_still_refuses(tmp_path, monkeypatch):
+    """The guard, restated. It used to be "a multi-part song must refuse"; the
+    span is no longer GUESSED but RECORDED (`.span`, written by the emitter), so
+    refusing a recorded window would be refusing a measurement. What must still
+    refuse is an artifact with no span at all.
+
+    The mutation this guards is the first draft of this sweep: it scored part 1
+    of `Cant_Stop` (114 parts, ~8 s) against the original's first 20 s and
     reported 34.8/86.0/91.5. That number measured the window, not the build.
-    53 of 57 built songs are multi-part, so it was almost the whole corpus."""
+    """
     import glob
-    multi = [n for n in sw.corpus_files()
-             if len(glob.glob(os.path.join(sw.BUILD_DIR, f"{n}_part*.sf2"))) > 1]
-    if not multi:                      # nothing built in this checkout
+    built = [n for n in sw.corpus_files()
+             if glob.glob(os.path.join(sw.BUILD_DIR, f"{n}_part*.sf2"))]
+    if not built:                      # nothing built in this checkout
         return
-    rec = sw.measure(multi[0], None, build=False)
+    # hide every sidecar from part_span without touching the tree
+    monkeypatch.setattr(sw, "part_span", lambda _p: None)
+    rec = sw.measure(built[0], None, build=False)
     assert rec.get("needs_bounds") is True, \
-        "as shipped, a multi-part song must refuse rather than guess"
+        "with no recorded span and no --seconds, refuse rather than guess"
     assert "voices" not in rec
 
 
-def test_a_single_part_song_also_needs_its_window_asserted():
-    """Restricting the refusal to MULTI-part songs was not enough. A single
-    part's span is the whole song and songs differ in length, so Balloon's 400 s
-    forced onto `Zoom` scored it 24.4/27.7/23.9 at a confident n=19996."""
-    rec = sw.measure("Balloon", None, build=False)
-    if rec.get("not_built"):
-        return                          # nothing built in this checkout
-    assert rec.get("needs_bounds") is True
-    assert "voices" not in rec
+def test_a_recorded_span_is_used_and_is_not_a_guess():
+    """A `.span` beside the artifact is the window the emitter built, so it is
+    scored -- and it is scored over THAT window, not the global default.
+
+    This is the fix for a real published error: `Happy_Jingle`'s 7-second part 1
+    was scored over 90 seconds because `part1_span` re-parsed the builder's log
+    and `re.search` took a DISCARDED single-part trial split. It read
+    23.4/16.1/8.1 where the part itself is 98.3/100.0/98.8.
+    """
+    import glob
+    named = None
+    for n in sw.corpus_files():
+        parts = sorted(glob.glob(os.path.join(sw.BUILD_DIR, f"{n}_part*.sf2")))
+        if parts and sw.part_span(parts[0]):
+            named = (n, sw.part_span(parts[0]))
+            break
+    if not named:                      # no sidecars in this checkout
+        return
+    name, span = named
+    rec = sw.measure(name, None, build=False)
+    assert rec.get("voices"), "a recorded span must actually score"
+    assert rec["n"] <= span * 50 + 4, \
+        "scored past the part the span records -- the over-run this guards"
+
+
+def test_part1_span_takes_the_last_trial_not_the_first():
+    """The DMC builder prints a discarded `part 1/1` before its adaptive split
+    settles, so the FIRST match is a window that was thrown away."""
+    text = ("  part 1/1 (0-90s, 0-4500f): instr=13\n"
+            "  part 1/2 (0-7s, 0-395f): instr=12\n"
+            "  part 2/2 (7-90s, 395-4500f): instr=2\n")
+    assert sw.part1_span(text) == 395, "must read the part actually emitted"
 
 
 def test_an_asserted_window_is_honoured():
