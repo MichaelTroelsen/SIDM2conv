@@ -312,11 +312,25 @@ voices deliberately: a silent VOICE is ordinary, a silent SONG is not. Raised, s
 it lands in the sweep's refusal class — which exists precisely so a build gap
 cannot masquerade as a fidelity gap.
 
-Two files are affected, `Flimbos_Quest_main` and `Kamikaze` (n=90, already
-`!`-marked). ⚠️ An earlier probe of this claimed **20 of 88** files decode to
-silence; it bypassed the builder's phase selection and is **wrong**
-(`Namnam_Special` was in that list while really scoring 81.0/88.8). Counted from
-the shipped artifacts — freq ~0 on every voice — it is exactly two.
+**Three** files are affected: `Flimbos_Quest_main`, `Kamikaze` (n=90) and
+`Nightdawn`.
+
+⚠️ **Two counts of this were wrong before the corpus run settled it**, and both
+are instructive. A first probe claimed **20 of 88**; it bypassed the builder's
+phase selection (`Namnam_Special` was in that list while really scoring
+81.0/88.8). Counting from the shipped artifacts instead — freq ~0 on every voice
+— gave **two**, and missed `Nightdawn`, whose silent build read freq **100.0/97.8**
+rather than ~0: a constant frequency held on BOTH sides across its 46 frames
+scores a vacuous 100. That is the `exercised()` trap, and it is the same file
+whose wf/pulse move was earlier written off as an unstable refit — an incomplete
+explanation, because it was scoring a build that never plays a note.
+
+Only building the corpus with the guard produced the right number.
+
+**Corpus effect** (88 files): scored **74 → 70**, freq median **98.4 → 98.7**,
+voices below 90 **56 → 47**. Removing three builds that were scored without ever
+sounding a note is what moved the medians. 88 = 70 scored + 14 tables-not-located
++ 3 decoded-no-notes + 1 WAVE overflow.
 
 Fixing the decode itself is open, and is a variant question rather than a
 fidelity one.
