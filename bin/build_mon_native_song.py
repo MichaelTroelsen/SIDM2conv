@@ -1221,6 +1221,19 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         (slide/arp) + PWM from the trace.
     Returns (segs, bundles, instrs, wave_programs)."""
     import mon_fidelity as F
+    # A decode that produced NO NOTE on any voice cannot become music, and an
+    # artifact built from it is worse than no artifact: `Flimbos_Quest_main`
+    # shipped 34 parts of silence and was then SCORED, reading freq 0.2/0.2/0.2
+    # as though it were a fidelity defect rather than a decode that failed. The
+    # sweep's own `not_built` / refusal classes exist so a build gap does not
+    # masquerade as a fidelity gap -- this puts the file in them.
+    #
+    # All three voices, deliberately: a silent VOICE is ordinary (many songs
+    # rest one), a silent SONG is not. Raised rather than returned so it lands
+    # in the same refusal path as the WAVE-overflow cap.
+    if not any(getattr(ev, "note", 0) for v in range(3) for ev in m.voices[v]):
+        raise ValueError("decoded no notes on any voice -- refusing to build "
+                         "silence (the decode failed, not the fidelity)")
     # trace the WHOLE one-pass song length (the longest voice), else notes past the
     # window get degenerate held programs. Traces can be passed in (windowed builds
     # reuse one trace across all windows instead of re-siddumping per window).

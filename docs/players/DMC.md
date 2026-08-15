@@ -291,11 +291,35 @@ several, and only one of them is about pitch:
 - **Pitch-only — the real frequency residual**: `Balloon` v0 **80.6** (n=19,996,
   the flagship build), `Namnam_Special` v1 81.0 / v2 88.8, `Again_Its_JB` v0
   81.8, `Blobby` v0 88.9, `DMC_Demo_IV_tune_2` v1 88.7. Six voices, five songs.
-- **Whole-build** is a different queue: `Flimbos_Quest_main` is **silent** — 589
-  frames where the original sounds and our build never writes a frequency at
-  all, on every voice, at every offset from −40 to +400. `Roadblaster` v0/v2
-  58.6/62.0 over 15,996 frames. These are build failures; pitch is a symptom,
-  exactly as `French_Frites` already showed on one file and this now generalises.
+- **Whole-build** is a different queue. `Roadblaster` v0/v2 58.6/62.0 over
+  15,996 frames. These are build failures; pitch is a symptom, exactly as
+  `French_Frites` already showed on one file and this now generalises.
+
+### `Flimbos_Quest_main` was never a fidelity defect (2026-08-15)
+
+It read **0.2/0.2/0.2** — 589 frames where the original sounds and the build
+never writes a frequency, on every voice, at every offset from −40 to +400. The
+cause is upstream of everything the score can see: **the parser decodes no
+notes**. All three voices come back as 4,100 events of `note=0, dur=1`, a rest
+per tick for the whole song, so `freq` is 0 by construction. The waveform still
+moves (20.0/77.1/56.3) only because the captured wave programs run regardless —
+which is exactly what made it look like a bad build rather than a failed decode.
+
+It then shipped **34 parts of silence** and was scored.
+
+`build_native_song` now **refuses** a decode with no note on any voice. All three
+voices deliberately: a silent VOICE is ordinary, a silent SONG is not. Raised, so
+it lands in the sweep's refusal class — which exists precisely so a build gap
+cannot masquerade as a fidelity gap.
+
+Two files are affected, `Flimbos_Quest_main` and `Kamikaze` (n=90, already
+`!`-marked). ⚠️ An earlier probe of this claimed **20 of 88** files decode to
+silence; it bypassed the builder's phase selection and is **wrong**
+(`Namnam_Special` was in that list while really scoring 81.0/88.8). Counted from
+the shipped artifacts — freq ~0 on every voice — it is exactly two.
+
+Fixing the decode itself is open, and is a variant question rather than a
+fidelity one.
 
 **Read the old "87 of 216, large and unexplained" as superseded.** The work it
 implied — hunt one pitch mechanism — was the wrong shape for the tail as a
