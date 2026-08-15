@@ -100,10 +100,12 @@ _PART1 = re.compile(r"part 1/\d+ \(\d+-\d+s, (\d+)-(\d+)f\)")
 def part1_span(text):
     """Frames covered by part 1, read off the builder's own stdout.
 
-    Takes the LAST `part 1/N` line, not the first. The DMC builder prints a
-    discarded single-part trial before the adaptive split settles:
+    Takes the LAST `part 1/N` line, not the first. This builder runs a legato
+    A/B before the real build -- two PROBE builds (`_abg`, `_abl`) over a 90 s
+    head, to decide which voices are legato -- and each emits its own part
+    lines into the same stdout:
 
-        part 1/1 (0-90s, 0-4500f)     <- trial, thrown away
+        part 1/1 (0-90s, 0-4500f)     <- a probe build, different span
         part 1/2 (0-7s, 0-395f)       <- the part actually emitted
 
     `search()` took the trial, so `Happy_Jingle`'s 7-second part 1 was scored

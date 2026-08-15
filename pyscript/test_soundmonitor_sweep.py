@@ -151,3 +151,35 @@ class TestCorpusReproducesFromFreshClone(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_parse_parts_keeps_only_the_last_run_of_part_lines():
+    """A build's stdout carries MORE THAN ONE run of part lines.
+
+    This builder runs a legato A/B first -- two probe builds (`_abg`, `_abl`)
+    over a 90 s head -- before the real one, and each emits its own
+    `part N/M (...)`. Keeping them all is harmless only while the final build
+    has at least as many parts as the probes; otherwise the probe's surplus
+    entries survive as phantom parts with the WRONG bounds, pointing at
+    artifacts `prune_stale_parts` has since deleted.
+
+    The same class cost the DMC sweep a published figure: `Happy_Jingle`'s 7 s
+    part 1 was scored over a probe's 90 s and read 23.4/16.1/8.1 where the part
+    itself is 98.3/100.0/98.8.
+    """
+    probe = ("  part 1/5 (0-20s, 0-1000f): instr=7\n"
+             "  part 2/5 (20-40s, 1000-2000f): instr=7\n"
+             "  part 3/5 (40-60s, 2000-3000f): instr=7\n")
+    final = ("  part 1/2 (0-7s, 0-395f): instr=12\n"
+             "  part 2/2 (7-90s, 395-4500f): instr=2\n")
+    got = sweep.parse_parts(probe + final)
+    assert got == [(1, 0, 395), (2, 395, 4500)], got
+    assert len(got) == 2, "the probe's surplus parts must not survive"
+
+
+def test_parse_parts_is_unchanged_for_a_single_run():
+    """The guard must not disturb the ordinary case -- one build, N parts."""
+    text = ("  part 1/3 (0-10s, 0-500f)\n"
+            "  part 2/3 (10-20s, 500-1000f)\n"
+            "  part 3/3 (20-30s, 1000-1500f)\n")
+    assert sweep.parse_parts(text) == [(1, 0, 500), (2, 500, 1000), (3, 1000, 1500)]

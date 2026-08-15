@@ -68,6 +68,23 @@ def parse_parts(build_text):
         if not m:
             continue
         part = int(m.group(1))
+        # A build's stdout can contain MORE THAN ONE run of part lines. This
+        # builder runs a legato A/B first -- two probe builds (`_abg`, `_abl`)
+        # over a 90 s head -- before the real one, and each emits its own
+        # `part N/M (...)`. Keeping them all is only harmless while the final
+        # build has at least as many parts as the probes: otherwise the probe's
+        # surplus entries survive as phantom parts, carrying the WRONG bounds
+        # and pointing at artifacts `prune_stale_parts` has since deleted.
+        #
+        # A part number that does not advance means a new run started, so drop
+        # everything before it. The same class -- a log carrying a window from a
+        # build that is not the one being scored -- cost the DMC sweep a
+        # published corpus figure: `Happy_Jingle`'s 7 s part 1 was scored over
+        # the probe's 90 s and read 23.4/16.1/8.1 instead of 98.3/100.0/98.8.
+        # Measured here at the time of writing: the corpus reproduces 99.252%
+        # either way, so this closes a latent hazard rather than a live defect.
+        if out and part <= out[-1][0]:
+            out = []
         if m.group(4) is not None:
             out.append((part, int(m.group(4)), int(m.group(5))))
         else:
