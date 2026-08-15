@@ -1434,10 +1434,27 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # selects one sel-table), (instr, shape) collapses to per-instrument. When an instrument
     # plays across sections with different envelopes (Myth sub0), it splits into one
     # canonical per shape it actually uses, so each note gets its own section's envelope.
+    _key_pb = os.environ.get("FILT_KEY_PB", "1") != "0"
     canon_src = {}                                        # (instr, shape) -> (onset, span)
     drive_key = {}                                        # drive onset -> (instr, shape)
     for o, v in drive_map.items():
-        key = (onset_instr[v].get(o, -1), _shape_sig(o))
+        # THE PASSBAND IS PART OF THE KEY. `_shape_sig` describes the CUTOFF --
+        # base and initial slope -- so two drives whose cutoff envelopes match
+        # but whose $D418 mode bits differ collapse into one canonical program,
+        # and whichever mode the winner carried is applied to all of them. SDI's
+        # `Tanks_3000` rendered a static LP+BP against an original that
+        # alternates LP/LP+BP 12 times: keyed with the passband its drives split
+        # LP+BP/LP instead of merging. Sibling of F9 -- there a DETECTOR was
+        # blind to a register, here a CANONICALISATION KEY was.
+        # This alone is the whole fix: Tanks_3000 94.9% static -> 100.0%, 12/12
+        # changes, at identical part count and identical freq+wf fidelity
+        # (99.9/99.9/99.9), byte-neutral on 48 parts across HardTrack, Sound
+        # Monitor, FC and Hubbard. A serial 2x2 against SDI's `filter_tie` says
+        # that flag contributes nothing here -- measured, after an earlier
+        # reading assembled from interleaved builds claimed it was needed.
+        # FILT_KEY_PB=0 restores the shape-only key for an A/B.
+        key = (onset_instr[v].get(o, -1), _shape_sig(o),
+               (pbtr[o] if pbtr and o < len(pbtr) and _key_pb else None))
         drive_key[o] = key
         span = _gap(o)
         if key not in canon_src or span > canon_src[key][1]:

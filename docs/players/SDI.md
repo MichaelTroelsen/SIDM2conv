@@ -85,37 +85,53 @@ first drive had. Everything downstream — detection, anchoring, the SET-row
 encoding, the passband trace, which SDI does pass as a 3-tuple — is working on
 an input that is empty by construction.
 
-**Two gaps in series, and neither moves the number alone.** `filter_tie` is the
-existing answer to the empty onset list (Sound Monitor already sets it: the
-engine restarts its cutoff envelope on every note-set of the routed voice
-INCLUDING legato, so tie events are drive-eligible). With it, onsets go
-`[1,1,1] → [215,173,261]` over a 24 s window, drives `1 → 27`, filter programs
-`1 → 11`. Measured combinations:
+**One cause: the canonical filter key omits the passband.** `canon_src` keys on
+`(MoN instrument, _shape_sig)`, and `_shape_sig` is the cutoff base and initial
+slope — so drives whose cutoff envelopes match but whose `$D418` modes differ
+collapse into one program, and whichever mode the winner carried is applied to
+all of them. Adding the passband to the key splits them. Measured on a **serial
+2×2** (one build at a time, artifacts deleted first, non-zero exit refused):
 
-| `filter_tie` | passband key | `Tanks_3000` |
-|---|---|---|
-| off | off | 94.9%, static |
-| off | **on** | 94.9%, static (1 drive — nothing to split) |
-| **on** | off | 94.9%, static (drives merge on the key) |
-| **on** | **on** | **100.0%, 12/12 changes** |
+| `filter_tie` | passband in key | oChg | dChg | agree | parts | freq+wf |
+|---|---|---:|---:|---:|---:|---|
+| off | off | 12 | 0 | 94.9 | 69 | 99.9/99.9/99.9 |
+| off | **on** | 12 | **12** | **100.0** | 69 | 99.9/99.9/99.9 |
+| on | off | 12 | 0 | 94.9 | 69 | 99.9/99.9/99.9 |
+| on | **on** | 12 | **12** | **100.0** | 69 | 99.9/99.9/99.9 |
 
-⚠️ **One reading in this investigation was a VACUOUS 100.** A scratch A/B scraper
-took only `agree` and `routed` from `passband_check`'s output and reported a
-confident 100.0% for a `filter_tie=0` build — a config whose in-process
-instrumentation shows **1 drive, 1 program, LP+BP**, which cannot emit 12
-changes. Dropping the `oChg`/`dChg` columns hides a window in which NEITHER side
-modulates. `passband_check` already prints those columns and annotates "filter
-never exercised in this window — NOT a pass"; the scraper stripped the evidence.
-Read the whole row, and prefer the in-process counts (drives, programs) over any
-number attached to an artifact whose provenance you cannot state.
+The key change is necessary and **sufficient**, at identical part count and
+identical fidelity. Sibling of F9: there a *detector* was blind to a register,
+here a *canonicalisation key* was.
 
-**Status**: both changes exist behind kill switches (`SDI_FTIE=0`,
-`FILT_KEY_PB=0`) and are NOT committed with this note. The key change is
-byte-neutral on 48 parts across HardTrack, Sound Monitor, FC and Hubbard;
-`filter_tie` still needs an SDI corpus A/B, because it costs table space
-(`Tanks_3000`: `instr` 24 → 32 with bundles already at the 63 cap) across 441
-files. `Arabia` (98.2%) and `Funk_Facet` (99.0%) survive a rebuild unchanged and
-are separate, smaller defects.
+⚠️ **A previous version of this section claimed TWO causes in series and was
+wrong.** It said SDI's shim starves the filter-drive detector — `retrig = not
+tie`, so a legato voice contributes one onset — and that `filter_tie=1` was the
+other half. The starvation is real *in a single-window build* (onsets `[1,1,1]`
+→ 1 drive → 1 program, instrumented), but the production path is **adaptive**,
+and per-part classification yields drives regardless; `filter_tie` changes
+nothing measurable. It was reverted rather than shipped: it would have altered
+behaviour across 441 SDI files for no benefit.
+
+**How the wrong claim was reached, because the process failure is the lesson.**
+The evidence was assembled across interleaved builds instead of one controlled
+run, and three separate defects in the scratch harness each produced a confident
+wrong number:
+  * it kept only `agree` and `routed` from `passband_check`, discarding
+    `oChg`/`dChg` — so a window in which NEITHER side modulates read as a
+    perfect 100.0 (`Kirby` did exactly this);
+  * it scored the artifact left behind by a **failed** build, attributing the
+    previous config's result to the new one;
+  * the failure that exposed it was two builders racing on
+    `drivers_src/mon/layout.inc` — **PATTERNS F2**, violated twice, both times
+    because a momentary `tasklist` process count was trusted over the job list.
+`passband_check` already prints the columns that expose all of this and
+annotates "filter never exercised in this window — NOT a pass". Scraping its
+rendered text threw the guard away. Consume the structured result, run one build
+at a time, and delete artifacts before a config A/B.
+
+**Status**: shipped as the passband-in-key change in `build_mon_native_song.py`
+(`FILT_KEY_PB=0` restores the old key). `Arabia` (98.2%) and `Funk_Facet`
+(99.0%) survive a rebuild unchanged and are separate, smaller defects.
 
 
 ## The variants (one editor, six binary generations)
