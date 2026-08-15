@@ -577,6 +577,35 @@ def detect_filter_drives(ftr, onsets_by_voice, routed=None, dynamic=False):
                 f += 1
         else:
             f += 1
+
+    # SECOND PASS: a filter ENABLE with no cutoff movement is still an envelope
+    # start. `Juba-Jazz` switches $D417 routing 00 -> $f4 and $D418 to LP+BP on
+    # one note-on while holding the cutoff at 0 for the whole song, so the jump
+    # test above sees nothing at all: no filter program is attached, the build
+    # never leaves low-pass, and it scored 52.8% over 661 audible frames -- the
+    # largest passband defect in the corpus.
+    #
+    # STRICTLY ADDITIVE, in two ways that matter because this detector is shared
+    # by every player on this driver:
+    #   * only a transition from NO voice routed to SOME voice routed counts, so
+    #     re-pointing existing routing is untouched;
+    #   * only when the cutoff pass credited nothing nearby, so a file whose
+    #     enables already coincide with a cutoff jump -- which is most of them --
+    #     is a no-op BY CONSTRUCTION rather than by measurement.
+    for f in range(1, n):
+        if (ftr[f][1] & 0x0F) and not (ftr[f - 1][1] & 0x0F):
+            if any(abs(o - f) <= 4 for o in drives):
+                continue                       # the cutoff pass already has it
+            j = bisect.bisect_right(of_frames, f) - 1
+            cand = [of_frames[k] for k in (j, j + 1)
+                    if 0 <= k < len(of_frames) and -1 <= (f - of_frames[k]) <= 4]
+            if not cand:
+                continue                       # no note-on to hang it on
+            o = min(cand, key=lambda x: abs(x - f))
+            if o not in drives:
+                v_at = {1: 0, 2: 1, 4: 2}.get(ftr[f][1] & 0x07)
+                drives[o] = (v_at if v_at is not None
+                             else next(v for oo, v in pairs if oo == o))
     return drives
 
 

@@ -443,6 +443,39 @@ part 1]` marker became.
 
 ---
 
+### F9. A detector keyed on one register is blind to the same event in another
+
+**Symptom**: a feature the original plainly performs is never reproduced, and
+nothing upstream looks wrong — the sequencer is right, the capture is right, the
+emitted program is right. The feature simply has no program attached.
+
+**Detection**: dump the ORIGINAL's registers across the transition and ask which
+one actually moved. `detect_filter_drives` finds filter-envelope restarts by
+looking for a fast **cutoff** jump, because that is how almost every tune starts
+one. `Juba-Jazz` starts its filter by writing `$D417` routing `00 -> $f4` and
+`$D418` to LP+BP on a single note-on **while holding the cutoff at 0 for the
+whole song**. The detector saw nothing, so no filter program was attached and the
+build never left low-pass: 52.8% over 661 audible frames, the largest passband
+defect in the corpus.
+
+**Fix**: add the missing expression of the event — but make it **additive by
+construction**, not by measurement. The first attempt triggered on any
+`no-voice-routed -> some-voice-routed` transition, which 30 of 40 SDI, 29 of 40
+HardTrack and 21 of 40 DMC files have; far too wide for a detector shared by
+every player on this driver. The shipped version runs as a SECOND pass and only
+credits an enable when the cutoff pass found nothing within ±4 frames, so a file
+whose enables already coincide with a cutoff jump cannot change.
+
+**Verify on the neighbours, not the target.** HardTrack: 31 of 33 builds
+byte-identical; the 2 that moved bytes measure identically on passband AND on
+freq/wf/pulse under an A/B against the previous builder. SDI: 12 sampled passing
+files still pass, 13/13 with the target.
+
+**Seen in**: SDI (`Juba-Jazz`), `bin/build_mon_native_song.py`
+`detect_filter_drives`.
+
+---
+
 ## Adding an entry
 One screenful max: symptom → detection → exploit/fix → players seen in.
 If a technique is rediscovered in a new arc, add the sighting here *in the

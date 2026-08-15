@@ -328,6 +328,15 @@ one and printed it. `emit_one` now writes a `.span` sidecar beside every part an
 can only MANUFACTURE disagreement, never conceal it, so resolving a window turns
 unknowns into passes *and* exposes the genuine defects the noise was covering.
 
+> **`Juba-Jazz` FIXED 2026-08-15 — 52.8% → 100.0%.** Its filter is switched on
+> by `$D417` routing `00 → $f4` + `$D418` LP+BP on one note-on, with the **cutoff
+> held at 0 for the entire song**. `detect_filter_drives` keys on cutoff jumps,
+> so it credited nothing, no filter program was attached, and the build never
+> left low-pass. A second, strictly additive pass now credits a filter ENABLE
+> that the cutoff pass missed (`PATTERNS.md` F9). Verified on the neighbours:
+> HardTrack 31/33 byte-identical and the other 2 identical on passband and
+> fidelity; 12 sampled passing SDI files still pass.
+
 | newly established | part 1 | verdict |
 |---|---:|---|
 | `Juba-Jazz` | 72 s | **52.8%**, 661 audible frames — real |
