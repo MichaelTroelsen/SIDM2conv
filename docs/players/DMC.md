@@ -332,8 +332,40 @@ voices below 90 **56 → 47**. Removing three builds that were scored without ev
 sounding a note is what moved the medians. 88 = 70 scored + 14 tables-not-located
 + 3 decoded-no-notes + 1 WAVE overflow.
 
-Fixing the decode itself is open, and is a variant question rather than a
-fidelity one.
+**It is a FALSE LOCATE, not a variant (2026-08-15, corrected).** The wording
+above — "4,100 events of `note=0, dur=1`, a rest per tick" — described the
+symptom from the guard's message rather than from the decode, and it is wrong in
+both particulars: the decode emits **zero rests**, and what it emits is not a
+note either. All three files produce `pitch=0, ticks=1` on every voice for
+exactly `tick_budget` events (2,000 in → 2,000 out; 8,000 in → 8,000 out), with
+**no instrument ever selected**. `ticks=1` on every single event is the tell: the
+track walker never advances a real duration, so it is not decoding a song at all.
+
+Each of the three has a visibly wrong layout:
+
+| file | layout |
+|---|---|
+| `Flimbos_Quest_main` | every table **outside the loaded image** — `trk_lo=$15F4` against load `$47B4..$71FA`; also `sector_lo == trk_lo` |
+| `Nightdawn` | every table outside the image (`$8539..$9D87` against load `$0801..$46D0`); additionally an **RSID with `play=$0000`**, so it has no traceable onsets either |
+| `Kamikaze` | tables inside the image, but `sector_lo == trk_lo == $1ADE` — one address matched twice |
+
+This is `PATTERNS.md` **D2**, the false-locate zero: the locator returned an
+answer instead of returning nothing.
+
+⚠️ **The obvious locate-time guard was tested against the corpus and REFUTED —
+do not add it.** "Tables outside the loaded image" and "`sector_lo == trk_lo`"
+both look like clean tells, and both fire on files that build and score today:
+out-of-range on `Depeche_Mode_Songs`, `M_A_C_H`, `Predictable_main`, `Some_Soul`
+and `Stormlord`; the degenerate pair on `Myth_Demo`, `STII8` and `Stormlord_V2`.
+Eight working files rejected to catch three broken ones. Of 74 located files, 63
+pass both checks and **11 fail at least one, only 3 of which are actually
+broken** — so neither predicate discriminates.
+
+What DOES discriminate is the decode outcome itself: `pitch=0, ticks=1` for
+exactly `tick_budget` events with no instrument ever selected. That is what
+`build_native_song`'s guard already tests, and on this evidence the guard is in
+the right place. Locating these variants properly remains open and needs the
+actual layout, not a sanity check.
 
 **Read the old "87 of 216, large and unexplained" as superseded.** The work it
 implied — hunt one pitch mechanism — was the wrong shape for the tail as a
@@ -459,6 +491,43 @@ therefore grew an `[aud …]` column — gate-on frames only, printed **only whe
 it differs from raw**, with its own `n`. Quote both: raw alone hides a
 regression behind a rest, and audible alone is blind to a release-tail defect
 (the exact trap `MATTGRAY.md` records).
+
+**Corpus effect (all 88 rebuilt, 2026-08-15).** 70 scored / 14 tables-not-located
+/ 4 errored, 210 voices. Per-voice worst-of-three-metrics:
+
+| | before | after |
+|---|---:|---:|
+| freq median, raw | 98.7 | **99.5** |
+| voices below 90, raw | 47 | **34** |
+| freq median, **audible** | — | **100.0** |
+| voices below 90, **audible** | — | **14** (of 204 with audible frames) |
+| voices at exactly 100 | 59 | **128** (audible) |
+
+**39 voices improved, 26 regressed, 145 unchanged** — and **not one of the 26 is
+an audible regression**. 22 of them read audible ≥ 99.5 and 25 read ≥ 90; the
+single exception, `Scandalous` v0, has audible `None` at **n=0** — it never
+sounds inside part 1, so `score_pct` refuses to score it rather than inventing a
+number. The raw drops are the leading rest's pre-entry idle frames, and the
+largest of them are the clearest cases: `Test` v1 87.8 → 20.2 raw with **audible
+100.0** (n=250), `First_Try_PSX` v2 91.5 → 28.0 with **audible 100.0**,
+`Domino_Dancing` v2 95.1 → 47.8 with **audible 100.0**. Quote raw alone and this
+fix reads as 26 regressions; quote audible alone and `Dreaming_2` v3 below stays
+hidden. Print both.
+
+Biggest gains, all previously in the whole-build bucket: `Chase_v2` v0
+**0.0 → 100.0** (audible 100.0, n=4,524), `Wanna_Get_Sick` v1 0.0 → 99.9,
+`DMC_Demo_IV_tune_3` v1 0.0 → 99.8, `Hit_the_Baze` v0 0.0 → 99.2,
+`Mixerplot` v1 1.1 → 96.5, `Blue_Monday_88` v0 8.1 → 98.8, `STII8` v2 11.1 → 99.7,
+`Special_Agent` v0 14.3 → 99.6.
+
+**The audible column found one defect of its own**, which is the whole point of
+carrying it: `Dreaming_2` v3 reads raw 61.4/67.9/58.7 — *unchanged by either fix*
+— and **audible 13.3/0.0/5.3 over n=75**. On every one of the 75 frames the
+original sounds, it writes `$51` (pulse+TEST+gate) and we write `$50`: our gate
+never opens, the oscillator sits in TEST reset, and freq and pulse are frozen
+while the original arpeggiates. A silent voice that the raw column had been
+reporting as 61.4% for as long as the file has been built. It is the **only**
+voice in the corpus where audible is more than 10 points below raw. Open.
 
 **What is still open**: a third sub-cause, OBSERVED but not explained.
 
