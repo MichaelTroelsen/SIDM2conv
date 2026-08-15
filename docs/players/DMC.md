@@ -395,6 +395,96 @@ It scores **freq/waveform/pulse only**, like the script it replaces. `$D418` is
 in none of them, which is exactly how the passband defect survived — use
 `pyscript/passband_check.py --player dmc` for that.
 
+### The "whole-build" class was mostly TIMING, and two causes are fixed (2026-08-15)
+
+The `whole-build / pitch-only / mixed` split above was derived from strict
+per-frame scores alone, and strict scoring **cannot tell a phase defect from a
+wrong-content one** — a voice playing the right notes two frames out of step
+scores exactly like one playing different notes. Re-scoring every sub-90 voice
+with a ±k frame tolerance (`PATTERNS.md` **D10**) separates them:
+
+| | voices | reading |
+|---|---:|---|
+| recovered at **±2**, no further gain at ±10 | **24** | bounded per-note skew — content exact |
+| recovered only by **±10** | **7** | wider or drifting offset |
+| barely moves | **18** | genuinely different content |
+
+**At least 31 of the 49 sub-90 voices were timing, not music** — and the 18 in
+the last row are an **upper bound**, because tolerance can only see offsets
+inside its own range. `Roadblaster` proved both halves of that on one file: v0
+read `58.6/84.4/62.5` strict and `96.9/100.0/100.0` at ±2 with a flat plateau,
+which is the clean phase signature; v2 moved only 62.0 → 65.0 across ±10 and was
+classified **content on that evidence and classified wrong** — it was a
+491-frame whole-timeline shift, invisible to any ±k score. See the second cause
+below.
+
+Two causes found, both in code shared beyond DMC:
+
+**1. `_snap_onset` returned the FIRST rise in its window, not the nearest**
+(`PATTERNS.md` **F10**). It snaps each note's capture onset to the real gate
+rise within `fr-2 .. fr+3`. Whenever the previous note was ≤2 frames long *its*
+rise sat at `fr-2` and won, so the capture began two frames early, replayed two
+frames of the previous instrument, and the driver hard-restarted on top —
+emitting a gate rise the original does not have. Purely **additive**:
+`Roadblaster` v0 matched **352 of 352** real rises at delta 0 with none missing
+and **93 spurious**, against exactly 93 two-frame notes. Ordering the window by
+distance from `fr` (ties backward, for Hubbard) fixes it.
+`Roadblaster` v0 **58.6/84.4/62.5 → 96.9/100.0/100.0** (n=15,996), 93 extra
+rises → 0. This is in `bin/build_mon_native_song.py`, so it reaches every shim
+that sets `snap_gate`: DMC, Future Composer, HardTrack, Hubbard, SDI and Sound
+Monitor. `SNAP_FIRST=1` restores the old order.
+
+**2. Only *legato* voices got the leading rest that records where they start**
+(`PATTERNS.md` **F11**). Note durations are onset-to-onset **gaps**, so a
+voice's tick timeline is relative to its own first onset and
+`build_native_song` places event k at tick `sum(dur[:k])`. `Billie_Jean`'s first
+onsets are `[2, 0, 962]` and all three voices began at tick 0. Voice 1 (onset 0)
+scored 100.0 and set the global boot-offset fit, so the other two read as broken
+content. **Voice 2's 962-frame shift measured as the same −2 as voice 0**,
+because that phrase is periodic at 96 frames and 962 = 10×96 + 2 — invisible to
+every per-frame column, visible only against the absolute onset list.
+`Billie_Jean` v0 **63.3/50.1/81.2 → 99.9/99.9/99.9**, `Blue_Monday_88` v0
+**65.8/60.0/8.1 → 98.8/99.8/99.4**, and `Roadblaster` v2 (first onset 491)
+**62.0/85.5/53.1 → 96.9/96.9/52.2 raw, 100.0/100.0/100.0 audible over n=6,265** —
+the voice this file's own tolerance sweep had called wrong content. HardTrack met
+this contract first and pinned it in its own test file; the pin did not travel,
+and now `pyscript/test_dmc_native_song.py` carries it here.
+
+**The raw column FALLS on some of the voices this fixes, and that is correct.**
+A late-entering voice now spends its pre-entry frames on rest rows while the
+original holds whatever init left in `$D404`/`$D400`. Both are gated off and
+inaudible. `Billie_Jean` v2's raw wf went 94.2 → 49.3 while all 67 of its onsets
+became exact and **all 190 frames it actually sounds are 100.0%**. The sweep
+therefore grew an `[aud …]` column — gate-on frames only, printed **only where
+it differs from raw**, with its own `n`. Quote both: raw alone hides a
+regression behind a rest, and audible alone is blind to a release-tail defect
+(the exact trap `MATTGRAY.md` records).
+
+**What is still open**: a third sub-cause, OBSERVED but not explained.
+
+The observation is solid and reproducible. A **held** voice — one that changes
+instrument without re-gating, so its restarts never enter the onset list — has
+its pulse-program restarts placed a constant 1-3 frames early:
+`Ace_II_remake` v1 **48 of 49 exactly 1 frame early**, `Jazz_3` v1 **521
+restarts, all at −2/−3**. Those voices are ±2-recoverable, have byte-perfect gate
+onsets, and are unmoved by both fixes above.
+
+**The obvious explanation was tested and does NOT hold.** The STEP-GRID picks one
+residue mod `fpt*mult` from the gate onsets, so an event on a different residue
+should pay up to `fpt-1` frames — but measured against the ORIGINAL alone
+(`scratchpad` tool, no build in the loop), `Ace_II_remake`'s restarts are **0 of
+124 off-grid** and `Jazz_3`'s **0 of 138**. They sit exactly on the residue the
+shim chose. Grid quantisation is not the mechanism, and the 1-frame error has no
+confirmed cause yet. Do not repeat the guess.
+
+What the same measurement DID find is a real but much rarer grid-residue case:
+`Some_Soul` runs grid 6 at residue 2 and **every one of its 117 restarts is off
+that residue by 1**, on all three voices. It sits in the content bucket
+(v2 63.5/64.1/100.0). One file of eight sampled — worth fixing on its own terms,
+not worth generalising from. `DMC_GRID=0` is the A/B lever, but the grid exists
+to stop sequences bloating 4-5× (`Balloon` 77 parts), so turning it off
+corpus-wide is not the answer.
+
 ## Parser + decoder (`sidm2/dmc_parser.py`)
 
 Signature-locates the sector-ptr / sound / freq / track tables (relocation-safe, resolves

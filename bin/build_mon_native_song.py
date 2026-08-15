@@ -410,7 +410,20 @@ def _snap_onset(m, frames, v, fr):
 
     def g(k):
         return (frames[k][0][v]['wf'] & 1) if 0 <= k < len(frames) else 0
-    for k in range(max(0, fr - 2), min(len(frames), fr + 4)):
+    # NEAREST rise, not the first one in the window. A left-to-right scan from
+    # fr-2 returns the PREVIOUS note's gate rise whenever that note is <=2 frames
+    # long: the capture then replays two frames of the wrong instrument before the
+    # note's own attack, and the driver hard-restarts on top of it, emitting a
+    # spurious gate rise 2 frames in. Roadblaster v0 has 93 two-frame notes and
+    # 93 extra rises -- exactly 1:1 -- against 352 of 352 real rises matched at
+    # delta 0, so nothing was ever MISSING; the defect was purely additive.
+    # Ties break backward, which is the case the window was added for (Hubbard's
+    # grid frame lands one frame LATE, so the true rise sits at fr-1).
+    # SNAP_FIRST=1 restores the old first-match order for an A/B.
+    ks = range(max(0, fr - 2), min(len(frames), fr + 4))
+    if os.environ.get("SNAP_FIRST") != "1":
+        ks = sorted(ks, key=lambda k: (abs(k - fr), k > fr))
+    for k in ks:
         if g(k) and not g(k - 1):
             return k
     return fr

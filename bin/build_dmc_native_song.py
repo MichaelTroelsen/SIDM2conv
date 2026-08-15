@@ -212,7 +212,23 @@ class DMCShim:
                             evs.append((t, f))
                 else:
                     evs = [(f, f) for f in ons]
-                if v in legato_set and evs[0][0] > 0:
+                # LEADING REST -- for EVERY voice, not just the legato ones.
+                # Durations below are onset-to-onset GAPS, so a voice's tick
+                # timeline is relative to its OWN first onset; without this rest
+                # the whole voice plays `evs[0][0]` frames early. The legato
+                # branch already knew ("a leading rest lands the first note at
+                # its absolute frame so a late-entering voice stays in sync") --
+                # it was just never applied to the gate schedule, which is what
+                # almost every DMC file actually builds with.
+                # Billie_Jean: first onsets [2, 0, 962] -> v0 played 2 frames
+                # early and v2 962. The 962 hid because that voice's phrase is
+                # periodic at 96 frames and 962 = 10*96 + 2, so it MEASURED as
+                # the same -2 as v0; the shift is only visible against the
+                # onset list, never against the score.
+                # DMC_LEAD_REST=0 restores the legato-only behaviour for an A/B.
+                if (evs[0][0] > 0
+                        and (v in legato_set
+                             or os.environ.get("DMC_LEAD_REST", "1") != "0")):
                     out.append(MONEvent(note=0, dur=evs[0][0], instr=0,
                                         wprog=0, retrig=False, rest=True))
                 ci = 0

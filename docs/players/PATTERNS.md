@@ -233,6 +233,50 @@ install *before* the module init runs — stop on the spin, not the first
 vector write (SDI V: stopping early left voices 1/2 unset). Myth: full
 emulation extraction (intercept the freq lookup) when the player relocates.
 
+### D10. Tolerance scoring separates a PHASE defect from a WRONG-CONTENT one
+A strict per-frame column says *these frames disagree*. It cannot say **why**,
+and the two causes need opposite fixes: a voice playing the right notes 2 frames
+out of step scores identically to one playing different notes. Re-score the same
+pair allowing the comparison to match any original frame within ±k, for k =
+0, 2, 10, and read the SHAPE of the recovery:
+
+- recovers at ±2 and gains **nothing** more at ±10 → **bounded per-note skew**.
+  The content is exact; something is placing notes or starting captures late.
+- keeps climbing through ±10 → a **wider or drifting** offset (D9's territory,
+  or a tempo-model error).
+- barely moves → genuinely **different content**. Tolerance cannot rescue it and
+  no amount of alignment work will.
+
+Unlike `shape_agreement` (D9) this works on `wf`, an enum where |difference| is
+not a distance — which matters, because waveform is usually the column that
+proves the content is right.
+
+Live case (2026-08-15, DMC): the 49 sub-90 corpus voices had been bucketed as
+"whole-build / pitch-only / mixed" from strict scores alone. Under tolerance,
+**31 of the 49 are timing** — 24 recovered by ±2, 7 more by ±10 — and only 18
+are content. `Roadblaster` v0 read `f58.6 w84.4 p62.5` strict and
+`f96.9 w100.0 p100.0` at ±2 with a flat plateau to ±10; that plateau is what
+identified F10 as a bounded ±2 capture-alignment bug rather than a decode
+failure, and after the fix the strict score IS 96.9/100.0/100.0. Its v2 stayed
+put (62.0 → 65.0 at ±10) and is a separate, still-open content defect — the same
+file needed both diagnoses.
+
+**Use it to classify, never to report.** A ±k score is not a fidelity number: it
+credits agreement the listener does not get. Quote the strict column; quote the
+tolerance column only beside it, and only to say which kind of defect is left.
+
+**And the "content" bucket is an UPPER BOUND, not a verdict.** Tolerance can only
+see offsets inside its own range, so a whole-timeline shift is indistinguishable
+from wrong music — which is exactly what F11 produces. `Roadblaster` v2 moved
+62.0 → 65.0 across ±10 and was classified content on that evidence; it was a
+**491-frame** shift, and fixing F11 took it to 96.9/96.9 raw and **100.0/100.0/
+100.0 audible** over n=6,265. Widening the tolerance is not the fix (at ±491 the
+score means nothing); the check that *does* discriminate is the absolute onset
+list — compare where each voice's first event lands, not how far apart the
+frames are.
+
+---
+
 ### D8. Per-file confirmation before generalizing
 Never generalize a table layout from one file (DRAX $1B8A: "wave table" →
 actually 8-byte instrument records; two releases to unwind). Confirm the
@@ -473,6 +517,110 @@ files still pass, 13/13 with the target.
 
 **Seen in**: SDI (`Juba-Jazz`), `bin/build_mon_native_song.py`
 `detect_filter_drives`.
+
+### F10. A "find the nearest X" search that returns the FIRST match
+**Symptom**: purely ADDITIVE errors. Every event the original has is reproduced
+at the right frame — nothing is missing, nothing is late — and yet the strict
+columns are 40-60%, because extra events appear that the original does not have.
+A whole-voice diagnosis ("the decode is wrong") follows, and it is wrong.
+
+**Detection**: compute the event list from ONE source on both sides (gate rises
+from `siddump_per_frame`'s `wf & 1`, not a helper whose frame numbering may
+differ by one — two helpers here disagree by +1 and that cost an hour), then
+split the comparison into *matched / ours-only / theirs-only*. `Roadblaster` v0:
+**352 of 352 matched at delta 0, 0 missing, 93 spurious** — and the file has
+exactly 93 two-frame notes. A 1:1 count against a structural feature of the
+input is the tell; nothing about a genuine decode failure lands on a round
+count.
+
+**Fix**: `_snap_onset` snaps each note's capture onset to the real gate rise
+within `fr-2 .. fr+3`, and scanned that window **left to right, returning the
+first rise**. Whenever the previous note was ≤2 frames long, *its* rise sat at
+`fr-2` and won: the capture began 2 frames early, replayed 2 frames of the
+previous instrument, and the driver hard-restarted on top — one extra gate rise
+per short note. Order the window by distance from `fr` instead. Ties break
+**backward**, because the window exists for Hubbard, whose grid frame lands one
+frame LATE. `SNAP_FIRST=1` restores the old order for an A/B.
+`Roadblaster` v0 (n=15,996): **58.6/84.4/62.5 → 96.9/100.0/100.0**.
+
+The general shape: any "search a window, take the first hit" is a *nearest*
+query written as a *scan*. It is correct exactly while the window holds one
+candidate, so it survives every test built from well-separated events and fails
+only where the input gets dense — which is where the interesting music is.
+
+**Verify on the neighbours, not the target.** `snap_gate` is opt-in and six
+shims set it (DMC, Future Composer, HardTrack, Hubbard, SDI, Sound Monitor);
+Matt Gray measured it OFF. Built both ways with `SNAP_FIRST`, the change is
+**byte-neutral on every neighbour sampled**: HardTrack 33/33, SDI 41/41, Sound
+Monitor 13/13, Future Composer 7/7, Hubbard 2/2 parts identical. Sound Monitor's
+tracked corpus sweep was run as a full `SNAP_FIRST=1` A/B anyway and reads
+**99.252 -> 99.252 (+0.000)** — 0 improved, 0 regressed, 0 part-moves, all 11
+songs identical to the decimal, with the baseline reproducing the published
+figure exactly, which is what makes a null result mean anything. Pinned in
+`pyscript/test_snap_onset.py`, including the old order via the A/B switch so the
+regression is asserted from both sides.
+
+**A byte-diff against the SHIPPED artifact is not this A/B, and it lies in the
+alarming direction.** The first pass diffed a rebuild against whatever `.sf2`
+was on disk and reported Future Composer 0/12 identical and Sound Monitor 11/15
+— both entirely artifacts of when those files were last built (FC's dated
+2026-07-30). Every one of them is identical under the real control. That is
+**F7 inside the verification harness**: the baseline is the same code with the
+change switched off, built now — never the corpus you happen to be shipping.
+
+**Seen in**: DMC (`Roadblaster`), `bin/build_mon_native_song.py` `_snap_onset`.
+
+### F11. A gap-encoded timeline has no origin unless something records it
+**Symptom**: a voice's content is exact and its whole timeline is shifted. The
+shift is *constant per voice*, so a scorer that fits ONE global boot offset
+absorbs whichever voice dominates the fit and reports the others as broken. What
+you see is one voice at 100% beside two at 50-65% with byte-identical note
+sequences.
+
+**Detection**: compare the per-voice **first onset frame** against the tick the
+shim actually places that voice's first event at. `Billie_Jean`'s first onsets
+are `[2, 0, 962]`; all three voices started at tick 0. Voice 1 (first onset 0)
+scored 100.0 and set the global fit; voices 0 and 2 were 2 and 962 frames early.
+
+**The trap that hides it**: voice 2's 962-frame shift MEASURED as the same −2 as
+voice 0, because that voice's phrase is periodic at 96 frames and
+962 = 10×96 + 2. A shift of a whole number of phrase-lengths is invisible to
+every per-frame column and to a gate-rise delta histogram alike. Only the
+absolute onset list shows it — check the origin, not the residual.
+
+**Fix**: the shim emits note durations as onset-to-onset **gaps**, so each
+voice's tick timeline is relative to its own first onset. A leading rest of
+`onsets[v][0]` ticks restores the origin. DMC already did this for its *legato*
+voices, with a comment saying exactly why ("a leading rest lands the first note
+at its absolute frame so a late-entering voice stays in sync") — it was simply
+never applied to the gate schedule, which is what nearly every file builds with.
+`DMC_LEAD_REST=0` restores the old behaviour for an A/B.
+`Billie_Jean` v0 **63.3/50.1/81.2 → 99.9/99.9/99.9**; `Blue_Monday_88` v0
+**65.8/60.0/8.1 → 98.8/99.8/99.4**.
+
+**Expect the raw column to FALL on the voices it fixes.** A late-entering voice
+now spends its pre-entry frames on rest rows, and the original spends them
+holding whatever init left in `$D404`/`$D400`. Both are gated off and inaudible,
+but they are not equal: `Billie_Jean` v2's raw wf went 94.2 → 49.3 while all 67
+of its onsets became exact and every one of its 190 sounding frames is 100%.
+That is why `dmc_native_sweep` grew an `[aud …]` column — printed only where it
+differs from raw, so the first number does not stop being read.
+
+**This is a REDISCOVERY, and the first sighting is already pinned by a test.**
+HardTrack hit it in `Love_tune_2` (voices 1 and 2, "10 and 20 frames early, and
+the fidelity metric shows it as a whole-voice failure rather than as a phase")
+and `pyscript/test_hardtrack_native.py::test_event_timeline_is_contiguous_from_tick_zero`
+has asserted the contract there ever since. The contract is stated in that
+docstring — *`build_native_song` places event k at tick `sum(dur[:k])`* — and it
+belongs to the SHARED builder, so it binds every shim. DMC's gate schedule
+simply never had the assertion written for it. When a shared contract is pinned
+in one player's test file, the pin does not travel: check the others in the same
+commit, or add the test where it will be read.
+
+**Seen in**: HardTrack (`Love_tune_2`, 2026-08), DMC (`Billie_Jean`,
+`Blue_Monday_88`, 2026-08-15), `bin/build_dmc_native_song.py` `DMCShim.__init__`.
+Future Composer, Hubbard, SDI and Sound Monitor encode durations the same way
+and have NOT been checked.
 
 ---
 

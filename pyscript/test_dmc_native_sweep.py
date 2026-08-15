@@ -34,7 +34,50 @@ def test_it_reproduces_a_perfect_match():
     per, n, dly = sw.score_pair(a, _flat(0x1000), 20)
     assert dly == 0 and n > 0
     for vi in per:
-        assert per[vi] == {"freq": 100.0, "wf": 100.0, "pul": 100.0}
+        assert {k: per[vi][k] for k in ("freq", "wf", "pul")} == {
+            "freq": 100.0, "wf": 100.0, "pul": 100.0}
+
+
+def test_the_audible_column_ignores_frames_where_both_sides_are_gated_off():
+    """A voice that has not entered yet is silent on BOTH sides, but the two
+    idle register states still differ -- the original holds whatever init left,
+    ours holds the leading rest's. Scoring those answers a question nobody asked,
+    and on a late-entering voice it DOMINATES: `Billie_Jean` v2 has 962 of 1,896
+    frames before it enters, so raw wf reads 49.3% while all 190 frames it
+    sounds are exact."""
+    lead = [[(0x1000, 0x20, 0x800)] * 3] * 100     # gated off, both sides idle
+    ours = [[(0x1000, 0xF0, 0x800)] * 3] * 100     # ...our idle waveform differs
+    tail = [[(0x1000, 0x41, 0x800)] * 3] * 100     # gated on, both sides agree
+    per, n, dly = sw.score_pair(frames(lead + tail), frames(ours + tail), 20)
+    for vi in per:
+        assert dly == 0 and per[vi]["wf"] < 55        # raw: ~half the window
+        assert per[vi]["audible"]["wf"] == 100.0      # ...none of which sounded
+        assert per[vi]["audible"]["freq"] == 100.0
+        assert per[vi]["audible_n"] == 96   # n-4: the window's own tail trim
+
+
+def test_the_audible_column_is_None_when_nothing_ever_gated_on():
+    """Same discipline as `score_pct`: no audible frame is NO EVIDENCE, not a
+    perfect score. A build that is silent end to end must not read 100."""
+    a = frames([[(0x1000, 0x20, 0x800)] * 3] * 200)
+    per, n, dly = sw.score_pair(a, a, 20)
+    for vi in per:
+        assert per[vi]["wf"] == 100.0
+        assert per[vi]["audible"]["wf"] is None
+        assert per[vi]["audible_n"] == 0
+
+
+def test_a_defect_that_plays_is_NOT_hidden_by_the_audible_column():
+    """The column exists to separate inaudible idle state from real loss -- not
+    to launder a defect. A voice that is gated on and wrong must score wrong in
+    BOTH columns."""
+    a = frames([[(0x1000, 0x41, 0x800)] * 3] * 200)
+    b = frames([[(0x1000, 0x11, 0x800)] * 3] * 200)
+    per, n, dly = sw.score_pair(a, b, 20)
+    for vi in per:
+        assert per[vi]["wf"] == 0.0
+        assert per[vi]["audible"]["wf"] == 0.0
+        assert per[vi]["audible_n"] > 0
 
 
 def test_a_register_neither_side_ever_wrote_is_None_not_100():

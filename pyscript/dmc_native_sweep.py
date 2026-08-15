@@ -163,21 +163,41 @@ def score_pair(orig, prb, secs):
     for vi in range(3):
         tot = {k: 0 for k in ("freq", "wf", "pul")}
         ok = dict(tot)
+        atot = dict(tot)
+        aok = dict(tot)
         for i in range(n):
             j = dly + i
             if not (0 <= j < len(orig)):
                 continue
             o, p = orig[j][0][vi], prb[i][0][vi]
+            # AUDIBLE = either side has the gate bit set. A voice that has not
+            # entered yet is gated off on BOTH sides and inaudible, but the two
+            # sides' idle registers still differ -- the original holds whatever
+            # init left in $D404/$D400, ours holds the rest row's. Scoring those
+            # frames answers a question nobody asked, and it dominates: after the
+            # leading-rest fix `Billie_Jean` v2 has 962 of its 1,896 frames before
+            # the voice enters, so its raw wf reads 49.3% while every one of the
+            # 190 frames it actually sounds is exact. Quote BOTH columns with
+            # their n (the same discipline FC's raw/audible pair carries) -- raw
+            # alone hides a real regression behind a rest, and audible alone is
+            # blind to a defect that plays through a release tail.
+            aud = bool(((o["wf"] or 0) | (p["wf"] or 0)) & 1)
             for k in tot:
                 if o[k] is None and p[k] is None:
                     continue        # neither side ever wrote it: not a test
                 tot[k] += 1
                 if k == "freq":
-                    ok[k] += (o[k] is not None and p[k] is not None
-                              and freq_to_semi(o[k]) == freq_to_semi(p[k]))
+                    hit = (o[k] is not None and p[k] is not None
+                           and freq_to_semi(o[k]) == freq_to_semi(p[k]))
                 else:
-                    ok[k] += o[k] == p[k]
+                    hit = o[k] == p[k]
+                ok[k] += hit
+                if aud:
+                    atot[k] += 1
+                    aok[k] += hit
         per[vi] = {k: score_pct(ok[k], tot[k]) for k in tot}
+        per[vi]["audible"] = {k: score_pct(aok[k], atot[k]) for k in tot}
+        per[vi]["audible_n"] = atot["freq"]
         counted = max(counted, tot["freq"])
     return per, counted, dly
 
@@ -290,9 +310,20 @@ def main(argv=None):
             cells = []
             for v in ("0", "1", "2"):
                 m = rec["voices"][v]
-                cells.append(f"v{int(v)+1} f{fmt_pct(m['freq'], n=rec['n'])}"
-                             f"/w{fmt_pct(m['wf'], n=rec['n'])}"
-                             f"/p{fmt_pct(m['pul'], n=rec['n'])}")
+                cell = (f"v{int(v)+1} f{fmt_pct(m['freq'], n=rec['n'])}"
+                        f"/w{fmt_pct(m['wf'], n=rec['n'])}"
+                        f"/p{fmt_pct(m['pul'], n=rec['n'])}")
+                # Show the audible column only where it DIFFERS -- a voice that
+                # sounds throughout its window has nothing extra to say, and a
+                # second number on every row is how the first one stops being read.
+                au, an = m.get("audible"), m.get("audible_n") or 0
+                if au and an and any(
+                        au[k] is not None and m[k] is not None
+                        and abs(au[k] - m[k]) >= 0.05 for k in ("freq", "wf", "pul")):
+                    cell += (f" [aud f{fmt_pct(au['freq'], n=an)}"
+                             f"/w{fmt_pct(au['wf'], n=an)}"
+                             f"/p{fmt_pct(au['pul'], n=an)} n={an}]")
+                cells.append(cell)
             print(f"  [{i}/{len(corpus)}] {name:28s} dly={rec['offset']:+d} "
                   f"{'  '.join(cells)}  n={rec['n']} parts={rec['parts']}", flush=True)
         elif rec.get("refused"):
@@ -348,16 +379,36 @@ def main(argv=None):
 
     # Medians per metric, over every voice of every scored file. Medians, not
     # means, matching how this repo already quotes SDI.
+    #
+    # BOTH columns, always. A build can be strictly better and score WORSE raw:
+    # a voice placed at its true entry frame spends the frames before it on rest
+    # rows, where the original is holding whatever init left -- inaudible on both
+    # sides and counted by neither ear. Printing only `raw` would have read the
+    # leading-rest fix as a corpus-wide regression. Printing only `audible` would
+    # hide a defect that plays through a release tail, which is the trap
+    # MATTGRAY.md records. Neither number is the answer on its own.
+    def _median(vals):
+        vals = sorted(vals)
+        if not vals:
+            return None
+        return (vals[len(vals) // 2] if len(vals) % 2 else
+                (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2)
+
     for metric in ("freq", "wf", "pul"):
-        vals = sorted(m[metric] for v in scored.values()
-                      for m in v["voices"].values() if m[metric] is not None)
+        vals = [m[metric] for v in scored.values()
+                for m in v["voices"].values() if m[metric] is not None]
         if not vals:
             continue
-        mid = vals[len(vals) // 2] if len(vals) % 2 else \
-            (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
-        print(f"  {metric:>5s}: median {mid:6.1f}  over {len(vals)} voices, "
-              f"{sum(1 for x in vals if x >= 99.95)} at 100, "
-              f"{sum(1 for x in vals if x < 90)} below 90")
+        line = (f"  {metric:>5s}: median {_median(vals):6.1f}  over {len(vals)} "
+                f"voices, {sum(1 for x in vals if x >= 99.95)} at 100, "
+                f"{sum(1 for x in vals if x < 90)} below 90")
+        av = [m["audible"][metric] for v in scored.values()
+              for m in v["voices"].values()
+              if m.get("audible") and m["audible"].get(metric) is not None]
+        if av:
+            line += (f"   | audible median {_median(av):6.1f} over {len(av)} "
+                     f"voices, {sum(1 for x in av if x < 90)} below 90")
+        print(line)
     print("\nNOT a $D418 figure -- run pyscript/passband_check.py --player dmc")
     if a.json:
         json.dump(results, open(a.json, "w", encoding="utf-8"), indent=1)

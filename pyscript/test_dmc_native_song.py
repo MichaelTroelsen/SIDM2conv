@@ -1,0 +1,157 @@
+"""The DMC native shim's contract with the shared builder.
+
+`build_native_song` places event k at tick `sum(dur[:k])` — the timeline is
+implied by the durations, and nothing else records where a voice starts. DMC's
+shim emits durations as onset-to-onset GAPS, so a voice whose first onset is at
+frame N is placed N frames early for the entire song unless a leading rest
+restores the origin.
+
+That bug shipped: `Billie_Jean`'s first onsets are `[2, 0, 962]` and all three
+voices began at tick 0. Voice 1 (first onset 0) scored 100.0 and set the global
+boot-offset fit, so the other two read as broken content — voice 0 at
+63.3/50.1/81.2 where its notes were exact. Voice 2's 962-frame shift measured as
+the same −2 as voice 0, because that voice's phrase is periodic at 96 frames and
+962 = 10×96 + 2; no per-frame column and no delta histogram can see a shift of a
+whole number of phrase-lengths. Only the absolute onset list can.
+
+HardTrack met the same contract first and pinned it in
+`test_hardtrack_native.py::test_event_timeline_is_contiguous_from_tick_zero`.
+The contract belongs to the shared builder, so the pin should have travelled;
+this file is it travelling. See `PATTERNS.md` F11.
+
+No siddump, no assembler, no build — the shim is constructed directly from the
+parsed module with a synthetic onset list.
+"""
+import importlib.util
+import os
+import sys
+
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CORP = os.path.join(ROOT, "SID", "JohannesBjerregaard")
+
+pytestmark = pytest.mark.skipif(not os.path.isdir(CORP),
+                                reason="Bjerregaard corpus absent")
+
+
+@pytest.fixture(scope="module")
+def B():
+    """Import the builder as a module. It reads `sys.argv` at import time for the
+    SID path, which pytest's argv would poison — so hand it a real one."""
+    sys.path.insert(0, ROOT)
+    sys.path.insert(0, os.path.join(ROOT, "bin"))
+    saved = sys.argv
+    sys.argv = ["build_dmc_native_song.py",
+                os.path.join(CORP, "Balloon.sid"), "10"]
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "build_dmc_native_song",
+            os.path.join(ROOT, "bin", "build_dmc_native_song.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    finally:
+        sys.argv = saved
+
+
+@pytest.fixture(scope="module")
+def module():
+    from sidm2.dmc_parser import load_sid, DMCModule
+    d, la, _h = load_sid(os.path.join(CORP, "Balloon.sid"))
+    return DMCModule(d, la)
+
+
+def shim(B, module, onsets, **env):
+    """A shim over a synthetic onset list. `DMC_GRID=0` keeps fpt at 1 so a tick
+    IS a frame and the assertions read as frames; the grid path is exercised
+    separately below."""
+    old = {k: os.environ.get(k) for k in ("DMC_GRID", "DMC_LEAD_REST")}
+    os.environ["DMC_GRID"] = "0"
+    os.environ.update({k: v for k, v in env.items()})
+    try:
+        return B.DMCShim(module, 0, budget_ticks=4000, onsets=onsets,
+                         frames=None, legato_set=frozenset())
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def start_frames(sh):
+    """Absolute frame each voice's first NOTE lands on, the way
+    `build_native_song` computes it: `tick_to_frame(sum of the durations ahead
+    of it) + onset_delay`. The delay term is 0 at fpt=1 and non-zero in grid
+    mode, where the whole timeline is offset by the onsets' shared residue."""
+    out = []
+    for v in range(3):
+        tk = 0
+        for e in sh.voices[v]:
+            if not getattr(e, "rest", False):
+                break
+            tk += e.dur
+        out.append(sh.tick_to_frame(tk) + sh.onset_delay)
+    return out
+
+
+def test_a_late_entering_voice_starts_where_its_first_onset_is(B, module):
+    """THE DEFECT, in the shape it shipped: Billie_Jean's `[2, 0, 962]`."""
+    sh = shim(B, module, [[2, 14, 26], [0, 194, 206], [962, 998, 1058]])
+    assert start_frames(sh) == [2, 0, 962]
+
+
+def test_the_old_behaviour_played_every_late_voice_from_frame_zero(B, module):
+    """Same input with the A/B switch — so the regression is pinned from both
+    sides rather than only described."""
+    sh = shim(B, module, [[2, 14, 26], [0, 194, 206], [962, 998, 1058]],
+              DMC_LEAD_REST="0")
+    assert start_frames(sh) == [0, 0, 0]
+
+
+def test_a_voice_that_starts_at_frame_zero_gets_no_leading_rest(B, module):
+    """The rest must be conditional: an unconditional one would push every voice
+    that IS at the origin one event later."""
+    sh = shim(B, module, [[0, 10], [0, 10], [0, 10]])
+    for v in range(3):
+        assert not getattr(sh.voices[v][0], "rest", False)
+    assert start_frames(sh) == [0, 0, 0]
+
+
+def test_the_rest_does_not_disturb_the_gaps_after_it(B, module):
+    """The durations following the rest are still onset-to-onset gaps — the fix
+    adds an origin, it does not re-time anything."""
+    sh = shim(B, module, [[5, 15, 40], [0, 10], [0, 10]])
+    notes = [e for e in sh.voices[0] if not getattr(e, "rest", False)]
+    assert [e.dur for e in notes[:2]] == [10, 25]
+
+
+def test_it_holds_in_STEP_GRID_mode_too(B, module):
+    """When every gate onset shares one residue mod `fpt*mult` the shim runs on
+    that grid instead of per-frame, and the durations become grid ticks. The
+    origin still has to be recorded -- in ticks now, with the shared residue
+    carried in `onset_delay`."""
+    ofpt = module.lay.tempo_reload + 1
+    ons = [[ofpt * k + 1 for k in (8, 12, 16)],
+           [ofpt * k + 1 for k in (0, 4, 8)],
+           [ofpt * k + 1 for k in (40, 44, 48)]]
+    old = os.environ.pop("DMC_GRID", None)
+    try:
+        sh = B.DMCShim(module, 0, budget_ticks=4000, onsets=ons, frames=None,
+                       legato_set=frozenset())
+    finally:
+        if old is not None:
+            os.environ["DMC_GRID"] = old
+    assert sh.frames_per_tick > 1, "this input should have selected the grid"
+    assert start_frames(sh) == [ons[0][0], ons[1][0], ons[2][0]]
+
+
+def test_every_voice_is_contiguous_from_tick_zero(B, module):
+    """The shared builder's actual contract (HardTrack's wording): durations
+    must tile the timeline with no gap and no overlap, for every voice."""
+    sh = shim(B, module, [[2, 14, 26], [0, 194, 206], [962, 998, 1058]])
+    for v in range(3):
+        assert sh.voices[v], f"voice {v} has no events"
+        for e in sh.voices[v]:
+            assert e.dur >= 1
