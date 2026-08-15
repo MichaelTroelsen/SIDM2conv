@@ -298,7 +298,59 @@ several, and only one of them is about pitch:
   exactly as `French_Frites` already showed on one file and this now generalises.
 
 **Read the old "87 of 216, large and unexplained" as superseded.** The work it
-implied — hunt one pitch mechanism — was the wrong shape.
+implied — hunt one pitch mechanism — was the wrong shape for the tail as a
+whole, though the pitch-only class it exposed did have exactly one mechanism
+behind it (below).
+
+### The pitch residual was the SCALED-vibrato marker (2026-08-15)
+
+The six pitch-only voices existed to isolate one mechanism, and they did.
+`Balloon` v0 read **80.6 over n=19,996** — the largest sample in the corpus —
+with waveform and pulse both at 100.
+
+Every layer above the driver looked healthy. The emitted FM program is
+**correct**: `+0 x3, +16833 x1, -16833 x1, +0 x2, ...`, exactly the two-octave
+arpeggio the original plays through its release tails. Bundles were 55, under
+the 63 cap, so nothing was force-merged. `fm_loop` is unset for DMC, so the
+`$7f` LOOP path never ran.
+
+The driver marks **SCALED** (pitch-proportional vibrato) FM entries by a
+`$40-$43` offset HI byte — and `+16833 = $41C1`. The octave jump is read as a
+vibrato leg, so the pitch ramps away and wraps mod 65536: ours cycles
+`[-16833, -252]` where the original cycles `[-16833, 0, 0, +16833]`, netting
+−34170 every four frames.
+
+**Third player to hit this.** Hubbard's drum dives first (which is why
+`hard_restart` implies the opt-out), then HardTrack's percussion, now DMC. The
+shim sets `no_fm_scale = 1`; `DMC_FM_SCALE=1` re-enables the marker for an A/B.
+
+**It is audible.** All 3,888 mismatching frames are gate-off, but the release
+nibble is **11 on every one of them** — ~750 ms, ~37 frames — and 3,190 sit
+within 40 frames of the gate falling. A wrong pitch rings out through the tail.
+"Gate-off" is not "silent"; that inference was made and withdrawn here.
+
+| | before | after |
+|---|---:|---:|
+| `Balloon` v0 (n=19,996) | **80.6** | **100.0** |
+| corpus freq median | 97.3 | **98.4** |
+| freq voices at 100 | 76 | **81** |
+| freq voices below 90 | 64 | **56** |
+
+Per voice across the whole corpus: **freq 12 improved, 207 unchanged, 0
+regressed.** Two apparent losses were checked and are not the fix:
+
+- `Nightdawn` wf/pulse move only because its fitted offset went 0 → 6 on an
+  **n=46** sample — below the 250-frame floor and already marked `!`. An
+  unstable refit, which is what that guard is for.
+- `DMC_Demo_IV_tune_5` errors `WAVE overflow: 288 rows > 256` **identically with
+  and without the change**, and the first `--build` sweep already recorded it.
+  The intermediate sweep only scored it because that run had no `--build` and
+  picked up a **stale artifact**. Rebuilding stopped a stale number, it did not
+  lose a file.
+
+Taken with the window fix earlier the same day, DMC frequency has moved
+**94.7 → 98.4** median and **89 → 56** voices below 90.
+
 
 
 It scores **freq/waveform/pulse only**, like the script it replaces. `$D418` is

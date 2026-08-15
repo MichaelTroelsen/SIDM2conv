@@ -97,6 +97,22 @@ class DMCShim:
     hard_restart = 0          # DMC gates per note; no Hubbard-style $7D kill
     snap_gate = True          # snap capture onsets to the trace's gate-rise frame
     hp_engine = 0             # DMC pulse comes from captured programs (its own PWM)
+    # The driver marks SCALED (pitch-proportional vibrato) FM entries by a
+    # $40-$43 offset HI byte, so a song whose REAL Hz deltas reach that range
+    # cannot have the marker on -- the entry is read as a vibrato leg and the
+    # delta is silently lost. DMC reaches it: `Balloon` voice 0 arpeggiates two
+    # octaves through its release tails, and +16833 is $41C1. The emitted FM
+    # program is correct (`+0 x3, +16833 x1, -16833 x1, ...`); the driver
+    # misreads it and the pitch ramps away and wraps mod 65536, which is the
+    # whole of that voice's 80.6% -- 3,888 mismatching frames, every one of them
+    # during a release with a 750 ms release rate, so audible.
+    #
+    # Third player to hit this: Hubbard's drum dives first (which is why
+    # `hard_restart` implies it), then HardTrack's percussion, now DMC. See
+    # `_fm_scale_ok`.
+    # DMC_FM_SCALE=1 re-enables the marker for an A/B (it is the defect,
+    # not a tuning knob -- see above).
+    no_fm_scale = 0 if os.environ.get('DMC_FM_SCALE') == '1' else 1
 
     def __init__(self, m, phase, budget_ticks, onsets=None, frames=None,
                  legato_set=frozenset()):
