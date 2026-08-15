@@ -121,6 +121,27 @@ freq + waveform + pulse + filter — a full-featured player.
 
 ## ⚠️ The `$D418` passband: 26 of 57 shipped builds were wrong
 
+**Re-measured 2026-08-15 after the corpus rebuild — 0 failures.** The figures
+below (26 of 57 wrong, rebuilt to 55/57) describe artifacts that **no longer
+exist**: every DMC build was regenerated with the F10/F11 timing fixes, so the
+passband had to be re-checked or this section would be quoting a corpus that is
+gone — the same F7 shape it was written to document. `passband_check.py
+--player dmc` over the 74 built files now reports **53 pass / 0 fail / 21 never
+exercise the filter in their window**.
+
+Read the 53 with the routed fraction, not as a mode-match score: **10 of them
+pass only because the original routes NO voice through the filter**, so its mode
+selection is inaudible and ours differing from it costs nothing (`Roadblaster`,
+`Rosanna`, `Eagles`, `Happy_Jingle`, `In_the_Mood`, `Blobby`, `Tiny_Symphony`,
+`Twilight_Beyond` and 2 more). That leaves **43 files where a voice is actually
+routed and the passband is reproduced**. The single sub-100 agreement in the
+whole corpus is `Soap_Theme` at **99.1%** (8 frames, routed 73%).
+
+The 21 uncounted are not a pass either — `passband_check` refuses to score a
+window in which the original never routes a voice and never selects a mode.
+Widen `--seconds` before reading the total as a corpus verdict.
+
+
 `cffc51e` (2026-08-10) fixed the passband in **both** `build_dmc_native_song.py`
 and the HardTrack builder, and it was recorded only in `HARDTRACK.md`. DMC's
 artifacts were never rebuilt: 968 of 984 `out/dmc/*.sf2` still predated the fix

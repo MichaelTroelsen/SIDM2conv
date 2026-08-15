@@ -46,6 +46,78 @@ Parser: `sidm2/sdi_parser.py`. Trail: `memory/gallefoss-sdi-player.md`.
 
 ---
 
+## `Tanks_3000` passband: the filter drive detector is fed an empty onset list (2026-08-15)
+
+`passband_check --player sdi` reports `Tanks_3000` as **static LP+BP against an
+original that alternates LP/LP+BP 12 times** (94.9%, 72 audible frames). It
+**survives a rebuild**, so by that tool's own rule the builder is at fault, not
+the artifact. Traced to the bottom; recording it because four plausible
+explanations were tested and refuted on the way, and each is worth not repeating.
+
+**Refuted, in order:**
+
+1. *An F8 window over-run.* No — the `.span` sidecar says part 1 is **0–32 s** and
+   the modulation starts at frame 853 (17 s), so it is genuinely inside the part.
+   The check simply doesn't annotate, because a span may only NARROW a window and
+   32 s > the 28 s default.
+2. *The F9 shape — mode changes without a cutoff jump, so `detect_filter_drives`
+   is blind.* No — every one of the 12 changes comes with a **+352** cutoff jump
+   (256 → 608), far above `FILT_FAST = 0x40`.
+3. *No note-on to hang the drive on.* No — all 8 changes in the window sit
+   **exactly** on gate rises of voice 0, which `routed_voice` correctly
+   identifies as the routed voice.
+4. *The canonical filter key omits the passband.* True, necessary, and **not
+   sufficient alone**. `canon_src` keys on `(MoN instrument, _shape_sig)` where
+   `_shape_sig` is the cutoff base and initial slope, so two drives whose cutoff
+   envelopes match but whose `$D418` modes differ collapse into one program.
+   Called standalone on this file, `detect_filter_drives` returns **37 drives →
+   2 keys today, 3 with the passband added** (LP+BP ×30, LP ×6 — exactly the lost
+   modulation). But a patch adding it was written, built and measured on its own:
+   **no change**, because inside the build there are not 37 drives — see the
+   cause below. One drive cannot merge with anything.
+
+**The actual cause.** `build_native_song` populates `onsets[v]` — the list it
+hands `detect_filter_drives` — only from events with `ev.retrig` set. The SDI
+shim emits `total=[268, 202, 308]` events per voice and **`retrig=[1, 1, 1]`**.
+So the detector receives ONE onset per voice, returns ONE drive (frame 1), and
+one canonical program covers the entire song, carrying whichever passband that
+first drive had. Everything downstream — detection, anchoring, the SET-row
+encoding, the passband trace, which SDI does pass as a 3-tuple — is working on
+an input that is empty by construction.
+
+**Two gaps in series, and neither moves the number alone.** `filter_tie` is the
+existing answer to the empty onset list (Sound Monitor already sets it: the
+engine restarts its cutoff envelope on every note-set of the routed voice
+INCLUDING legato, so tie events are drive-eligible). With it, onsets go
+`[1,1,1] → [215,173,261]` over a 24 s window, drives `1 → 27`, filter programs
+`1 → 11`. Measured combinations:
+
+| `filter_tie` | passband key | `Tanks_3000` |
+|---|---|---|
+| off | off | 94.9%, static |
+| off | **on** | 94.9%, static (1 drive — nothing to split) |
+| **on** | off | 94.9%, static (drives merge on the key) |
+| **on** | **on** | **100.0%, 12/12 changes** |
+
+⚠️ **One reading in this investigation was a VACUOUS 100.** A scratch A/B scraper
+took only `agree` and `routed` from `passband_check`'s output and reported a
+confident 100.0% for a `filter_tie=0` build — a config whose in-process
+instrumentation shows **1 drive, 1 program, LP+BP**, which cannot emit 12
+changes. Dropping the `oChg`/`dChg` columns hides a window in which NEITHER side
+modulates. `passband_check` already prints those columns and annotates "filter
+never exercised in this window — NOT a pass"; the scraper stripped the evidence.
+Read the whole row, and prefer the in-process counts (drives, programs) over any
+number attached to an artifact whose provenance you cannot state.
+
+**Status**: both changes exist behind kill switches (`SDI_FTIE=0`,
+`FILT_KEY_PB=0`) and are NOT committed with this note. The key change is
+byte-neutral on 48 parts across HardTrack, Sound Monitor, FC and Hubbard;
+`filter_tie` still needs an SDI corpus A/B, because it costs table space
+(`Tanks_3000`: `instr` 24 → 32 with bundles already at the 63 cap) across 441
+files. `Arabia` (98.2%) and `Funk_Facet` (99.0%) survive a rebuild unchanged and
+are separate, smaller defects.
+
+
 ## The variants (one editor, six binary generations)
 
 | Variant | Class file | Header | Track ptr shape | Seq row shape |
