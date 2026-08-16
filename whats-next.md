@@ -1,143 +1,148 @@
-# Handoff — SIDM2 session, 2026-08-14/15
+# Handoff — SIDM2 session, 2026-08-16
 
 <original_task>
-Opened with **"read what next"**, then short directives throughout: **"do the
-task on the list"**, **"turn it on by default and rebuild the corpus"**, **"do
-2"**, **"do 3 and do 5"**, **"do 1 and 5"**, **"do the DMC pitch residual"**,
-**"do Juba-Jazz"**, **"do Flimbos_Quest_main"**, and **"push"** repeatedly. One
-`/subtask` fork reviewed the **h2g** project, which the user then designated
-**reference-only — do not modify it**.
+Opened with **"read what next"**, then a `/whattask` → `/runtask` loop the user
+drove with **"next"** repeatedly, plus **"push"**, **"commit this"**, and one
+pivotal aside: **"i have 24 cores so we should be able to run things in
+parallel"**. Two slash commands (`/whattask`, `/runtask`) were authored during
+the session and then used to run it.
 </original_task>
 
 <work_completed>
 
-**10 commits on SIDM2**, `a8626e8..a6980f3`, all pushed. Suite **2,457**. Plus
-one commit on **h2g** (`0275c5a`), a separate reference-only repo.
+**10 commits**, `afd2f63..c30a2fc`, all pushed. Suite ~2,480. 13 tasks closed,
+1 partial, recorded in `.claude/tasks/runs.jsonl` (gitignored, 17 records).
 
-## Two through-lines
+## The through-line
 
-**1. The comparison window was wrong in four tools.** Every scorer comparing one
-*part* of a windowed build against the original needs to know where that part
-ENDS; past it our build LOOPS while the original plays on. Fixed by making the
-artifact record its own window (`.span` sidecar from `emit_one`,
-`part_span`/`window_for` in `fidelity_common`) — `PATTERNS.md` **F8**.
+The session's stated task was the `$40-$43` marker. Most of its value came from
+what parallelising the verification exposed: **four independent races**, and —
+worse — **four checks that passed while the thing they guarded was broken.**
 
-**2. Three published figures were measurement artifacts, not defects.** Each
-looked like a builder bug and was not: a reference that could not drive the tune,
-a window that over-ran, and a scorer scoring a build that never plays a note.
+| the check | why it passed anyway |
+|---|---|
+| `SCORES IDENTICAL` over 5 corrupted artifacts | it scores **part 1 only**; every corrupted file was part 2+ |
+| a byte-compare of 71 artifacts, clean | the **scorer** was racing, not the builds |
+| a serial-vs-parallel baseline | the baseline was built **before the code under test** |
+| `207 vs 210 voices` | true, but it measured a **lock race**, not a build difference |
+
+None was a wrong number. Each was a right number answering a question nobody
+had asked.
 
 ## Commit by commit
 
 | commit | what |
 |---|---|
-| `7c89ab5` | HardTrack per-note SR lookahead built. Registers improve corpus-wide but `Love_tune_2` gets **darker** — answer to the filed brightness question: **no** |
-| `d0ec20c` | The selector is instrument **mode 2**, tested on the note that is **ENDING** (242/242, 158/158, 375/375, 0 false positives in 1,260). Shipped ON; corpus 12,397 → 1,794 mismatching `$D406` frames, worse on 0 |
-| `4f9b47c` | SDI V path: `v_traces` now records `$D418` — but the 0.0% was a **reference** defect. siddump calls a V rip's player once per frame where its IRQ runs `v_mult`(4). Per-**file** `sdi_v` reference; 0/4 → **5/5** |
-| `0ae0738` | The `.span` sidecar. HardTrack **25 → 32/33**, SDI **241 → 258/281**, 41 UNCONFIRMED → **0**. Failures ROSE 3 → 7, which is the guard working |
-| `0df2d99` | A quarter of the DMC tail was the window: `part1_span` took the FIRST `part 1/N` line, which belongs to a **legato A/B probe build** over a 90 s head. `Happy_Jingle` 23.4/16.1/8.1 → **98.3/100.0/98.8** |
-| `a8e7e7e` | Audited every remaining scorer. SM's `parse_parts` had the same latent hazard (probe builds), guarded; corpus unmoved at 99.252% |
-| `ca9678c` | **DMC pitch residual solved.** Third player to collide with the driver's `$40–$43` SCALED-vibrato marker — `Balloon`'s two-octave arp emits `+16833 = $41C1`. `Balloon` v0 **80.6 → 100.0** (n=19,996) |
-| `5c5c357` | **`Juba-Jazz` 52.8 → 100.0.** Its filter is enabled by `$D417`+`$D418` with the **cutoff held at 0**, and `detect_filter_drives` keys on cutoff jumps — `PATTERNS.md` **F9** |
-| `1498c3b` | `Flimbos_Quest_main` was never a fidelity defect: the parser decodes **no notes**. `build_native_song` refuses a decode with no note on any voice |
-| `a6980f3` | That guard catches **three** files, not two — `Nightdawn` was scoring a **vacuous 100** |
+| `afd2f63` `0c3aadc` `ded4270` `b905f97` | (carried from 08-15) DMC timing fixes, corpus rebuild, `Tanks_3000` 94.9 → 100.0 |
+| `e731046` | the `$40-$43` collision is per **SONG**, not per player — `Balloon` 123,180 hits, `Depeche_Mode_Songs` **0** |
+| `00893cd` | `passband_check`'s offset fit maximised the **rate**, so a shift bought agreement by discarding frames. Now maximises **count**, then completeness |
+| `4d44f00` | `_fm_would_collide` — decided per song **before** the emit pass, staged behind `FM_SCALE_AUTO` |
+| `4d01910` | parallel corpus builds. **F2 is three shared files, not one.** 3.5 h → 14 min at `-j16` |
+| `3ffdadb` | the scorer's probe was ONE shared file — `-j16` scored songs against **other songs' audio** |
+| `722bcaf` | audited every sweep for the same shape: **no other sweep races**; one latent case fixed |
+| `6ab60f3` | the lock escaped a Windows `PermissionError` and silently lost one song per corpus run |
+| `6e5daf9` | the per-song rule **adopted as default**; `no_fm_scale` deleted from all three shims |
+| `20c506e` | **PATTERNS F12** — and the old rule was folklore citing the wrong entry |
+| `c30a2fc` | every `$D418` figure re-measured rather than adjusted; SDI **258 → 267 of 281** |
 
-## Corpus movement
+## Where the numbers landed
 
-| | start | end |
-|---|---:|---:|
-| DMC freq median | 94.7 | **98.7** |
-| DMC freq voices below 90 | 89 | **47** |
-| SDI passband | 237/281 | **258/281**, 0 unconfirmed |
-| HardTrack passband | 25/33 | **32/33**, 0 unconfirmed |
-| HardTrack `$D406` frames wrong | 12,397 | **1,794** |
+| | |
+|---|---|
+| DMC raw medians (freq/wf/pul) | **99.5 / 99.9 / 99.9**, audible **100.0 ×3** |
+| DMC / SDI / HardTrack passband | **53/74** · **267/281** · **32/33** |
+| DMC corpus rebuild | **3.5 h → 14 min** (`-j16`) |
+| Hubbard under the new rule | **byte-identical** (predicted in advance, confirmed twice) |
 
 </work_completed>
 
 <attempted_approaches>
 
-## Retracted or corrected — six, four of them my own
+## Retracted — three, all mine
 
-1. **"87 of 216 DMC frequency voices below 90, large and unexplained."** A
-   quarter was the window; the rest splits by cause.
-2. **`Happy_Jingle` 23.4/16.1/8.1**, **`Depeche_Mode_Songs` 37.9/31.6/29.0** —
-   both ~98-100% over their own parts.
-3. **`Filthy_Hit_VE-4x` "0.0%, the last real SDI passband gap"** — the reference
-   could not drive the tune. It is 100.0%.
-4. **My "discarded trial split"** — it is a legato A/B *probe build*.
-5. **My "20 of 88 DMC files decode to silence"** — that probe bypassed the
-   builder's phase selection.
-6. **My "exactly two silent builds"** — missed `Nightdawn`, whose silent build
-   reads freq **100.0/97.8** because a constant held on BOTH sides over 46 frames
-   scores a vacuous 100. Only building the corpus with the guard got it right.
+1. **"AUTO regresses DMC to 96.3"** and **"the default control is 96.4"** —
+   both came from the raced scorer. **The regression never existed.**
+2. **"The lock is correct by construction"** — asserted, then falsified by the
+   next test. Two more shared files were still open.
+3. **"PATTERNS F2 says builders share `layout.inc`"** — F2 says no such thing.
+   Inherited from the old handoff and propagated into two commit messages
+   before being caught.
 
 ## Traps worth carrying
 
-- **A lookup that fails open reads exactly like one that worked.** The first
-  `.span` run derived nothing — half the players are keyed on the `.sid` wrapper
-  and half on the `.sf2`. Hence the `[Ns = its own part 1]` marker.
-- **`SR=$00` zeroes SUSTAIN as well as release**: one mistimed kill silences the
-  rest of a held note while every later register still reads correct (−24 dB).
-- **Gate-off is not silent.** DMC's pitch mismatches are all gate-off, but the
-  release nibble is 11 (~750 ms), so they ring out audibly. I inferred
-  "inaudible" and withdrew it after measuring.
-- **Corpus builders may now run CONCURRENTLY** — `--jobs N` takes a
-  cross-process lock (`PATTERNS.md` **F12**). The old rule said they share
-  `drivers_src/mon/layout.inc` and cited F2, which is a different hazard
-  (editing a module mid-run) and never said this; the real contention was
-  three files plus the scorer's probe, all now closed.
-- **Verify a shared-detector change on the NEIGHBOURS**, not the target: F9's
-  fix was proven by HardTrack being 31/33 byte-identical with the other 2
-  measuring identically.
-- **The heredoc backslash trap**, twice more. Use the Write tool, forward slashes.
+- **A shifting set of differing artifacts means a race. A stable set does
+  not** — it means a real difference, or a baseline built with other code.
+  That one distinction separated the real races from two false trails.
+- **Builds and scoring fail independently.** Compare artifacts *and* scores; a
+  byte-compare cannot see a defect in the scorer that reads them.
+- **Change one variable.** Three of the four false trails were two-variable
+  comparisons: serial+no-isolate vs parallel+isolate, batch vs alone, and old
+  code vs new.
+- **A stale artifact's mtime gives it away** where its filename does not — a
+  "failed" smoke test was a file from the previous day.
+- **Windows**: a lock file pending deletion answers `O_CREAT|O_EXCL` with
+  `ERROR_ACCESS_DENIED`, not "exists". Catch both.
+- **For HardTrack, `audible` is the STRICTER column** — opposite to DMC, whose
+  raw is depressed by rest frames. Do not read the two the same way.
+- **A subagent's silence is not evidence its work is absent.** One returned
+  "I'll wait for the background build" after 112k tokens; the work was in the
+  tree. Check the tree.
 
 </attempted_approaches>
 
 <critical_context>
 
-- **`.span` sidecars** are written by `emit_one` for every part; `out/` is
-  gitignored, so pre-session artifacts have none — and **absent must stay
-  distinguishable from zero**.
-- **A recorded span may only NARROW a window**, never widen it.
-- **`no_fm_scale` is a per-shim opt-out three players have now had to discover
-  the hard way** (Hubbard, HardTrack, DMC). The durable fix — disable the
-  `$40-$43` marker automatically when a song's own offsets collide with it — is
-  NOT done, because legitimate scaled entries use the same encoding.
-- **h2g is reference-only.** v0.5.254, suite 979/0 after GoatTracker 2.77 was
-  installed and `siddump-rt` built with `zig cc`.
-- Rebuild scripts: `pyscript/hardtrack_native_rebuild.py`,
-  `pyscript/dmc_native_sweep.py --build`, `bin/build_sdi_native_song.py`.
+- **Corpus builders may now run CONCURRENTLY.** `--jobs N` (DMC sweep only so
+  far) takes a cross-process lock; see `PATTERNS.md` **F12** for the four
+  shared surfaces and why isolation was rejected in favour of a lock.
+- **`.claude/tasks/`** holds the plan (`whattask.json`) and the append-only run
+  log (`runs.jsonl`). **Both are gitignored** — every finding above that is not
+  in a commit message lives only there.
+- `/whattask` regenerates the plan and folds the run log back in; `/runtask`
+  runs ONE task with its dependency/mode/lane gates enforced. Outcomes are
+  `done | partial | failed | inconclusive | blocked` — `partial` means resume,
+  not restart.
+- Rebuild scripts: `pyscript/dmc_native_sweep.py --build -j16`,
+  `pyscript/hardtrack_native_rebuild.py` (still serial, ~19 min),
+  `bin/build_sdi_native_song.py`.
 
 </critical_context>
 
 <current_state>
 
-Suite 2,457, version 3.27.0 (unchanged — this session's cadence).
+Suite ~2,480, version **3.27.0 unchanged — 69 commits behind a stamp**.
 
 **Open work, ranked:**
 
-1. **The DMC whole-build queue.** *Opus, main.* `Roadblaster` v0/v2 **58.6/62.0
-   over n=15,996** is the largest and best-evidenced. The class is defined:
-   freq AND wf AND pulse all below 90 on the same voice, ~17 songs. Note that
-   `Happy_Jingle` and `Depeche_Mode_Songs` left this class once their windows
-   were honest, so re-derive membership from `out/dmc_sweep4.json` before
-   assuming a file belongs.
-2. **The 14 MIXED DMC voices** — neither pitch-only nor whole-build; likely
-   splits again. *Delegable measurement pass.*
-3. **Small passband residuals.** *Delegable.* `Tanks_3000` (static vs 12
-   changes, 72 audible), `Arabia` 98.2%, `Funk_Facet` 99.0%/12 audible,
-   HardTrack's `Fun_Factory` 99.0%/3 audible.
-4. **Make the `$40-$43` marker self-disabling** rather than a per-shim opt-out —
-   see critical context. *Main; needs care.*
-5. **`Flimbos_Quest_main`/`Kamikaze`/`Nightdawn` decodes** — now honestly
-   refused, but the variant is undecoded. A parser question, not a fidelity one.
+1. **`release-3-28`.** *Requires user.* 69 commits since v3.27.0.
+   `pyscript/test_version_stamps_agree.py` makes the mechanics safe once you
+   decide.
+2. **`sdi-filter-between-note-automation`.** *Opus, main, PARTIAL — resume.*
+   Mechanism is measured, not hypothesised: `detect_filter_drives:756` credits
+   an attack to an onset only when `-1 <= (f - onset) <= 4`. `Arabia`'s attack
+   at frame 688 sits in a **71-frame gap** between onsets 637 and 708 and is
+   dropped; `Funk_Facet`'s is 1 frame out and merely late. Fix needs **no
+   driver change** — widen the upper bound so the attack maps to the preceding
+   onset, and `filter_program_for`'s capture supplies the hold. ⚠️ Shared by
+   **six players**; verify against BOTH files and watch for attacks credited to
+   the wrong note.
+3. **`dmc-part-split-nondeterministic`.** *Opus.* 5 of 88 songs take different
+   part splits between runs, in **both directions**, pre-existing. Aggregate
+   stats are stable but the corpus is **not reproducible at the artifact
+   level** — which limits every byte-compare gate, including this session's.
+4. **`hardtrack-rebuild-jobs`** — still serial at ~19 min; the DMC sweep is a
+   working template. *Sonnet, subtask.*
+5. **`dmc-driver-init-passband-default`** (no `$D418` at INIT; `Soap_Theme`'s
+   19 frames), **`hardtrack-voice1-early-noteon`** (needs RetroDebugger),
+   **`sweep-no-progress-at-j`** (a `-j16` run prints nothing for 14 min).
 
-**Older, still open:** `Coming_Soon` (90.9%), `Lederhosen`; `Bahbar_v` has no
-original; `Altered_States_Tune_2`'s 47-frame first-filter-row latency
-(inaudible, unexplained); a startup-latency generalisation discarded as
-under-controlled.
+**Blocked on the user:** `bahbar-v` (no original SID — the tool agrees),
+`roadmap-e1-vice-voice-mute` (your siddetector WinVICE toolchain),
+`roadmap-e2-oscilloscope` (ffmpeg not installed).
 
-**Closed this session:** HardTrack #16 (the brightness gap — `Love_tune_2`'s
-darkness is the cost of modelling the player's own release kill), the SDI V-path
-passband, the 41 UNCONFIRMED rows, and the DMC pitch residual.
+**Closed this session:** the `$40-$43` arc end to end, four passband
+diagnoses (`Soap_Theme`, `Arabia`, `Funk_Facet`, `Fun_Factory` — all now with
+named causes), the DMC content re-derivation, the 21 unexercised windows, the
+sweep-probe audit, and the offset-fit defect underneath all of it.
 
 </current_state>
