@@ -75,6 +75,9 @@ BUNDLE_TOL = int(os.environ.get("BUNDLE_TOL", "0"))  # 0 = OFF (lossless split).
 # where a real Hz delta would be misread as a SCALED vibrato entry, so the
 # per-shim `no_fm_scale` blanket can be replaced by a per-SONG decision.
 _FM_PROBE = os.environ.get("FM_SCALE_PROBE") == "1"
+# FM_SCALE_AUTO=1: let the per-song measurement REPLACE the per-shim
+# `no_fm_scale` blanket rather than only adding to it. See _fm_scale_ok.
+FM_SCALE_AUTO = os.environ.get("FM_SCALE_AUTO") == "1"
 _FM_HI_COLLIDE = []
 
 
@@ -93,6 +96,63 @@ if _FM_PROBE:
     atexit.register(_fm_probe_report)
 
 
+def _fm_would_collide(m, frames, delay=0):
+    """Does any PLAIN FM delta of this song land in the $40-$43 SCALED range?
+
+    This is the per-SONG replacement for the per-shim `no_fm_scale` blanket.
+    Three players discovered the same collision independently and each answered
+    it by disabling the marker for their whole corpus, but FM_SCALE_PROBE=1
+    measured it as a property of the SONG: DMC's Balloon collides 123,180 times
+    and HardTrack's Love_tune_2 1,096, while Depeche_Mode_Songs and
+    Spy_vs_Spy_III collide zero.
+
+    CONSERVATIVE BY CONSTRUCTION, which is what makes it safe to decide from:
+    what the builder actually emits is a SUBSET of what this scans, so it can
+    over-report (falling back to today's behaviour for that song, costing only
+    an optimisation) but can never under-report (which would ship the defect).
+
+    The scan is cheap because of an identity in `fm_program_for`: for k >= 2,
+        delta[k] = (freq[k] - base) - (freq[k-1] - base) = freq[k] - freq[k-1]
+    -- the note's base CANCELS. So every within-note delta is a plain
+    consecutive-frame difference, independent of how the song is cut into notes
+    or clipped into windows, and (a) below covers all of them for any
+    segmentation. Only delta[1] is base-relative; (b) walks m.voices UNWINDOWED,
+    a superset of any window's notes.
+
+    Deciding this BEFORE the emit pass is the whole point. The scaled
+    substitution is chosen per note inside that pass, so consulting a collision
+    set still being filled would decide the early notes on partial information.
+    """
+    def hits(d):
+        return 0x40 <= ((d >> 8) & 0xFF) <= 0x43
+
+    # (a) consecutive-frame deltas -- every delta[k >= 2] of every note
+    for v in range(3):
+        prev = None
+        for f in range(len(frames)):
+            tf = frames[f][0][v]['freq']
+            if tf is None:                    # siddump gap: fm_program_for HOLDS
+                continue                      # the last value, so the delta is 0
+            if prev is not None and hits((tf - prev) & 0xFFFF):
+                return True
+            prev = tf
+
+    # (b) delta[1] is measured from the note's own base, so it needs the notes
+    for v in range(3):
+        tk = 0
+        for ev in m.voices[v]:
+            if not getattr(ev, 'rest', False):
+                fr = m.tick_to_frame(tk) + delay
+                nc = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
+                base = m.note_freq(nc)
+                if 0 <= fr + 1 < len(frames):
+                    tf = frames[fr + 1][0][v]['freq']
+                    if tf is not None and hits((tf - base) & 0xFFFF):
+                        return True
+            tk += ev.dur
+    return False
+
+
 def _fm_scale_ok(m):
     """May this song use SCALED (pitch-proportional vibrato) FM entries?
 
@@ -106,8 +166,31 @@ def _fm_scale_ok(m):
 
     A shim opts out with `no_fm_scale = 1`; every existing shim leaves it unset
     and is unaffected.
+
+    STAGED (2026-08-16). `_fm_would_collide` now answers this per SONG from the
+    song's own deltas, and `build_native_song` caches its verdict on `m`. Two
+    modes, so the measured rule can be A/B'd against the blanket before it
+    replaces it:
+      default        -- today's rule verbatim, so every existing build is byte
+                        identical. An earlier cut let the measurement ADD a
+                        disable here and called that byte-neutral; it is not. A
+                        song that collides but whose shim never opted out (no MoN
+                        / SDI / FC / Sound Monitor shim sets the flag) would have
+                        changed behaviour unverified, which is the fix but not
+                        one the corpus has confirmed yet.
+      FM_SCALE_AUTO=1 -- the measured rule ALONE, replacing the blanket in both
+                        directions: a non-colliding song under an opted-out shim
+                        gets the marker back, and a colliding song under any shim
+                        loses it. This is the end state; it needs the corpus
+                        rebuild before it can be the default.
+    `hard_restart` keeps its own implication in both modes: retiring that changes
+    Hubbard as well, and it deserves its own rebuild rather than riding along.
     """
-    return not (getattr(m, 'hard_restart', 0) or getattr(m, 'no_fm_scale', 0))
+    if getattr(m, 'hard_restart', 0):
+        return False
+    if not FM_SCALE_AUTO:
+        return not getattr(m, 'no_fm_scale', 0)   # today's rule, byte for byte
+    return not getattr(m, '_fm_collide', False)   # the measured rule, alone
 
 
 def fm_program_for(frames, v, onset, dur_f, base, allow_loop=False):
@@ -1298,6 +1381,15 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # mapped back to the triggering note) -> `drives`; the span until the next restart
     # is how long each envelope program runs before re-triggering.
     delay = getattr(m, "onset_delay", 0)
+    # Decide the $40-$43 SCALED-marker question ONCE, here, before the emit pass
+    # chooses substitutions per note -- consulting a collision set that pass is
+    # still filling would decide the early notes on partial information.
+    m._fm_collide = _fm_would_collide(m, frames, delay)
+    if _FM_PROBE:
+        print("FM_SCALE_PROBE verdict: collide=%s scale_ok=%s (shim no_fm_scale=%s"
+              " hard_restart=%s auto=%s)"
+              % (m._fm_collide, _fm_scale_ok(m), getattr(m, 'no_fm_scale', 0),
+                 getattr(m, 'hard_restart', 0), FM_SCALE_AUTO), flush=True)
     onsets = [set() for _ in range(3)]
     onset_instr = [dict() for _ in range(3)]               # onset_frame -> MoN instrument
     # STRUCTURAL WAVE (whats-next step 3): the per-note wave capture unrolls the

@@ -271,8 +271,18 @@ def compare(orig_modes, our_modes, offsets=OFFSETS, routed_seq=None):
     # for every offset >= 0 while `n` falls 1299 -> 1291, so the rate climbed
     # 98.537 -> 99.148 and the winner was simply max(OFFSETS); SDI Arabia's
     # fitted +4 held `ok` at 879 and then LOST matches beyond it. Both bought
-    # their offset with exactly zero extra matches, and Soap_Theme's inflation
-    # carried it over the --min 99.0 gate, turning a fail into a pass.
+    # their offset with exactly zero extra matches.
+    #
+    # What it cost, measured after the fix rather than predicted before it: the
+    # percentage, the reported offset, and the mismatch COUNT the audibility
+    # annotation is computed over (Arabia read audible=3 at its fitted offset
+    # against 7 at offset 0). It did NOT change any corpus verdict -- a build
+    # passes on the AUDIBLE count, not on `agree`, so Soap_Theme passed at 99.1
+    # and still passes at 98.5 with all 19 mismatches on unrouted frames.
+    # HardTrack held 32/33 and DMC 53/74 across the fix. An earlier version of
+    # this comment claimed the inflation carried Soap_Theme over the --min 99.0
+    # gate and turned a fail into a pass; that was wrong, and running the corpus
+    # is what corrected it.
     #
     # A real boot delay still scores: shifting by the true lag repairs more
     # frames than the trim costs, so `ok` genuinely rises and the count-

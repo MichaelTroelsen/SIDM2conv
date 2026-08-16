@@ -155,3 +155,66 @@ def test_every_voice_is_contiguous_from_tick_zero(B, module):
         assert sh.voices[v], f"voice {v} has no events"
         for e in sh.voices[v]:
             assert e.dur >= 1
+
+
+# --- the $40-$43 SCALED-marker collision, decided per SONG -------------------
+# These pin the IDENTITY the scan relies on, not any particular song: for k >= 2
+# a note's FM delta is freq[k]-freq[k-1] with the base cancelled, so scanning
+# consecutive frames covers every within-note delta under ANY segmentation.
+
+def _bmns():
+    import importlib.util
+    sys.path.insert(0, ROOT)
+    spec = importlib.util.spec_from_file_location(
+        "bmns_fm", os.path.join(ROOT, "bin", "build_mon_native_song.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bmns_fm"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _M:
+    """Minimum surface _fm_would_collide touches."""
+    def __init__(self, notes=()):
+        self.voices = [list(notes), [], []]
+    def tick_to_frame(self, t):
+        return t
+    def note_freq(self, n):
+        return 0x1000
+
+
+class _Ev:
+    def __init__(self, note=48, dur=8, rest=False):
+        self.note, self.dur, self.rest = note, dur, rest
+
+
+def _frames(v0):
+    return [({0: {"freq": f}, 1: {"freq": None}, 2: {"freq": None}},)
+            for f in v0]
+
+
+def test_a_delta_inside_the_marker_range_is_detected():
+    """A jump of +$41C1 is DMC Balloon's two-octave arp, the documented case."""
+    B = _bmns()
+    assert B._fm_would_collide(_M(), _frames([0x1000, 0x1000 + 0x41C1])) is True
+
+
+def test_a_song_whose_deltas_stay_clear_does_not_collide():
+    B = _bmns()
+    assert B._fm_would_collide(_M(), _frames([0x1000, 0x1010, 0x1020])) is False
+
+
+def test_the_base_cancels_so_segmentation_cannot_hide_a_collision():
+    """The scan never sees the note boundaries, and must not need to: the same
+    frame series collides identically however it is cut into notes."""
+    B = _bmns()
+    series = _frames([0x1000, 0x1000 + 0x4200, 0x1000])
+    for cut in ([], [_Ev(dur=1)], [_Ev(dur=1), _Ev(dur=1), _Ev(dur=1)]):
+        assert B._fm_would_collide(_M(cut), series) is True, cut
+
+
+def test_a_siddump_gap_holds_rather_than_faking_a_delta():
+    """`fm_program_for` HOLDS the last value across a None, so the delta is 0 --
+    a naive None-to-int subtraction would invent a huge one."""
+    B = _bmns()
+    assert B._fm_would_collide(_M(), _frames([0x1000, None, 0x1010])) is False
