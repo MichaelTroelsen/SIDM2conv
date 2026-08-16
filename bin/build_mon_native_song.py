@@ -729,6 +729,17 @@ FILT_FAST = 0x40                              # 11-bit cutoff jump that marks an
 # (see the SM `Dance` part02 note in this function's docstring). Adopting it
 # needs a rebuild-and-compare per player.
 FILT_LEAD = int(os.environ.get("FILT_LEAD", "4"))
+# Compare the PASSBAND too when deciding a canonical filter program may be
+# substituted for a drive's own. `_filt_exact` compares cutoff and ctrl only, so
+# two windows whose cutoff envelopes match frame-for-frame are called exact even
+# when one changes $D418 mid-window and the other does not. `Funk_Facet`'s drive
+# 97 is handed the canonical captured at onset 73 (span 24, so it never reaches
+# frame 108) and loses the LP -> LP+HP switch at all 12 sites.
+# b905f97 added the passband to the canonical KEY; this is the same omission one
+# level down, in the guard that admits the substitution. Strictly STRICTER: it
+# can only reject substitutions previously accepted, never invent one -- so the
+# risk is canon count and table pressure, not wrong output.
+FILT_EXACT_PB = os.environ.get("FILT_EXACT_PB") == "1"
 
 
 def routed_voice(ftr):
@@ -1689,6 +1700,11 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             b = ftr[min(oc + min(j, cap - 1), nftr - 1)]
             if (a[0] >> 3, a[1]) != (b[0] >> 3, b[1]):
                 return False
+            if FILT_EXACT_PB and pbtr:
+                pa = pbtr[min(o + j, len(pbtr) - 1)]
+                pb_ = pbtr[min(oc + min(j, cap - 1), len(pbtr) - 1)]
+                if pa != pb_:
+                    return False
         fz = ftr[min(oc + cap - 1, nftr - 1)]         # driver holds the frozen value
         for j in range(220, span):
             a = ftr[min(o + j, nftr - 1)]
@@ -1728,10 +1744,18 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     if os.environ.get("FILT_DEBUG"):
         print(f"  [FILT_DEBUG] drives={len(drive_frames)} canon={len(canon_src)} "
               f"routed={routed}")
-        for (i, sig), (o, span) in sorted(canon_src.items()):
-            flag, prog = canon_prog[(i, sig)]
-            print(f"    instr {i} shape base={sig[0]} d={sig[1]:+d}: onset={o} span={span} "
-                  f"rows={len(prog) if prog else 0}")
+        # The key gained a third element (the drive-frame passband) in b905f97
+        # and this block still unpacked two, so FILT_DEBUG raised ValueError on
+        # every file that reached it -- the diagnostic died exactly when wanted.
+        # Iterate the key whole rather than destructuring it, so the next
+        # element added here cannot break it again.
+        for key, (o, span) in sorted(canon_src.items(), key=lambda kv: kv[1]):
+            instr, sig, pb0 = key[0], key[1], (key[2] if len(key) > 2 else None)
+            flag, prog = canon_prog[key]
+            modes = sorted({r[2] for r in prog}) if prog else []
+            print(f"    instr {instr} shape base={sig[0]} d={sig[1]:+d} pb0={pb0}: "
+                  f"onset={o} span={span} rows={len(prog) if prog else 0} "
+                  f"row2set={modes}")
     # --- PASS 1: collect EXACT bundles + instruments (with note counts) + per-note records
     exb, bidx, bcount = [], {}, []          # exact (fm,pulse) bundles
     exi, iidx, icount = [], {}, []          # exact (ad,sr,raw,wave,flag,filt) instruments
