@@ -334,7 +334,15 @@ def _fidelity(sf2_path, secs):
     sf2 = open(sf2_path, 'rb').read()
     info = SF2DriverInfo()
     sla = parse_sf2_blocks(sf2, info)
-    probe = os.path.join('out', 'sdi', '_sdi_native_probe.sid')
+    # Derived from the ARTIFACT, not a constant. This is the builder's own
+    # self-scoring probe and `pyscript/sdi_native_sweep.py` runs the builder
+    # once per file, so a fixed name races the moment that sweep gains a
+    # --jobs flag: every worker would write and read the same path and songs
+    # would be scored against each other's audio. Exactly that shipped in
+    # dmc_native_sweep and moved the corpus freq median 99.5 -> 96.4 while the
+    # ARTIFACTS stayed byte-identical, so nothing noticed (3ffdadb).
+    _stem = os.path.splitext(os.path.basename(sf2_path))[0]
+    probe = os.path.join('out', 'sdi', f'_sdi_native_probe_{_stem}.sid')
     open(probe, 'wb').write(psid_wrap(sf2[2:], sla, 0x1000, 0x1003))
     a = siddump_per_frame(SID, ['-a0', f'-t{secs}'])
     b = siddump_per_frame(probe, ['-a0', f'-t{secs}'])
