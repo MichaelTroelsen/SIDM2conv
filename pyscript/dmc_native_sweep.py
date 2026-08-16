@@ -123,11 +123,23 @@ def part1_span(text):
 
 
 def _probe(sf2_path):
-    """PSID-wrap a built .sf2 so siddump will play it."""
+    """PSID-wrap a built .sf2 so siddump will play it.
+
+    The probe name is derived from the ARTIFACT, not a constant. It used to be
+    one fixed `_dmc_sweep_probe.sid` shared by every song, which is invisible
+    while the sweep is serial and catastrophic the moment it is not: under -j16,
+    sixteen workers wrote and read that one file, so a song was routinely scored
+    against another song's audio. It moved the corpus freq median 99.5 -> 96.4
+    and voices-below-90 34 -> 89 while the ARTIFACTS were 1130/1194 byte
+    identical to the baseline -- the builds were correctly locked and only the
+    measurement was wrong. A byte-comparison of artifacts cannot see this, which
+    is why the equivalence test that passed 71/71 still missed it.
+    """
     sf2 = open(sf2_path, "rb").read()
     info = SF2DriverInfo()
     sla = parse_sf2_blocks(bytearray(sf2), info)
-    probe = os.path.join(BUILD_DIR, "_dmc_sweep_probe.sid")
+    stem = os.path.splitext(os.path.basename(sf2_path))[0]
+    probe = os.path.join(BUILD_DIR, f"_dmc_sweep_probe_{stem}.sid")
     open(probe, "wb").write(psid_wrap(bytes(sf2[2:]), sla, 0x1000, 0x1003))
     return probe
 
@@ -270,8 +282,14 @@ def measure(name, secs, build=False, timeout=1800):
     win = (span // 50 if span else secs) if span is None or secs is None         else min(secs, max(1, span // 50))
     win = max(1, win)
     prb = _probe(parts[0])
-    orig = siddump_per_frame(sid, ["-a0", f"-t{win + 1}"])
-    got = siddump_per_frame(prb, [f"-t{win + 1}"])
+    try:
+        orig = siddump_per_frame(sid, ["-a0", f"-t{win + 1}"])
+        got = siddump_per_frame(prb, [f"-t{win + 1}"])
+    finally:
+        try:
+            os.remove(prb)            # per-song now, so it must not accumulate
+        except OSError:
+            pass
     per, n, dly = score_pair(orig, got, win)
     if per is None:
         return {"error": f"empty window (orig={len(orig)} probe={len(got)})"}
