@@ -106,7 +106,8 @@ class HardTrackShim:
     # driver's SCALED-vibrato entry marker claims. Leaving the marker on froze
     # that note's whole tail at the wrong absolute frequency while its waveform
     # stayed byte-exact. Same collision Hubbard hit; see _fm_scale_ok.
-    no_fm_scale = 1
+    # no_fm_scale removed -- decided per song now (Love_tune_2 still collides,
+    # 1,096 times, and still loses the marker). See _fm_scale_ok.
 
     def __init__(self, mod, subtune=0, frames=SCAN_FRAMES):
         self.mod = mod

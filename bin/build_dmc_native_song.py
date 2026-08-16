@@ -112,7 +112,11 @@ class DMCShim:
     # `_fm_scale_ok`.
     # DMC_FM_SCALE=1 re-enables the marker for an A/B (it is the defect,
     # not a tuning knob -- see above).
-    no_fm_scale = 0 if os.environ.get('DMC_FM_SCALE') == '1' else 1
+    # no_fm_scale removed: the $40-$43 collision is decided PER SONG by
+    # _fm_would_collide (see _fm_scale_ok). Balloon still collides and still
+    # loses the marker; Depeche_Mode_Songs and Spy_vs_Spy_III collide zero
+    # times and get it back. DMC_FM_SCALE is gone with it -- there is nothing
+    # left to override.
 
     def __init__(self, m, phase, budget_ticks, onsets=None, frames=None,
                  legato_set=frozenset()):

@@ -155,17 +155,29 @@ def test_shim_disables_scaled_fm_entries():
     """HardTrack percussion emits real Hz deltas in the $40-$43 hi-byte range,
     which is the driver's SCALED-vibrato marker. With the marker on, one
     Love_tune_2 drum note froze at the wrong absolute frequency for its whole
-    tail while its waveform stayed byte-exact -- invisible to a waveform
-    metric. Pin the opt-out, and pin that the shared helper honours it."""
+    tail while its waveform stayed byte-exact -- invisible to a waveform metric.
+
+    This used to pin the per-shim `no_fm_scale` flag. That blanket is gone: the
+    collision is a property of the SONG, and _fm_would_collide measures it per
+    build (Love_tune_2 collides 1,096 times; Depeche_Mode_Songs and
+    Spy_vs_Spy_III collide zero and were being denied the marker for nothing).
+    So pin the GUARANTEE that mattered -- a colliding song still loses the
+    marker -- rather than the mechanism that used to deliver it."""
     import build_mon_native_song as BM
     M = shim_module()
     s = M.HardTrackShim(mod('Love_tune_2'), 0, frames=200)
-    assert s.no_fm_scale
+    assert not getattr(s, 'no_fm_scale', 0), "the shim blanket should be gone"
+
+    s._fm_collide = True              # what the pre-emit scan finds on this song
     assert not BM._fm_scale_ok(s)
 
-    class Other:                      # every other shim is unaffected
+    class Clear:                      # a song whose deltas never reach $40-$43
         pass
-    assert BM._fm_scale_ok(Other())
+    assert BM._fm_scale_ok(Clear())
+
+    class Manual:                     # the override survives for a future player
+        no_fm_scale = 1
+    assert not BM._fm_scale_ok(Manual())
 
 
 def test_gate_off_is_folded_into_the_previous_note():

@@ -84,7 +84,7 @@ class MattGrayShim:
     # entry marker claims. Hubbard and HardTrack both had to disable it for the
     # same reason; leaving it on freezes such a note at the wrong absolute
     # frequency for its whole tail while its waveform stays byte-exact.
-    no_fm_scale = 1
+    # no_fm_scale removed -- decided per song now. See _fm_scale_ok.
     # Gate-off frames write this instrument's RELEASE waveform verbatim instead
     # of the driver's default `program & $fe`. Matt Gray needs it: the player
     # writes $00 -- no waveform bits at all, so the oscillator is SILENT -- on

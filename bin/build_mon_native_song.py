@@ -148,9 +148,6 @@ BUNDLE_TOL = int(os.environ.get("BUNDLE_TOL", "0"))  # 0 = OFF (lossless split).
 # where a real Hz delta would be misread as a SCALED vibrato entry, so the
 # per-shim `no_fm_scale` blanket can be replaced by a per-SONG decision.
 _FM_PROBE = os.environ.get("FM_SCALE_PROBE") == "1"
-# FM_SCALE_AUTO=1: let the per-song measurement REPLACE the per-shim
-# `no_fm_scale` blanket rather than only adding to it. See _fm_scale_ok.
-FM_SCALE_AUTO = os.environ.get("FM_SCALE_AUTO") == "1"
 _FM_HI_COLLIDE = []
 
 
@@ -240,29 +237,30 @@ def _fm_scale_ok(m):
     A shim opts out with `no_fm_scale = 1`; every existing shim leaves it unset
     and is unaffected.
 
-    STAGED (2026-08-16). `_fm_would_collide` now answers this per SONG from the
-    song's own deltas, and `build_native_song` caches its verdict on `m`. Two
-    modes, so the measured rule can be A/B'd against the blanket before it
-    replaces it:
-      default        -- today's rule verbatim, so every existing build is byte
-                        identical. An earlier cut let the measurement ADD a
-                        disable here and called that byte-neutral; it is not. A
-                        song that collides but whose shim never opted out (no MoN
-                        / SDI / FC / Sound Monitor shim sets the flag) would have
-                        changed behaviour unverified, which is the fix but not
-                        one the corpus has confirmed yet.
-      FM_SCALE_AUTO=1 -- the measured rule ALONE, replacing the blanket in both
-                        directions: a non-colliding song under an opted-out shim
-                        gets the marker back, and a colliding song under any shim
-                        loses it. This is the end state; it needs the corpus
-                        rebuild before it can be the default.
-    `hard_restart` keeps its own implication in both modes: retiring that changes
+    SHIPPED AS THE DEFAULT (2026-08-16). `_fm_would_collide` answers this per
+    SONG from the song's own deltas, and `build_native_song` caches its verdict
+    on `m` before the emit pass. The per-shim blanket is gone: DMC, HardTrack
+    and MattGray no longer set `no_fm_scale`, because the collision is a
+    property of the SONG, never the player -- DMC's `Balloon` collides 123,180
+    times and HardTrack's `Love_tune_2` 1,096, while `Depeche_Mode_Songs` and
+    `Spy_vs_Spy_III` collide zero and were being denied the marker for nothing.
+
+    Adopted on measurement, not on argument: all three corpora were rebuilt
+    under the measured rule and compared against a default-rule control on the
+    SAME code and the SAME -j16 path. DMC raw medians 99.5/99.9/99.9 and
+    audible 100.0/100.0/100.0 under both; passband 53/74 under both; HardTrack
+    33/33 built and 32/33 passband under both; Hubbard byte-identical.
+
+    `no_fm_scale` is still honoured as a manual per-shim override, so a future
+    player that needs the blanket can have it -- but nothing sets it today.
+
+        `hard_restart` keeps its own implication in both modes: retiring that changes
     Hubbard as well, and it deserves its own rebuild rather than riding along.
     """
     if getattr(m, 'hard_restart', 0):
         return False
-    if not FM_SCALE_AUTO:
-        return not getattr(m, 'no_fm_scale', 0)   # today's rule, byte for byte
+    if getattr(m, 'no_fm_scale', 0):
+        return False                              # manual override; no shim sets it
     return not getattr(m, '_fm_collide', False)   # the measured rule, alone
 
 
@@ -1460,9 +1458,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     m._fm_collide = _fm_would_collide(m, frames, delay)
     if _FM_PROBE:
         print("FM_SCALE_PROBE verdict: collide=%s scale_ok=%s (shim no_fm_scale=%s"
-              " hard_restart=%s auto=%s)"
+              " hard_restart=%s)"
               % (m._fm_collide, _fm_scale_ok(m), getattr(m, 'no_fm_scale', 0),
-                 getattr(m, 'hard_restart', 0), FM_SCALE_AUTO), flush=True)
+                 getattr(m, 'hard_restart', 0)), flush=True)
     onsets = [set() for _ in range(3)]
     onset_instr = [dict() for _ in range(3)]               # onset_frame -> MoN instrument
     # STRUCTURAL WAVE (whats-next step 3): the per-note wave capture unrolls the
