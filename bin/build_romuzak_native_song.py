@@ -15,6 +15,8 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Overridable so a parallel sweep can give each process its own copy (F2).
+LAYOUT_DIR = os.path.join(ROOT, "drivers_src", "romuzak")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
@@ -258,7 +260,14 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         for i in range(min(len(pulse_programs), 32)):
             edit[io + 4 * 32 + i] = pidx[tuple(pulse_programs[i])] & 0xFF
 
-    with open(os.path.join(ROOT, "drivers_src", "romuzak", "layout.inc"), "w") as f:
+    # LAYOUT_DIR, not a hardcoded path: this file is written once per PART and
+    # then copied into the assembling driver's dir by the caller, so it is
+    # shared mutable state between two concurrent builds -- the second half of
+    # PATTERNS F2. Isolating only the copy DESTINATION is not enough; a
+    # parallel sweep raced here and produced 5 corrupted artifacts out of 71
+    # whose part-1-only scores were byte-identical, so nothing noticed.
+    # build_mon_native_song repoints this at its per-process temp dir.
+    with open(os.path.join(LAYOUT_DIR, "layout.inc"), "w") as f:
         f.write("; auto-generated (native song) by build_romuzak_native_song.py\n")
         for v in range(3):
             f.write(f"SEQ{v}  = ${seq0 + v * 0x100:04x}\n")

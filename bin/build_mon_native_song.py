@@ -13,9 +13,11 @@ PWM / filter sweeps / per-frame slides / the gate envelope follow (B2+).
 Usage:  py -3 bin/build_mon_native_song.py [SID/Tel_Jeroen/Hawkeye.sid] [subtune]
 """
 import bisect
+import contextlib
 import os
 import re
 import shutil
+import time
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +32,67 @@ from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 
 MON_DIR = os.path.join(ROOT, "drivers_src", "mon")
 ROM_DIR = os.path.join(ROOT, "drivers_src", "romuzak")
+
+# --- PARALLEL BUILDS (MON_BUILD_LOCK=1) ------------------------------------
+# PATTERNS F2 -- "never run two corpus builders at once" -- names ONE file, but
+# the contention is actually THREE, and each one found only exposed the next:
+#   1. drivers_src/mon/layout.inc + freqtable.inc  (written, then assembled from)
+#   2. drivers_src/romuzak/layout.inc              (written by RN.gen_includes_song)
+#   3. out/romuzak_driver.prg                      (assembler output, read straight back)
+#
+# The first attempt at parallelism gave each process private COPIES of these.
+# That closed the race -- measured: parallel then matched serial-under-the-same-
+# scheme exactly -- but it also changed the output of 2 artifacts in 12 against
+# a plain serial build, for reasons not established. Shipping a corpus built on
+# a driver that differs for unexplained reasons is the "correct code, wrong
+# artifact" trap this project keeps hitting, so isolation was abandoned.
+#
+# A LOCK is correct by construction instead of by argument: the shared files
+# stay exactly where they were, one process at a time may touch them, and the
+# bytes produced are therefore identical to a serial run. Only the critical
+# section is serialised; siddump tracing, parsing and packing -- which dominate
+# the ~95 s per file -- stay fully concurrent.
+_BUILD_LOCK = os.path.join(ROOT, "out", ".mon_build.lock")
+
+
+@contextlib.contextmanager
+def _build_lock(timeout=1800, stale=900):
+    """Hold the shared-driver-state lock, or run unguarded when not parallel.
+
+    O_CREAT|O_EXCL is atomic on Windows and POSIX alike, so the create IS the
+    acquire. A holder that dies leaves the file behind, so a lock older than
+    `stale` is broken rather than deadlocking the sweep.
+    """
+    if os.environ.get("MON_BUILD_LOCK") != "1":
+        yield                                     # serial: no contention to guard
+        return
+    fd, t0 = None, time.time()
+    while True:
+        try:
+            fd = os.open(_BUILD_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, b"%d" % os.getpid())
+            break
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(_BUILD_LOCK) > stale:
+                    os.unlink(_BUILD_LOCK)        # holder died mid-build
+                    continue
+            except OSError:
+                pass                              # it vanished; just retry
+            if time.time() - t0 > timeout:
+                raise SystemExit("build lock: waited %ds, giving up" % timeout)
+            time.sleep(0.02)
+    try:
+        yield
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(_BUILD_LOCK)
+        except OSError:
+            pass
 
 
 def write_mon_freqtable(m):
@@ -2146,13 +2209,23 @@ def emit_one(m, br, out_path, label):
         flags += " BUNDLES>64"
     if len(instrs) > 32:
         flags += " INSTR>32"
-    gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
-                                                pulse_programs, bundles=bundles,
-                                                instr_flags=instr_flags,
-                                                filter_programs=filter_programs)
-    shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"), os.path.join(MON_DIR, "layout.inc"))
-    write_mon_freqtable(m)
-    prg = B.assemble()
+    # THE CRITICAL SECTION -- all four steps touch shared driver state and only
+    # make sense as a unit: gen_includes_song writes drivers_src/romuzak/
+    # layout.inc, the copy moves it into the assembling dir, write_mon_freqtable
+    # writes that dir's freqtable.inc, and assemble() writes AND reads back
+    # out/romuzak_driver.prg. Splitting the lock any finer lets another process
+    # overwrite one of them between the write and the read, which is exactly the
+    # corruption this guards. Everything expensive -- tracing, parsing, packing
+    # -- is outside it, so a parallel sweep still gets most of the win.
+    with _build_lock():
+        gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
+                                                    pulse_programs, bundles=bundles,
+                                                    instr_flags=instr_flags,
+                                                    filter_programs=filter_programs)
+        shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"),
+                        os.path.join(MON_DIR, "layout.inc"))
+        write_mon_freqtable(m)
+        prg = B.assemble()
     if getattr(m, "hp_engine", 0):
         # poke the HP pulse-engine tables, keyed by ROM INSTRUMENT (the ROM's
         # live PW state is per instrument record; the emit pipeline splits one

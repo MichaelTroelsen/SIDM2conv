@@ -293,6 +293,13 @@ def main(argv=None):
                     help="rebuild before scoring (answers a DIFFERENT question: "
                          "'is the builder right' rather than 'is what shipped right')")
     ap.add_argument("--json", help="write the full per-file record here")
+    ap.add_argument("--jobs", "-j", type=int, default=1, metavar="N",
+                    help="build/score N songs concurrently (default 1). Sets "
+                         "MON_BUILD_LOCK=1 so the one section touching shared "
+                         "driver state is serialised -- that is what makes it "
+                         "safe, see PATTERNS F2. Results are collected in "
+                         "CORPUS ORDER regardless of completion order, so the "
+                         "output is byte-comparable against a -j1 run.")
     a = ap.parse_args(argv)
 
     corpus = corpus_files(a.limit, a.files)
@@ -303,8 +310,30 @@ def main(argv=None):
     print(f"  scoring PART 1 only, freq/wf/pulse only, {win_note}"
           f"{' (rebuilding first)' if a.build else ' (as shipped)'}", flush=True)
     results = {}
+    pre = {}
+    if a.jobs > 1:
+        # The lock is the WHOLE safety argument, so set it here rather than
+        # trusting the caller. Builds serialise on the one section that touches
+        # shared driver state (see _build_lock in build_mon_native_song), so the
+        # bytes are identical to a serial run by construction. Without it a
+        # parallel sweep interleaves driver tables and every number it prints is
+        # suspect -- measured, not feared: an unguarded -j4 corrupted 5 of 71
+        # artifacts while the part-1-only scores read identical.
+        os.environ["MON_BUILD_LOCK"] = "1"
+        from concurrent.futures import ThreadPoolExecutor
+        print(f"  -j{a.jobs}: MON_BUILD_LOCK=1 (shared driver state serialised)",
+              flush=True)
+        with ThreadPoolExecutor(max_workers=a.jobs) as ex:
+            futs = {ex.submit(measure, n, a.seconds, a.build): n for n in corpus}
+            for f in futs:
+                pass
+            for fut, n in futs.items():
+                try:
+                    pre[n] = fut.result()
+                except Exception as e:            # one song must not sink the sweep
+                    pre[n] = {"error": f"{type(e).__name__}: {e}"}
     for i, name in enumerate(corpus, 1):
-        rec = measure(name, a.seconds, a.build)
+        rec = pre[name] if name in pre else measure(name, a.seconds, a.build)
         results[name] = rec
         if rec.get("voices"):
             cells = []

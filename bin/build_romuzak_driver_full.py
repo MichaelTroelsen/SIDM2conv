@@ -198,8 +198,18 @@ def gen_includes():
     return gen, edit, mdp, seq0
 
 
+# Overridable assembler OUTPUT path. `assemble()` wrote a single fixed
+# out/romuzak_driver.prg and read it straight back, so two concurrent builds
+# raced on the driver image itself -- the worst of the three F2 surfaces,
+# because the PRG *is* the driver. A parallel sweep with the other two isolated
+# still produced 6 corrupted artifacts of 71, and the differing SET changed
+# between runs, which is the signature of a race rather than a bug.
+# build_mon_native_song points this at its per-process temp dir.
+PRG_OUT = None
+
+
 def assemble():
-    prg = os.path.join(OUTDIR, "romuzak_driver.prg")
+    prg = PRG_OUT or os.path.join(OUTDIR, "romuzak_driver.prg")
     digi = os.environ.get("GALWAY_DIGI_SPIKE", "0")
     nco = "1" if os.environ.get("GALWAY_DIGI_NCO") else "0"
     hybrid = "1" if os.environ.get("GALWAY_DIGI_HYBRID") else "0"
