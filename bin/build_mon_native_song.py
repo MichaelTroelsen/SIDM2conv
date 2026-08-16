@@ -708,6 +708,27 @@ def _filt_add_row(d416_delta, count):
 # memory/hawkeye-mon-filter-engine-re.md). It restarts on each note of the filter-
 # routed voice, so it maps onto filt_prog_step as ONE program restarted per note.
 FILT_FAST = 0x40                              # 11-bit cutoff jump that marks an attack
+# How far AFTER a note-on a filter attack may still be credited to that note.
+# Default 4 = today's behaviour exactly, so this is inert unless raised.
+#
+# SDI's filter steps on its own clock, not the gate. Measured on `Arabia`: the
+# attack at frame 688 sits in a 71-frame GAP between voice-2 onsets 637 and 708
+# -- +51 after one, -20 before the other -- so at +4 it is credited to neither
+# and the whole automation is dropped (7 audible frames wrong). `Funk_Facet`'s
+# equivalent write is 1 frame pre-onset, scrapes into the -1 bound, and merely
+# arrives late (12 audible frames). One mechanism, two severities.
+#
+# Raising this credits such an attack to the PRECEDING onset, and because
+# `filter_program_for` captures from that onset for `span` frames -- and a hold
+# is just ADD-0 rows -- the program then contains the gap as a hold followed by
+# the real automation. No driver change is needed.
+#
+# Left OFF by default because `detect_filter_drives` is shared by six players
+# and a wider window risks crediting an attack to the WRONG note; the tight
+# bound is what currently keeps a drive attached to the note that caused it
+# (see the SM `Dance` part02 note in this function's docstring). Adopting it
+# needs a rebuild-and-compare per player.
+FILT_LEAD = int(os.environ.get("FILT_LEAD", "4"))
 
 
 def routed_voice(ftr):
@@ -753,7 +774,7 @@ def detect_filter_drives(ftr, onsets_by_voice, routed=None, dynamic=False):
                     frames_ = by_voice[v_at]
             j = bisect.bisect_right(frames_, f) - 1          # nearest onset <= f
             cand = [frames_[k] for k in (j, j + 1)
-                    if 0 <= k < len(frames_) and -1 <= (f - frames_[k]) <= 4]
+                    if 0 <= k < len(frames_) and -1 <= (f - frames_[k]) <= FILT_LEAD]
             if cand:
                 o = min(cand, key=lambda x: abs(x - f))
                 if o not in drives:
