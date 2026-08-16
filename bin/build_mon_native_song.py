@@ -71,6 +71,28 @@ BUNDLE_TOL = int(os.environ.get("BUNDLE_TOL", "0"))  # 0 = OFF (lossless split).
 # song -> fewer SF2 parts. See docs/analysis/PART_REDUCTION_PLAN.md (Phase 1).
 
 
+# --- FM $40-$43 collision probe (FM_SCALE_PROBE=1). Diagnostic only: records
+# where a real Hz delta would be misread as a SCALED vibrato entry, so the
+# per-shim `no_fm_scale` blanket can be replaced by a per-SONG decision.
+_FM_PROBE = os.environ.get("FM_SCALE_PROBE") == "1"
+_FM_HI_COLLIDE = []
+
+
+def _fm_probe_report(tag=""):
+    if not _FM_PROBE:
+        return
+    n = len(_FM_HI_COLLIDE)
+    his = sorted({c[2] for c in _FM_HI_COLLIDE})
+    voices = sorted({c[0] for c in _FM_HI_COLLIDE})
+    print("FM_SCALE_PROBE %s collisions=%d hi_bytes=%s voices=%s"
+          % (tag, n, [hex(h) for h in his], voices), flush=True)
+
+
+if _FM_PROBE:
+    import atexit
+    atexit.register(_fm_probe_report)
+
+
 def _fm_scale_ok(m):
     """May this song use SCALED (pitch-proportional vibrato) FM entries?
 
@@ -124,7 +146,15 @@ def fm_program_for(frames, v, onset, dur_f, base, allow_loop=False):
         # entry in the driver's FM dispatch — split longer runs.
         while n > 0:
             c = min(n, 126)
-            prog.append((r & 0xFF, (r >> 8) & 0xFF, c))
+            hi = (r >> 8) & 0xFF
+            # PROBE ONLY (FM_SCALE_PROBE=1), no behaviour change: byte1 has no
+            # equivalent guard to byte2's, so a real Hz delta whose HI lands in
+            # $40-$43 is indistinguishable from a SCALED vibrato entry. Record
+            # every such collision so _fm_scale_ok can be made per-song instead
+            # of the per-shim blanket flag.
+            if _FM_PROBE and 0x40 <= hi <= 0x43:
+                _FM_HI_COLLIDE.append((v, onset, hi, r & 0xFF, c))
+            prog.append((r & 0xFF, hi, c))
             n -= c
 
     def rle(seq):
