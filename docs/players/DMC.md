@@ -135,7 +135,11 @@ selection is inaudible and ours differing from it costs nothing (`Roadblaster`,
 `Rosanna`, `Eagles`, `Happy_Jingle`, `In_the_Mood`, `Blobby`, `Tiny_Symphony`,
 `Twilight_Beyond` and 2 more). That leaves **43 files where a voice is actually
 routed and the passband is reproduced**. The single sub-100 agreement in the
-whole corpus is `Soap_Theme` at **99.1%** (8 frames, routed 73%).
+whole corpus is `Soap_Theme` at **98.5%** (19 frames, routed 73%; re-measured
+post-`00893cd` — the offset-fit rewrite moved this from the previously
+published 99.1%/8 frames). Cause: a **startup transient** — the original never
+writes a `$D418` default at INIT, so the first 19 frames run on whatever the
+register powers up holding, inaudible either way.
 
 The 21 uncounted are not a pass either — `passband_check` refuses to score a
 window in which the original never routes a voice and never selects a mode.
@@ -164,8 +168,32 @@ rather than another column in either scorer.
 part 1 spans 596 frames and the check compared 1,400, so past its end our part
 **looped** and showed 5 mode changes against the original's 1. At the 12 s its
 part actually spans it is **100.0%, 1 change against 1**. `French_Frites` is
-real and **audible** — at its true 39 s span it reads **49.6%** with the filter routed on 100% of frames and **978 mismatched frames that the original actually routes**, holding LP+BP+HP while the original moves HP → BP+HP → LP+BP+HP. ⚠️ **But it is not a passband-specific defect, and calling it "the largest one left in the project" was misleading.** The corpus sweep scores this file **freq 24.1/34.4/26.3, pulse 48.3/35.5/40.4** over the same part — the whole build is wrong, and the passband is one symptom rather than the fault. Fixing the passband would not make this file right. The capture is sound: `passband_trace` returns exactly the original's programme (7 → 4 → 6, changing at frames 964 and 1934), and the shared program builder emits a SET row on a passband switch, so the loss is downstream of both. **What IS true**: every other player's passband residual is 100%, unexercised, or confined to frames the original does not route. `DMC_Demo_IV_tune_5` reads 98.0% at
-10 s with **10 audible mismatched frames**, and its 3 mode changes all occur with the **cutoff unchanged**.
+real and **audible**, but only *past its own part 1* — at its own part-1 span
+(8 s, the window the 53/74 corpus figure above actually used) it is
+**100.0%**, which is why it is not one of the 21 uncounted or a corpus
+failure. Asserting `--seconds 39` (deliberately over-running part 1, the way
+the old fixed-window check always did) still finds the same real defect the
+per-file investigation below describes; re-measured post-`00893cd` it reads
+**49.4%** (was 49.6%) with the filter routed on 100% of frames and **986
+mismatched frames that the original actually routes** (was 978), holding
+LP+BP+HP while the original moves HP → BP+HP → LP+BP+HP. ⚠️ **But it is not a
+passband-specific defect, and calling it "the largest one left in the
+project" was misleading.** The corpus sweep scores this file **freq
+24.1/34.4/26.3, pulse 48.3/35.5/40.4** over the same part — the whole build is
+wrong, and the passband is one symptom rather than the fault. Fixing the
+passband would not make this file right. The capture is sound: `passband_trace`
+returns exactly the original's programme (7 → 4 → 6, changing at frames 964
+and 1934), and the shared program builder emits a SET row on a passband
+switch, so the loss is downstream of both. **What IS true**: every other
+player's passband residual is 100%, unexercised, or confined to frames the
+original does not route. ⚠️ `DMC_Demo_IV_tune_5`'s figures below are
+**unreproducible post-`00893cd`**: the published 98.0%/10 audible
+frames/3 mode changes does not reproduce — asserting the same `--seconds 10`
+today reads **96.4%, 18 audible mismatched frames, 1 mode change** (original
+mode set `LP+BP/LP+HP`, one transition, not three). The direction of the
+causal claim below (cutoff unchanged at the mismatching transition) was not
+re-verified against the new alignment; treat it as unconfirmed rather than
+re-stated as fact.
 
 That suggested a mechanism — a passband is only expressible where the builder
 emits a filter row, so a mode change coinciding with no cutoff change has

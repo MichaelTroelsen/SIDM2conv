@@ -130,8 +130,13 @@ rendered text threw the guard away. Consume the structured result, run one build
 at a time, and delete artifacts before a config A/B.
 
 **Status**: shipped as the passband-in-key change in `build_mon_native_song.py`
-(`FILT_KEY_PB=0` restores the old key). `Arabia` (98.2%) and `Funk_Facet`
-(99.0%) survive a rebuild unchanged and are separate, smaller defects.
+(`FILT_KEY_PB=0` restores the old key). `Arabia` (**97.8%**, re-measured
+post-`00893cd` offset-fit fix — was previously published as 98.2%) and
+`Funk_Facet` (99.0%) survive a rebuild unchanged and are separate, smaller
+defects: **one mechanism at two severities** — gate-anchored filter dispatch
+drops a `$D418` write that arrives between note-ons. `Arabia`'s write is 20
+frames pre-onset and lost outright (7 audible mismatched frames); `Funk_Facet`'s
+is 1 frame pre-onset and arrives late (12 audible mismatched frames).
 
 
 ## The variants (one editor, six binary generations)
@@ -444,6 +449,43 @@ inside the 28 s window; resolving them needs a per-file asserted `--seconds`.* T
 change counts now track the originals closely (`Finish_Line` 56 vs 56,
 `Curse` 87 vs 84, `Homebrew` 85 vs 84), where before the fix every one of them
 was a flat `LP` with 0 changes.
+
+### Current corpus figure: 267 of 281 (re-measured after `00893cd`)
+
+The **258 of 281** figure above predates a fix to `passband_check.py` itself
+(`00893cd`): its alignment fit used to maximise the match RATE rather than the
+match COUNT, and because the scorer trims the tail, a shift could shrink the
+denominator without repairing a single frame — inflating a percentage and
+reporting a meaningless offset. `py -3 pyscript/passband_check.py --player sdi`
+run fresh against the current corpus now reports:
+
+| | |
+|---|---:|
+| select the original's passband | **267 of 281** |
+| unexercised (original never routes and never selects one) | 7 |
+| unconfirmed (multi-part, window may over-run part 1) | **2** |
+| failed | **5** |
+
+`267 + 7 + 2 + 5 = 281`. Two things moved since 258:
+
+- **`Tanks_3000` and `Juba-Jazz`**, both failures in the 258-count, are now
+  fixed (see above and the canonical-filter-key section at the top of this
+  document) — that alone accounts for 258 → 260.
+- The remaining 258 → 267 move (net +7, offset by 2 files that are now
+  UNCONFIRMED where they previously read as resolved) is the `00893cd` fit
+  correction changing which frames the tool counts as compared, not a rebuild.
+
+⚠️ **Two files are UNCONFIRMED again, and were not before**: `Neverending_Story`
+(16.3%, 13 parts) and `Solar_Plexus` (98.7%, 6 parts) — the corrected fit no
+longer silently absorbs their over-run, so the F8 per-file `.span` window does
+not resolve them cleanly. Re-run with an explicit per-file `--seconds` before
+treating either as a pass or a fail.
+
+**Failed (5, unchanged in membership from the cross-check, values re-measured
+today):** `Arabia` 97.8% (see the canonical-filter-key section above —
+previously published as 98.2%), `Bahbar_v` (no original to compare against),
+`Coming_Soon` 90.9%, `Funk_Facet` 99.0%, `Lederhosen` (static where the
+original changes twice).
 
 ### The corpus sweep (`pyscript/sdi_native_sweep.py`, 2026-08-12)
 

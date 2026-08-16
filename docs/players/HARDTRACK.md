@@ -1340,7 +1340,8 @@ reasoning predicted: over-run can only MANUFACTURE disagreement, so nothing that
 was passing could break and nothing that was failing could be flattered. The
 eighth is a real marginal difference the noise had been hiding — `Fun_Factory`
 disagrees on 3 frames the original actually routes, which is now the only
-HardTrack passband residual.
+HardTrack passband residual. Cause: a **spurious voice-1 note-on** re-arms the
+global filter for those 3 frames — all 3 are audible.
 
 25 rows print `[Ns = its own part 1]`. That marker is not decoration: the first
 run of this derived **nothing** and said so in no way at all, because half the
@@ -1620,7 +1621,7 @@ passband:**
 | `Rune-T_Noter` | 14 s | 80.2% | **99.9%** (13 vs 14) |
 | `Takisobie` | 12 s | 57.2% | **99.8%** |
 | `Fun_Factory` | 6 s | 69.5% | **99.0%** (12 vs 12) |
-| `Altered_States_Tune_2` | 12 s | 97.2% | **93.4%** — see below |
+| `Altered_States_Tune_2` | 12 s | 97.2% | **92.2%** — see below (re-measured post-`00893cd` offset-fit fix; previously published as 93.4%, same 47 mismatched frames but a different comparison window) |
 
 **`Altered_States_Tune_2` has nothing audible left in it either.** The original
 holds `$D417 = 0` for its first 50 frames — **feeding no voice to the filter**
