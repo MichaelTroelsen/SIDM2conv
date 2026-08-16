@@ -218,3 +218,38 @@ def test_a_siddump_gap_holds_rather_than_faking_a_delta():
     a naive None-to-int subtraction would invent a huge one."""
     B = _bmns()
     assert B._fm_would_collide(_M(), _frames([0x1000, None, 0x1010])) is False
+
+
+# --- the build lock's Windows failure mode ----------------------------------
+
+def test_the_build_lock_retries_a_pending_delete_not_just_an_existing_file():
+    """On Windows a lock file whose last handle closed but which is still
+    PENDING DELETION answers O_CREAT|O_EXCL with ERROR_ACCESS_DENIED, not
+    "exists". Catching only FileExistsError let that escape and kill one song's
+    build in a -j16 sweep, and the sweep carried on with a quietly smaller
+    denominator (207 voices instead of 210) which read as "AUTO builds one more
+    song". An 8-process stress showed 78 escapes before the fix and 0 after.
+    """
+    B = _bmns()
+    os.environ["MON_BUILD_LOCK"] = "1"
+    real_open, calls = os.open, {"n": 0}
+
+    def flaky(path, *a, **kw):
+        if path == B._BUILD_LOCK:
+            calls["n"] += 1
+            if calls["n"] == 1:                  # first attempt: pending delete
+                raise PermissionError(13, "Permission denied", path)
+        return real_open(path, *a, **kw)
+
+    os.open = flaky
+    try:
+        with B._build_lock(timeout=5):
+            pass                                  # must not raise
+    finally:
+        os.open = real_open
+        os.environ.pop("MON_BUILD_LOCK", None)
+        try:
+            os.remove(B._BUILD_LOCK)
+        except OSError:
+            pass
+    assert calls["n"] >= 2, "the PermissionError should have been retried"

@@ -72,7 +72,17 @@ def _build_lock(timeout=1800, stale=900):
             fd = os.open(_BUILD_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, b"%d" % os.getpid())
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # PermissionError, not just FileExistsError: on Windows a file whose
+            # last handle has closed but which is still PENDING DELETION answers
+            # O_CREAT|O_EXCL with ERROR_ACCESS_DENIED rather than "exists", so a
+            # releasing process and an acquiring one collide for a few ms. The
+            # first version caught only FileExistsError and let that escape --
+            # it killed ONE song's build in a -j16 sweep (Music_Demo), and the
+            # sweep recorded the error and carried on, so the corpus median was
+            # quietly computed over 207 voices instead of 210. That looked like
+            # "AUTO builds one more song than the default" and was nothing of
+            # the kind. Both mean the same thing here: someone else holds it.
             try:
                 if time.time() - os.path.getmtime(_BUILD_LOCK) > stale:
                     os.unlink(_BUILD_LOCK)        # holder died mid-build
