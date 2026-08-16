@@ -443,3 +443,46 @@ def test_the_span_regex_matches_every_builders_label():
     ):
         m = mod._SPAN_RE.search(label)
         assert m and (m.group(3), m.group(4)) == want, label
+
+
+def test_a_shift_that_repairs_nothing_cannot_win_the_offset_fit():
+    """The fit maximises the match COUNT, not the rate.
+
+    Reproduces DMC Soap_Theme exactly: the original holds one constant mode for
+    the whole window, ours sits on `off` for a 19-frame startup transient and
+    then matches forever. `_agree_at` trims the TAIL, so every positive offset
+    removes matching frames from `n` while repairing an equal number at the
+    head -- `ok` is algebraically FLAT and the rate climbs for free. Fitting on
+    the rate returned max(OFFSETS) and inflated 98.537% to 99.148%, which
+    carried the file over the --min 99.0 gate.
+    """
+    N = 1299
+    TRANSIENT = 19
+    orig = [0x30] * N                                   # LP+BP from INIT, never changes
+    ours = [0x00] * TRANSIENT + [0x30] * (N - TRANSIENT)
+
+    # the degeneracy itself: no offset >= 0 gains a single extra match
+    counts = {off: pb._agree_at(orig, ours, off)[0] for off in pb.OFFSETS if off >= 0}
+    assert len(set(counts.values())) == 1, counts
+
+    pct, n, oc, dc, off, _aud = pb.compare(orig, ours)
+    assert off == 0, "a shift buying zero extra matches must not win, got off=%d" % off
+    assert n == N
+    assert abs(pct - 100.0 * (N - TRANSIENT) / N) < 1e-9, pct
+    assert (oc, dc) == (0, 1)
+
+
+def test_a_real_boot_delay_is_still_found():
+    """The count-maximiser must not throw out the case the fit exists for.
+
+    Ours is the original delayed by 3 frames. Shifting repairs far more frames
+    than the trim costs, so `ok` genuinely rises and +3 wins outright.
+    """
+    LAG = 3
+    orig = ([0x10] * 40 + [0x50] * 40) * 8
+    ours = [0x10] * LAG + orig[:-LAG]
+
+    assert pb._agree_at(orig, ours, LAG)[0] > pb._agree_at(orig, ours, 0)[0]
+    pct, n, _oc, _dc, off, _aud = pb.compare(orig, ours)
+    assert off == LAG, "a real lag must still be fitted, got off=%d" % off
+    assert pct == 100.0

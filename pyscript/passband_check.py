@@ -255,14 +255,30 @@ def compare(orig_modes, our_modes, offsets=OFFSETS, routed_seq=None):
 
     The offset is fitted, not assumed, and REPORTED, because a large one is
     itself a finding: it means the passband is right but arrives late, which is
-    a different defect from selecting the wrong band.
+    a different defect from selecting the wrong band. That reading is only safe
+    because the fit maximises the match COUNT -- an offset that gains no extra
+    matches can never win, so a reported offset means frames were actually
+    repaired by it. Reading the offset as a lag while fitting on the RATE was
+    wrong for exactly this reason (fixed 2026-08-16; see the comment below).
     """
     if not orig_modes or not our_modes:
         return None, 0, 0, 0, 0, None
-    # Maximise the RATE, not the raw match count: shifting shrinks the overlap,
-    # so a count-maximiser always prefers offset 0 and a pure boot delay never
-    # scores 100%. Ties go to the smallest shift, so a file that agrees nowhere
-    # reports offset 0 rather than whichever offset happened to be tried first.
+    # Maximise the raw MATCH COUNT, not the rate. Maximising the rate lets a
+    # shift buy agreement for free: `_agree_at` trims the tail, so when the
+    # disagreement sits anywhere else, a positive offset shrinks `n` without
+    # repairing a single frame and the percentage climbs on its own. Measured
+    # 2026-08-16 on two players at once -- DMC Soap_Theme's `ok` is FLAT at 1280
+    # for every offset >= 0 while `n` falls 1299 -> 1291, so the rate climbed
+    # 98.537 -> 99.148 and the winner was simply max(OFFSETS); SDI Arabia's
+    # fitted +4 held `ok` at 879 and then LOST matches beyond it. Both bought
+    # their offset with exactly zero extra matches, and Soap_Theme's inflation
+    # carried it over the --min 99.0 gate, turning a fail into a pass.
+    #
+    # A real boot delay still scores: shifting by the true lag repairs more
+    # frames than the trim costs, so `ok` genuinely rises and the count-
+    # maximiser finds it. What it refuses is a shift that repairs nothing.
+    # Ties go to the smallest shift, so a file that agrees nowhere reports
+    # offset 0 rather than whichever offset happened to be tried first.
     cand = []
     for off in sorted(offsets, key=lambda o: (abs(o), o)):
         ok, n = _agree_at(orig_modes, our_modes, off)
@@ -275,7 +291,15 @@ def compare(orig_modes, our_modes, offsets=OFFSETS, routed_seq=None):
     # fit degenerating if either ever changes.
     widest = max(n for _o, _k, n in cand)
     cand = [c for c in cand if c[2] >= widest * 0.5]
-    best_off, best_ok, best_n = max(cand, key=lambda c: (c[1] / c[2], -abs(c[0])))
+    # ok, then "does this shift explain the overlap COMPLETELY", then the
+    # smallest shift. The middle term is what keeps a real one-transition delay
+    # fittable: a k-frame lag over T transitions repairs k*T frames and trims k,
+    # so `ok` rises by k*(T-1) and ties at exactly T == 1. A shift that makes the
+    # two sequences IDENTICAL over the overlap is the alignment; one that leaves
+    # frames disagreeing (Soap_Theme 1280/1291, Arabia 879/895) is not, and loses
+    # the tie to offset 0.
+    best_off, best_ok, best_n = max(
+        cand, key=lambda c: (c[1], c[1] == c[2], -abs(c[0])))
     _, oc = describe(orig_modes)
     _, dc = describe(our_modes)
     # Mismatches on frames where the ORIGINAL feeds no voice to the filter
