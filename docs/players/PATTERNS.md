@@ -622,6 +622,55 @@ commit, or add the test where it will be read.
 Future Composer, Hubbard, SDI and Sound Monitor encode durations the same way
 and have NOT been checked.
 
+### F12. Two corpus builders share more state than the one file you know about
+**Symptom**: artifacts differ between runs of the same code, and the SET of
+differing files CHANGES from run to run. (A *stable* set is not this — that is
+a real behaviour difference, or a baseline built with different code.) Scores
+can look perfect throughout: the DMC sweep printed `SCORES IDENTICAL` over 5
+corrupted artifacts because it scores **part 1 only** and every corrupted file
+was part 2 or later.
+
+**Detection**: build the same few songs serially, then in parallel, **with the
+same code on both sides**, and byte-compare the artifacts *and* the printed
+scores. Both, because they fail independently: the builds can be correctly
+locked while the SCORER races (one shared probe file moved the DMC corpus
+median 99.5 → 96.4 with 1130 of 1194 artifacts byte-identical).
+
+**The shared state is four things, not one.** Each one found only exposed the
+next:
+1. `drivers_src/mon/layout.inc` + `freqtable.inc` — written, then assembled from
+2. `drivers_src/romuzak/layout.inc` — **hardcoded** path, rewritten per part
+3. `out/romuzak_driver.prg` — assembler output, read straight back; the worst,
+   because the PRG *is* the driver image
+4. the scorer's scratch probe — a fixed `_*_probe.sid` shared by every song
+
+**Fix**: a cross-process lock (`MON_BUILD_LOCK=1`, taken by `--jobs > 1`) around
+the whole gen→copy→freqtable→assemble section as ONE unit; locking finer lets
+another process overwrite a file between a write and its read. Everything
+expensive — tracing, parsing, packing — stays outside it: DMC 3.5 h → 14 min at
+-j16. Equivalence was verified on **4 songs / 71 artifacts at -j8, byte-identical
+to serial on the same code** — not at corpus scale, and worth stating that way,
+because 5 of 88 DMC songs are separately known to take different adaptive part
+splits between runs (open, pre-existing, unrelated to the lock). Scratch probes
+are named from their input
+instead (`tempfile.mkstemp` is the other correct answer). Isolation — a private
+copy of each shared file per process — also closes the race but CHANGED output
+for reasons never established, so it was abandoned in favour of the lock.
+
+**On Windows the lock itself has a trap**: a lock file whose last handle closed
+while still pending deletion answers `O_CREAT|O_EXCL` with `ERROR_ACCESS_DENIED`,
+not "exists". Catching only `FileExistsError` let a `PermissionError` escape and
+killed one song's build per corpus run (78 escapes in a 20k-acquire stress);
+the sweep recorded the error and carried on with a quietly smaller denominator,
+which read as "one config builds more songs than the other". Catch both.
+
+**Related but different**: F2 is about editing a module *while* a runner is
+live. This is two runners racing each other with nobody editing anything.
+
+**Seen in**: DMC, HardTrack, SDI (2026-08-16, `4d01910` / `3ffdadb` / `6ab60f3`
+/ `722bcaf`). Before that the hazard was folklore — `whats-next.md` asserted it
+and cited F2, which does not say it, and PATTERNS did not cover it at all.
+
 ---
 
 ## Adding an entry

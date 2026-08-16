@@ -80,8 +80,11 @@ a window that over-ran, and a scorer scoring a build that never plays a note.
 - **Gate-off is not silent.** DMC's pitch mismatches are all gate-off, but the
   release nibble is 11 (~750 ms), so they ring out audibly. I inferred
   "inaudible" and withdrew it after measuring.
-- **Never run two corpus builders at once** — they share
-  `drivers_src/mon/layout.inc` (`PATTERNS.md` F2).
+- **Corpus builders may now run CONCURRENTLY** — `--jobs N` takes a
+  cross-process lock (`PATTERNS.md` **F12**). The old rule said they share
+  `drivers_src/mon/layout.inc` and cited F2, which is a different hazard
+  (editing a module mid-run) and never said this; the real contention was
+  three files plus the scorer's probe, all now closed.
 - **Verify a shared-detector change on the NEIGHBOURS**, not the target: F9's
   fix was proven by HardTrack being 31/33 byte-identical with the other 2
   measuring identically.
