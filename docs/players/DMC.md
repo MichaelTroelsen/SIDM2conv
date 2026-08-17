@@ -186,14 +186,25 @@ returns exactly the original's programme (7 → 4 → 6, changing at frames 964
 and 1934), and the shared program builder emits a SET row on a passband
 switch, so the loss is downstream of both. **What IS true**: every other
 player's passband residual is 100%, unexercised, or confined to frames the
-original does not route. ⚠️ `DMC_Demo_IV_tune_5`'s figures below are
-**unreproducible post-`00893cd`**: the published 98.0%/10 audible
-frames/3 mode changes does not reproduce — asserting the same `--seconds 10`
-today reads **96.4%, 18 audible mismatched frames, 1 mode change** (original
-mode set `LP+BP/LP+HP`, one transition, not three). The direction of the
-causal claim below (cutoff unchanged at the mismatching transition) was not
-re-verified against the new alignment; treat it as unconfirmed rather than
-re-stated as fact.
+original does not route. ⚠️ **`DMC_Demo_IV_tune_5` is SETTLED, and it was never a
+passband defect.** The published 98.0% / 10 audible frames / 3 mode changes
+reproduces at **no window at all**, and its three components are mutually
+exclusive under the current tool — a full sweep reads 100.0%/0a/0chg at ≤8 s,
+96.4%/18a/1chg at 10 s, 80.3%/118a/1chg at 12 s, 63.4%/366a/2chg at 20 s,
+**64.1%/538a/3chg at 30 s** and 58.1%/732a/4chg at 35 s. Three mode changes
+occur only near 30 s, where the audible count is **538**, fifty-four times the
+published 10; no window yields 98.0%/10a. THE REASON: the build is
+**truncated**. It emits four parts spanning **0–9 s** (`.span` 0-1, 1-3, 3-7,
+7-9) of a song that runs past 60 s, and the original's first passband
+transition is at **frame 482 = 9.6 s** — after the last frame we produce.
+Measured over part 1's own span the file reads **100.0%, LP+HP both sides, 0
+changes**, so it PASSES by the tool's default; every mismatch above is
+manufactured by over-running a 1-second part against a 60-second original,
+exactly as with `Domino_Dancing`. The causal claim below (a mode change
+coinciding with no cutoff change has nowhere to go) is therefore **not
+applicable here** — there is no mode change inside this build to explain. The
+file's real defect is the `WAVE overflow: 288 rows > 256` recorded further
+down, which is what truncates it.
 
 That suggested a mechanism — a passband is only expressible where the builder
 emits a filter row, so a mode change coinciding with no cutoff change has
@@ -484,14 +495,45 @@ wrong-content one** — a voice playing the right notes two frames out of step
 scores exactly like one playing different notes. Re-scoring every sub-90 voice
 with a ±k frame tolerance (`PATTERNS.md` **D10**) separates them:
 
+⚠️ **SUPERSEDED 2026-08-17 — the 31/18 split below is PRE-F10/F11 and does
+not reproduce.** It was measured on the 49 sub-90 voices of a corpus that no
+longer exists, so it was never reproducible in principle; what follows replaces
+it. Re-run over the CURRENT artifacts (74 of 88 songs scored, **210 voices, 51
+sub-90** — both figures matching the independent post-rebuild derivation
+exactly), with `k=0` first validated to reproduce `dmc_native_sweep`'s strict
+column on **208 of 210** voices:
+
 | | voices | reading |
 |---|---:|---|
-| recovered at **±2**, no further gain at ±10 | **24** | bounded per-note skew — content exact |
+| recovers at **±2**, flat to ±10 | **8** | bounded per-note skew — content exact |
+| recovers only by **±10** | **4** | wider or drifting offset |
+| gains **≥5 points** but stays sub-90 | **7** | partly timing; NOT content |
+| moves **<5 points** | **22** | genuinely different content |
+
+over the **41** sub-90 voices with `n ≥ 250`; the other **10 are underpowered**
+and set aside rather than bucketed. So **TIMING 12 / PARTIAL 7 / CONTENT 22**,
+against the published 31/18 — the proportions inverted, which is what fixing
+the timing defects should do.
+
+**Two lessons about the OLD table, not just its numbers.** Its three buckets
+are under-specified: read strictly (`recovered` = reaches 90) they force large
+recoveries into "different content" — `Sweet` v2 goes **17.9 → 75.6 → 84.3**
+and `Chase` v1 **34.1 → 84.6 → 85.5**, neither of which "barely moves". That
+alone accounts for much of 18 → 35 under a strict reading, and is why the
+third bucket above exists. And the scorer must compare `freq` by **semitone**,
+as `score_pair` does; a raw-equality re-implementation scored `Roadblaster` v2
+at 58.2 where the sweep says 96.9, which would have manufactured a content
+bucket full of pitch-correct voices.
+
+The old table, for the record:
+
+| | voices | reading |
+|---|---:|---|
+| recovered at **±2**, no further gain at ±10 | **24** | bounded per-note skew |
 | recovered only by **±10** | **7** | wider or drifting offset |
 | barely moves | **18** | genuinely different content |
 
-**At least 31 of the 49 sub-90 voices were timing, not music** — and the 18 in
-the last row are an **upper bound**, because tolerance can only see offsets
+The 18 was called an **upper bound**, because tolerance can only see offsets
 inside its own range. `Roadblaster` proved both halves of that on one file: v0
 read `58.6/84.4/62.5` strict and `96.9/100.0/100.0` at ±2 with a flat plateau,
 which is the clean phase signature; v2 moved only 62.0 → 65.0 across ±10 and was
