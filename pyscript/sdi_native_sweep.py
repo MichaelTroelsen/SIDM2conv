@@ -160,24 +160,83 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, help="first N corpus files only")
     ap.add_argument("--timeout", type=int, default=1800, help="per-file seconds")
     ap.add_argument("--json", help="write the full per-file record here")
+    ap.add_argument("--jobs", "-j", type=int, default=1, metavar="N",
+                    help="build/score N songs concurrently (default 1). Sets "
+                         "MON_BUILD_LOCK=1 so the one section touching shared "
+                         "driver state is serialised -- that is what makes it "
+                         "safe, see PATTERNS F12. Results print in CORPUS "
+                         "order regardless of completion order, so a -jN run "
+                         "stays comparable to -j1. NOTE --infra-abort changes "
+                         "meaning under -j>1: see its help.")
     ap.add_argument("--infra-abort", type=int, default=3, metavar="N",
                     help="stop after N consecutive process-LAUNCH failures "
                          "(0 disables); once the host stops spawning children "
-                         "every later file is recorded as a failure it never had")
+                         "every later file is recorded as a failure it never had. "
+                         "Under -j>1 this counts TOTAL launch failures rather "
+                         "than consecutive ones -- 'consecutive' has no meaning "
+                         "when N files are in flight at once, and the signal it "
+                         "stands for (the host has stopped spawning children) is "
+                         "if anything more likely at -j16 than at -j1.")
     a = ap.parse_args(argv)
 
     corpus = corpus_files(a.limit, a.files)
     print(f"SDI Stage B sweep -- {len(corpus)} file(s) from {CORPUS_DIR}", flush=True)
     results = {}
     consec_infra = 0
+
+    pre = {}
+    if a.jobs > 1:
+        # The lock is the WHOLE safety argument, so set it here rather than
+        # trusting the caller: builds serialise on the one section touching
+        # shared driver state, so the artifacts are identical to a serial run
+        # (PATTERNS F12). Everything expensive -- tracing, parsing, packing --
+        # stays concurrent.
+        os.environ["MON_BUILD_LOCK"] = "1"
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        print(f"  -j{a.jobs}: MON_BUILD_LOCK=1 (shared driver state serialised)",
+              flush=True)
+        with ThreadPoolExecutor(max_workers=a.jobs) as ex:
+            futs = {ex.submit(build_one, n, a.timeout): n for n in corpus}
+            done = 0
+            infra_seen = 0
+            for fut in as_completed(futs):
+                done += 1
+                nm = futs[fut]
+                try:
+                    pre[nm] = fut.result()
+                except Exception as e:          # one song must not sink the sweep
+                    pre[nm] = {"error": f"{type(e).__name__}: {e}"}
+                bad = " LAUNCH FAILURE" if pre[nm].get("infra") else ""
+                print(f"  ...{done}/{len(futs)} done ({nm}){bad}", flush=True)
+                # TOTAL, not consecutive -- see --infra-abort's help. Cancel what
+                # has not started: continuing past host exhaustion records files
+                # as failures they never had, which is the whole point of the
+                # guard and matters MORE at -j16 than at -j1.
+                if pre[nm].get("infra"):
+                    infra_seen += 1
+                    if a.infra_abort and infra_seen >= a.infra_abort:
+                        n_cancelled = sum(1 for f in futs if f.cancel())
+                        print(f"ABORTING: {infra_seen} process-launch failures. "
+                              f"The host has stopped spawning children. "
+                              f"{n_cancelled} queued file(s) cancelled; anything "
+                              f"still running will finish.", flush=True)
+                        break
+        for nm in corpus:
+            if nm not in pre:
+                pre[nm] = {"infra": "cancelled after launch failures"}
+
     for i, name in enumerate(corpus, 1):
-        rec = build_one(name, a.timeout)
+        rec = pre[name] if name in pre else build_one(name, a.timeout)
         results[name] = rec
         if rec.get("infra"):
             consec_infra += 1
             print(f"  [{i}/{len(corpus)}] {name:34s} {'?':5s} "
                   f"LAUNCH FAILURE ({rec['infra']}) -- not a result", flush=True)
-            if a.infra_abort and consec_infra >= a.infra_abort:
+            # Only the SERIAL path aborts here. Under -j>1 the abort has
+            # already happened inside the executor and the remaining files are
+            # pre-recorded as cancelled; re-firing it would print a second
+            # ABORT and truncate `results`, hiding files that were measured.
+            if a.jobs == 1 and a.infra_abort and consec_infra >= a.infra_abort:
                 rest = corpus[i - consec_infra:]
                 print(f"ABORTING: {consec_infra} consecutive process-launch "
                       f"failures. The host has stopped spawning children, so "
