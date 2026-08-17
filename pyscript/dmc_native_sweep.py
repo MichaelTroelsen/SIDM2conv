@@ -338,18 +338,24 @@ def main(argv=None):
         # suspect -- measured, not feared: an unguarded -j4 corrupted 5 of 71
         # artifacts while the part-1-only scores read identical.
         os.environ["MON_BUILD_LOCK"] = "1"
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         print(f"  -j{a.jobs}: MON_BUILD_LOCK=1 (shared driver state serialised)",
               flush=True)
         with ThreadPoolExecutor(max_workers=a.jobs) as ex:
             futs = {ex.submit(measure, n, a.seconds, a.build): n for n in corpus}
-            for f in futs:
-                pass
-            for fut, n in futs.items():
+            # Progress only -- completion order, NOT the result table. The
+            # table below still walks `corpus` in order so a -j16 run stays
+            # byte-comparable to -j1; this loop exists purely so a long sweep
+            # doesn't look hung (see PATTERNS/false-alarm note in the task
+            # that added it).
+            done = 0
+            for fut in as_completed(futs):
+                done += 1
+                print(f"  ...{done}/{len(futs)} done ({futs[fut]})", flush=True)
                 try:
-                    pre[n] = fut.result()
+                    pre[futs[fut]] = fut.result()
                 except Exception as e:            # one song must not sink the sweep
-                    pre[n] = {"error": f"{type(e).__name__}: {e}"}
+                    pre[futs[fut]] = {"error": f"{type(e).__name__}: {e}"}
     for i, name in enumerate(corpus, 1):
         rec = pre[name] if name in pre else measure(name, a.seconds, a.build)
         results[name] = rec
