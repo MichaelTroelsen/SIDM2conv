@@ -1636,12 +1636,36 @@ mismatches on routed frames only and prints them as `80%/0a`. The unrouted rule
 already existed — it was running over the wrong frames, which is why it caught
 three all-unrouted DMC files and missed this one.
 
-The underlying difference is still a STARTUP LATENCY, not a mode error: The original selects LP from frame 0; our
-build reads `off` until **frame 47** (0.94 s) and LP thereafter. All **47 of its
-599 mismatched frames are that opening gap** — the filter program's first SET
-row simply lands late, and the checker's unusual +8 fitted offset (every other
-file sits at −3) was the fit trying to absorb it. Nothing after frame 47
-disagrees.
+**EXPLAINED 2026-08-17 — it is not a latency, it is that the original declares
+its passband before it uses it.** Our driver cannot: `F_MODE` (the `$D418` high
+nibble) is zeroed at INIT — `lda #$00 / sta F_MODE`, *"filter program idle until
+a flag-$40 note"* — and is written in exactly one other place, from a filter
+program row. So mode and routing are **coupled**: our mode cannot precede our
+first filter row. Measured on both affected files, our first mode frame and our
+first ROUTED frame are the same:
+
+| file | gap | mode mismatches | of which routed | first routed: orig / ours |
+|---|---:|---:|---:|---|
+| `Altered_States_Tune_2` | 48 | 48 | **0** | 51 / 48 |
+| `Sling` | 14 | 14 | **0** | 17 / 14 |
+
+The original sets its mode at frame 0 and routes nothing until frame 51 (resp.
+17); we set ours at the instant we route. Every disagreeing frame is therefore a
+frame with `$D417` low nibble `0` on **both** sides — nothing is fed to the
+filter, so nothing can be heard. That is benign by construction, not by luck.
+Note the orig/ours routing offset is **exactly −3 on both files**, which is this
+player's known render offset, so the routing itself is correctly aligned.
+
+⚠️ **`Sling` is a second instance and was previously undocumented** — 14 frames,
+same shape, same zero audible impact.
+
+⚠️ **A tempting explanation that MEASUREMENT REFUTED**: "the driver zeroes
+`F_MODE` at INIT, so every build opens on `off`." Swept across all 33 part-1
+builds, **only 2 do** — the other 31 have a filter row on frame 0 and match the
+original's mode from frame 0, with the first-non-zero frame identical on both
+sides for **31 of 33**. The INIT zeroing is a necessary condition, not the
+cause; what distinguishes these two files is that their first filter-flagged
+note arrives late.
 
 So the passband on this player is **correct on all 33 builds**; what remains is
 under a second of missing filter state at the start of one file.
