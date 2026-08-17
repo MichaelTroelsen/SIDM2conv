@@ -30,7 +30,26 @@ The Stage-A path is already factored right — `sidm2/galway_driver11_emitter.py
 ~250-300 copy-pasted lines across 6 validators, including a **real latent bug**: the semitone converter `_semi()` existed 3× with *drifting reference frequencies* (`0x1168` vs `0x1167` vs inline log2). Extracted: PSID wrapping (×4), semitone conversion (canonicalized on `SEMI_REF=0x1167` = PAL C-4), siddump table parsers (×4 → `siddump_per_frame` / `siddump_note_onsets` / `siddump_filter_trace`), zig64 fill-forward serializer (×2), gated best-offset matcher (×2). Verified by byte-diffing every validator's output against pre-refactor baselines (all identical, including mon_fidelity across the reference change) + 13 unit tests (`pyscript/test_fidelity_common.py`).
 
 ### A4. Wire the `bin/` players into the default pipeline
-ROMUZAK, MoN, and FC are absent from `PLAYER_REGISTRY`; Galway-native is `bin/`-only. Add registry entries + converters so `sid-to-sf2.bat` auto-routes them (native builds behind a `--native` flag or as the default where byte-exact). This is the difference between "we have the tech" and "the tool converts it".
+ROMUZAK, MoN, and FC are absent from `PLAYER_REGISTRY`; Galway-native is `bin/`-only. The goal stands — this is the difference between "we have the tech" and "the tool converts it".
+
+⚠️ **BUT NOT VIA `PLAYER_REGISTRY` ALONE — measured 2026-08-17 and the premise fails.** `PLAYER_REGISTRY` keys on `player-id.exe` strings, and those verdicts are **many-to-many** with the `bin/` builders. Sampling 12 files spread across each corpus:
+
+| builder | corpus | dominant verdict | and also |
+|---|---:|---|---|
+| Galway | 40 | `Martin_Galway` **12/12** | — |
+| Hubbard | 95 | `Rob_Hubbard` 11/12 | `SidTracker64` |
+| Blackbird | 61 | `Blackbird/LFT` 6 + `LFT` 5 | 1 unidentified |
+| DMC | 88 | `Bjerregaard` 8/12 | `MoN/Bjerregaard`, `Antony_Crowther_V3`, `Rob_Hubbard` |
+| Deenen | 40 | `MoN/Deenen` 8/12 | `MoN/FutureComposer` ×4 |
+| SoundMonitor | 20 | `Soundmonitor` 8/12 | `MoN/FutureComposer` ×3, `RoMuzak_V6.x` |
+| MoN | 179 | `MoN/Deenen` 5/12 | `Soundmonitor` ×4, `MoN/FutureComposer` ×2, `Rob_Hubbard` |
+| HardTrack | 150 | `GoatTracker_V2.x` 5/12 | `DMC` ×4, `HardTrack_Composer` only ×2 |
+| **MattGray** | 55 | **`Soundmonitor` 10/12** | `Matt_Gray` ×1, `Tonal_Kaos` ×1 |
+| SDI | 441 | `Geir_Tjelta/SIDDuzz'It` 3/12 | `Digitalizer_V2.x` ×3, `Music_Assembler` ×2, `DMC` ×2, +2 more |
+
+Two entries alone sink the design: a `Soundmonitor` → Sound Monitor rule sends **10 of 12 Matt Gray files to the wrong builder**, and a `DMC` rule captures 4 HardTrack and 2 SDI files. Only **Galway, Hubbard and Blackbird** are clean enough to route on the string.
+
+So the discriminator must be the **builders' own signature-based locate**, which they already implement (`layout='signature'`, tables found by search and never by a constant). The shape A4 actually needs: `player-id` as a cheap PREFILTER where it is reliable, then attempt each candidate builder's locate and take the one that succeeds — with the builders' existing refusals (`tables not located`, `decoded no notes`) as the rejection signal. That is a dispatcher, not a registry entry, and it is **M, not S**.
 
 ### A5. Repo hygiene
 - `bin/` holds ~2,200 `_`-prefixed scratch files (one-shot probes + intermediate `.sf2`/`.txt`). Archive per the archive-before-explain protocol; keep the ~48 production scripts. Add a `bin/README.md` naming the production entry points per player.
@@ -56,7 +75,7 @@ The one **shared** gap: pulse-width *modulation* not extracted for Commando / St
 FC is the only ported player without a native driver (Stage A only, $1800 variant = 5/20 files). After A1/A2 this becomes the cheapest Stage B yet — and the first test that the consolidated pipeline actually generalizes.
 
 ### B5. Known small residuals (tracked, low priority)
-Myth sub0 part-1 filter 77% (rapid multi-section opening; other parts 90-98%, ear-confirmed fine) · MoN $00-silent-note freq offset (inaudible) · ROMUZAK drum octave ~13% osc3 gap (needs drum-engine disasm) · trace-replay cycle floor (~0.17 spectral on resonant leads — **fundamental, do not chase**).
+~~Myth sub0 part-1 filter 77%~~ **RESOLVED 2026-08-17 — it does not reproduce; the cutoff is 100.0%** (see the B5 note below) · MoN $00-silent-note freq offset (inaudible) · ROMUZAK drum octave ~13% osc3 gap (needs drum-engine disasm) · trace-replay cycle floor (~0.17 spectral on resonant leads — **fundamental, do not chase**).
 
 ---
 
@@ -85,10 +104,24 @@ The real remaining residual is **16 frames out of 19168 (0.08%)**: the first 4-8
 pre-writing `$D415-$D418` in the part's `do_init` (the shape of Blackbird's B7 priming) —
 and since parts are **separate files a user loads individually**, those frames are an
 ~80ms settle at a file's opening, not a seam heard mid-song. Not worth a driver change.
-**Still unverified**: the separate "Myth sub0 part1 filter 77%" figure in B5. Checking it
-needs the py65 **emulation** trace (Myth is `play=$0000`), and the two trace shapes differ
-(`(cutoff, ctrl)` tuples vs `per_frame`'s int `fcut`) — an attempt that ignored this
-returned a meaningless 0.0%. Compare like with like.
+**MEASURED 2026-08-17 — the 77% does not reproduce.** Myth is `play=$0000`, so the
+original needs the py65 **emulation** trace; `capture()` returns BOTH shapes from the same
+run, `frames[i] = (voices, cut)` with `cut` an **int** and `ftr[i] = (cut, ctrl)` a
+**tuple**. Comparing `ftr` against `siddump`'s int `fcut` is the shape mismatch, and it was
+reproduced on purpose here to confirm the diagnosis: **exactly 0.0%**. Compared like with
+like over part 1's own window (frames 0–1000 = 20 s, recovered by re-running the builder's
+`fits()` probe; the current code packs into **8 parts, matching the 8 shipped artifacts**),
+at offset 0 with no offset fitting:
+
+| register | agreement | n | informative? |
+|---|---:|---:|---|
+| **cutoff** | **100.0%** | 1000 | **yes** — 97 distinct values, changes **832 times**, range 0–1536 |
+| `$D417` ctrl | 100.0% | 1000 | **no** — constant `242` on both sides, `exercised()` False |
+| `$D418` passband | 100.0% | 1000 | **no** — constant `3` (LP+BP) on both sides |
+
+Only the cutoff row is evidence. The other two are `0 == 0` in the sense `fidelity_common`
+guards against — quote them as "unexercised", never as fidelity. The cutoff row is the real
+result and it is strong: 832 changes tracked exactly, no alignment offset needed.
 
 ---
 
