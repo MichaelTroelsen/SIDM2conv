@@ -49,7 +49,24 @@ ROMUZAK, MoN, and FC are absent from `PLAYER_REGISTRY`; Galway-native is `bin/`-
 
 Two entries alone sink the design: a `Soundmonitor` → Sound Monitor rule sends **10 of 12 Matt Gray files to the wrong builder**, and a `DMC` rule captures 4 HardTrack and 2 SDI files. Only **Galway, Hubbard and Blackbird** are clean enough to route on the string.
 
-So the discriminator must be the **builders' own signature-based locate**, which they already implement (`layout='signature'`, tables found by search and never by a constant). The shape A4 actually needs: `player-id` as a cheap PREFILTER where it is reliable, then attempt each candidate builder's locate and take the one that succeeds — with the builders' existing refusals (`tables not located`, `decoded no notes`) as the rejection signal. That is a dispatcher, not a registry entry, and it is **M, not S**.
+The obvious replacement was: `player-id` as a cheap PREFILTER where it is reliable, then attempt each candidate builder's own signature locate and take the one that succeeds, using the builders' existing refusals (`tables not located`, `decoded no notes`) as the rejection signal.
+
+WARNING **THAT REPLACEMENT IS ALSO REFUTED, measured 2026-08-17** (`sidm2/native_dispatch.py`, 48 files, 6 spread across each of 8 corpora, ~4 s, no builds). **Exactly-one-and-correct: 0 of 48.** The parsers are not mutually exclusive:
+
+| probe | discriminates? | evidence |
+|---|---|---|
+| `blackbird` | yes | accepts 1 of its 6, matching its known 16-of-61 support |
+| `sdi` | yes | `is_sdi_play3` accepts 2 of its 6, plus 1 HardTrack false positive |
+| `soundmonitor` | yes | `is_soundmonitor` accepts 3 of its 6, plus 1 Matt Gray false positive |
+| `hubbard` | partly | accepts all 6 of its own, plus 2 DMC/MoN false positives |
+| `mattgray` | no | accepts nothing, anywhere |
+| **`dmc`** | **no** | accepts **all 48** - `_locate` finds plausible tables anywhere and `decode_song` still yields notes |
+| **`mon`** | **no** | accepts **all 48** - no cheap predicate, no decode-level refusal |
+| `hardtrack` | n/a | no probe yet; `HardTrackModule` takes a different shape |
+
+Because `dmc` and `mon` accept everything, a first-match dispatcher would misroute **every** file to whichever of them the order reaches first, silently. `dispatch()` therefore defaults to reporting ALL accepting families so a collision is visible; `first_match` is opt-in and currently unsafe.
+
+The remaining shape is **rank by evidence strength, not by boolean accept**: prefer the probes that have real predicates, and score the rest (decoded note counts, table plausibility) rather than treating "did not raise" as a verdict. Still **M, not S**. The module is inert - nothing imports it yet.
 
 ### A5. Repo hygiene
 - `bin/` holds ~2,200 `_`-prefixed scratch files (one-shot probes + intermediate `.sf2`/`.txt`). Archive per the archive-before-explain protocol; keep the ~48 production scripts. Add a `bin/README.md` naming the production entry points per player.
