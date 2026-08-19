@@ -35,6 +35,26 @@ from sdi_to_sf2 import instrument_adsr                                 # noqa: E
 from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP        # noqa: E402
 import build_mon_native_song as BM                                     # noqa: E402
 
+# SDI-ONLY filter defaults. `detect_filter_drives` and `_filt_exact` are shared
+# by the NINE builders that route through `build_native_song`, and their two
+# opt-in flags were measured across six corpora (2026-08-19): SDI is the only
+# player they help -- `Arabia` 97.8 -> 100.0 (the attack falls in a 71-frame gap
+# between onsets, outside the +4 window at both ends) and `Funk_Facet`
+# 99.0 -> 100.0 (its drive is handed a canonical captured over a shorter span,
+# which never reaches the LP -> LP+HP switch). Everywhere else they are inert or
+# pure cost: Blackbird byte-identical, FC 0 of 19 artifacts changed, SoundMonitor
+# 99.252 -> 99.252 with `--compare` clean (including `Dance_at_Night_remix`, the
+# file the FILT_LEAD comment names as the hazard), HardTrack +2 parts for zero
+# fidelity change, DMC +3 parts and `Predictable_main`'s audible v1 freq
+# 100.0 -> 99.35. So they are scoped HERE rather than flipped globally.
+#
+# An explicit env var still wins, because every A/B in this repo is driven that
+# way -- setting FILT_LEAD=4 must be able to turn the SDI default back off.
+if "FILT_LEAD" not in os.environ:
+    BM.FILT_LEAD = 64
+if "FILT_EXACT_PB" not in os.environ:
+    BM.FILT_EXACT_PB = True
+
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     "SID", "Gallefoss_Glenn", "2_Young_2_Die.sid")
 warg = sys.argv[2] if len(sys.argv) > 2 else "auto"
