@@ -145,6 +145,50 @@ The 21 uncounted are not a pass either — `passband_check` refuses to score a
 window in which the original never routes a voice and never selects a mode.
 Widen `--seconds` before reading the total as a corpus verdict.
 
+⚠️ **A HARDTRACK-shaped claim, measured here for the first time (2026-08-19):
+"the driver zeroes `F_MODE` at INIT, so every build opens on `off`."** Nothing
+in this document had actually swept it for DMC — HARDTRACK.md's twin passage
+found its own version of this claim refuted (2 of 33 open clear, not all), and
+the Soap_Theme note two paragraphs up (a startup transient where the *original*
+never writes a `$D418` default at INIT) is the kind of single-file evidence
+that would tempt the same blanket claim here. Swept across the same **70
+on-disk builds** (`out/dmc/*_part01.sf2`, 73 files minus 3 `_`-prefixed
+scratch/backup copies — the same denominator `passband_check.py --player dmc`
+counts), each over its own `.span`-derived window:
+
+- **20 of 70 never touch `$D418` at all in that window** — mode sits at a
+  constant `off` on BOTH sides for the whole trace, not just at the open.
+  Counting these as "opens clear" would be the same 0==0 vacuous pass
+  `fidelity_common.exercised` exists to catch, so they are set aside rather
+  than scored either way.
+- Of the remaining **50 builds where the register is actually exercised, 14
+  (28%)** open with `$D418`'s mode bits clear at the first frame the tool can
+  trust — siddump force-displays frame 0 regardless of what was written, so
+  this reads the first frame after that, the same convention
+  `passband_check.mode_sequence` already uses to drop the forced row. The
+  other **36 of 50** already carry a mode — matching the original's or not —
+  by that same frame.
+- Of the 14 that open clear, 5 are the already-documented no-voice-routed
+  static files (`Eagles`, `Happy_Jingle`, `In_the_Mood`, `Roadblaster`,
+  `Rosanna` — mode never leaves `off` in-window on either side, inaudible by
+  construction). The other 9 (`Cant_Stop`, `DMC_Demo_IV_tune_1`, `Deel_2`,
+  `Domino_Dancing`, `Dreaming`, `Fruitbank`, `Scandalous`, `Soap_Theme`,
+  `Special_Agent`) route real audio (34-100%) while ours opens clear; only
+  `Domino_Dancing`'s original *also* opens clear, so it's the sole agreement
+  in this group (both at frame 5). The other 8 disagree — the original already
+  shows a mode 1 to 19 frames before ours catches up (`Soap_Theme`'s 19-frame
+  gap is the corpus's one sub-100% passband agreement, described above).
+- First-non-zero-frame agreement across all 50 exercised builds: **33 of 50**
+  identical on both sides.
+
+**REFUTED, the same shape as HARDTRACK.md's answer.** Raw over all 70 on-disk
+builds, `$D418` reads clear at the trace's first trustworthy frame on **34 of
+70** (14 meaningfully + 20 vacuously, because those 20 never write the
+register at all); the informative figure, once the vacuous ones are set aside,
+is **14 of 50**. Either way it is not "every build" — INIT zeroing is a
+necessary condition, not a sufficient one: most builds simply emit a filter
+row before the trace's first countable frame and already match the original
+there.
 
 `cffc51e` (2026-08-10) fixed the passband in **both** `build_dmc_native_song.py`
 and the HardTrack builder, and it was recorded only in `HARDTRACK.md`. DMC's
