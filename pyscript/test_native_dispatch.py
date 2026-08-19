@@ -140,3 +140,78 @@ def test_dispatch_on_a_real_file_returns_the_documented_shape():
     assert isinstance(r["rejected"], dict)
     known = {p for p, _ in ND.PROBE_ORDER}
     assert set(r["accepted"]) | set(r["rejected"]) <= known
+
+
+# --- rank(): evidence strength, not boolean accept -----------------------------
+#
+# Same discipline as above -- these pin the RANKING MECHANISM, never the current
+# verdicts. That `blackbird` accepts 1 of 48 and `dmc` 48 of 48 is a measured
+# property of today's parsers and belongs in ROADMAP A4, not in an assertion
+# that would fail the day a parser improves.
+
+
+def test_every_family_is_classified_as_signature_or_construct_only():
+    """A family that is in neither set would silently never be rankable."""
+    named = {p for p, _fn in ND.PROBE_ORDER}
+    classified = ND.SIGNATURE | ND.CONSTRUCT_ONLY | ND.UNPROBED
+    assert named - classified == set(), "unclassified families: %s" % (
+        named - classified)
+    assert not (ND.SIGNATURE & ND.CONSTRUCT_ONLY)
+    assert not (ND.SIGNATURE & ND.UNPROBED)
+    assert not (ND.CONSTRUCT_ONLY & ND.UNPROBED)
+    # every UNPROBED family really has no probe -- otherwise the label lies
+    for name, fn in ND.PROBE_ORDER:
+        if name in ND.UNPROBED:
+            assert fn is None, "%s is labelled UNPROBED but has a probe" % name
+
+
+def test_a_unique_signature_match_is_confident(monkeypatch):
+    monkeypatch.setattr(ND, "PROBE_ORDER",
+                        (("sdi", lambda p: {"ok": 1}),
+                         ("dmc", lambda p: {"ok": 1}),
+                         ("mon", lambda p: {"ok": 1})))
+    r = ND.rank("x.sid")
+    assert r["best"] == "sdi" and r["confident"] is True
+    assert r["weak"] == ["dmc", "mon"]
+
+
+def test_two_signature_families_colliding_abstains(monkeypatch):
+    """A collision must never be resolved by probe order -- same rule dispatch()
+    follows, carried into the ranking."""
+    monkeypatch.setattr(ND, "PROBE_ORDER",
+                        (("sdi", lambda p: {"ok": 1}),
+                         ("soundmonitor", lambda p: {"ok": 1})))
+    r = ND.rank("x.sid")
+    assert r["best"] is None and r["confident"] is False
+    assert "collision" in r["why"]
+
+
+def test_construct_only_families_alone_never_produce_an_answer(monkeypatch):
+    """THE GUARD ON THE REFUTED DESIGN. Promoting a construct-only family when
+    no signature family accepts was implemented, measured and removed: it
+    answered 6 more files and got 2 wrong, dropping precision 75.0 -> 71.4.
+    This fails if that path comes back."""
+    def acc(p):
+        return {"ok": 1}
+    monkeypatch.setattr(ND, "PROBE_ORDER",
+                        (("dmc", acc), ("mon", acc), ("hubbard", acc)))
+    r = ND.rank("x.sid", player_id="Rob_Hubbard")   # a RELIABLE verdict
+    assert r["best"] is None, "a construct-only family was promoted"
+    assert r["confident"] is False
+    assert set(r["weak"]) == {"dmc", "mon", "hubbard"}
+
+
+def test_rank_abstains_when_nothing_accepts(monkeypatch):
+    def refuses(p):
+        raise ValueError("not mine")
+    monkeypatch.setattr(ND, "PROBE_ORDER", (("sdi", refuses), ("dmc", refuses)))
+    r = ND.rank("x.sid")
+    assert r["best"] is None and r["confident"] is False
+
+
+def test_rank_exposes_the_underlying_dispatch_result(monkeypatch):
+    """The ranking must not hide the collision evidence dispatch() reports."""
+    monkeypatch.setattr(ND, "PROBE_ORDER",
+                        (("sdi", lambda p: {"ok": 1}), ("dmc", lambda p: {"ok": 1})))
+    r = ND.rank("x.sid")
+    assert r["dispatch"]["accepted"] == ["sdi", "dmc"]

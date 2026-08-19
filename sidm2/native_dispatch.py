@@ -147,6 +147,90 @@ def probe(player, path):
         return False, "%s: %s" % (type(e).__name__, str(e)[:120])
 
 
+# ---------------------------------------------------------------- ranking ---
+# RANK BY EVIDENCE STRENGTH, because boolean accept is refuted. Two designs
+# already failed by measurement and are recorded in ROADMAP A4: routing on
+# `player-id` strings (many-to-many with the builders) and taking the first
+# family that does not raise (`dmc` and `mon` accept all 48 files in the spread
+# sample, so first-match misroutes everything).
+#
+# The one property that actually separates the families is whether the parser
+# HAS A SIGNATURE IT CAN REJECT ON. Measured over the 48-file spread sample:
+#
+#   blackbird     accepts  1 of 48   `locate_blackbird` finds nothing elsewhere
+#   sdi           accepts  3 of 48   gated by `is_sdi_play3`
+#   soundmonitor  accepts  4 of 48   gated by `is_soundmonitor`
+#   hubbard       accepts  8 of 48   NO predicate -- construction alone
+#   dmc           accepts 48 of 48   `_locate` finds plausible tables anywhere
+#   mon           accepts 48 of 48   no predicate, no decode-level refusal
+#   mattgray      accepts  0 of 48
+#
+# A REFUTED SCORING RULE, RECORDED SO IT IS NOT RETRIED: `_probe_dmc` returns a
+# decoded note count, and the obvious next move is to threshold it. Measured, it
+# does not separate -- real DMC files run min 73 / median 302 / max 1200 while
+# `blackbird` is 1200 across the board, `soundmonitor` medians 1082 and
+# `mattgray` 895. DMC's own median is LOWER than several families it would have
+# to be told apart from, and the 1200s are a saturation artifact of
+# `tick_budget=400`. Note count is not evidence of ownership.
+SIGNATURE = frozenset({"blackbird", "sdi", "soundmonitor"})
+CONSTRUCT_ONLY = frozenset({"dmc", "mon", "hubbard", "mattgray"})
+# No probe at all, so this family can never accept and can never be ranked. It
+# is named rather than left out, because an unclassified family is invisible:
+# the classification test asserts these three sets cover PROBE_ORDER exactly,
+# and `hardtrack` was found missing by that test on its first run.
+#
+# THIS GAP HAS A MEASURED COST. `Pollena_2000` is a HardTrack file, and with no
+# HardTrack probe to claim it, `is_sdi_play3` accepts it unopposed -- one of the
+# two misroutes in the 48-file sample. A HardTrack probe would not merely add a
+# family; it would give the ranking something to collide with, which is what
+# turns a confident misroute into an honest abstention.
+UNPROBED = frozenset({"hardtrack"})
+
+
+def rank(path, player_id=None):
+    """Rank the accepting families by evidence strength and answer only when the
+    evidence supports ONE.
+
+    Returns {"best": player|None, "confident": bool, "why": str,
+             "signature": [...], "weak": [...], "dispatch": <dispatch() result>}.
+
+    `best` is None whenever the evidence does not single out a family. That is
+    the point: a dispatcher that always answers is worse than one that abstains,
+    because a misroute produces a wrong SF2 rather than an error.
+    """
+    d = dispatch(path, player_id=player_id)
+    acc = d["accepted"]
+    sig = [p for p in acc if p in SIGNATURE]
+    weak = [p for p in acc if p not in SIGNATURE]
+    best, confident = None, False
+    if len(sig) == 1:
+        best, confident = sig[0], True
+        why = "unique signature match (%s); %d construct-only family/families " \
+              "also accept and are not evidence" % (sig[0], len(weak))
+    elif len(sig) > 1:
+        why = "signature collision: %s both accept" % ", ".join(sig)
+    else:
+        # A THIRD REFUTED DESIGN, measured in this module rather than argued.
+        # The tempting move here is to corroborate: no signature family
+        # accepted, so promote a construct-only family when `player-id` names
+        # one of the three verdicts measured reliable. Implemented and measured
+        # over the same 48-file sample, it answers 6 more files and gets 2 of
+        # them WRONG -- `Eagles` (truth dmc) and `Something_Green` (truth mon)
+        # both report `Rob_Hubbard`. Only 4 of the 7 `Rob_Hubbard` verdicts in
+        # the sample are Hubbard files, which does not match the 11/12 figure
+        # RELIABLE_PLAYER_IDS is built on. Precision FELL, 75.0% -> 71.4%.
+        #
+        # Two weak signals do not compose into a strong one: a probe that
+        # accepts everything carries no information about this file, and
+        # combining it with a verdict that has false positives just launders the
+        # guess. So there is no corroboration path -- abstain instead.
+        why = ("no signature-bearing family accepted; %d construct-only "
+               "family/families accept and cannot discriminate"
+               % len(weak))
+    return {"best": best, "confident": confident, "why": why,
+            "signature": sig, "weak": weak, "dispatch": d}
+
+
 def dispatch(path, player_id=None, first_match=False):
     """Which native builders accept this file?
 
