@@ -134,6 +134,27 @@ def test_k0_reproduces_score_pair(shift):
                 assert mine == pytest.approx(theirs, abs=0.05), (vi, m, mine, theirs)
 
 
+def test_freq_zero_is_not_treated_as_missing():
+    """A genuine freq=0 write must score as a SILENCE match, not get dropped.
+
+    key() used to route freq through `None if not x else ...`, which sends the
+    falsy 0 down the same branch as an actual None. `freq_to_semi(0)` already
+    returns -1 (silence) -- there is no need to special-case 0 at all, and
+    doing so made two real zero-frequency writes look like "neither side
+    wrote it", which score_pair (an `is not None` check) does not do.
+    """
+    def zero_freq(vi, i):
+        d = melody()(vi, i)
+        d["freq"] = 0
+        return d
+    a = frames(zero_freq, N)
+    per, n, dly = S.score_pair(a, a, SECS)
+    assert per is not None and n > 0
+    out, _ = T.tol(a, a, SECS, dly)
+    assert per[0]["freq"] == 100.0, "sanity: score_pair credits a 0/0 freq match"
+    assert out[0][0]["freq"] == pytest.approx(per[0]["freq"], abs=0.05)
+
+
 def test_ks_and_metrics_are_the_documented_ones():
     assert T.KS == (0, 2, 10), "D10 specifies k = 0, 2, 10"
     assert set(T.METRICS) == {"freq", "wf", "pul"}

@@ -53,7 +53,12 @@ def tol(orig, prb, win, dly):
             Oraw = [f[0][vi][m] for f in orig]
             Praw = [prb[i][0][vi][m] for i in range(min(n, len(prb)))]
             if m == "freq":
-                key = lambda x: None if not x else S.freq_to_semi(x)
+                # freq_to_semi(0) already returns -1 (silence), distinct from
+                # a genuinely-missing value -- `not x` conflated the two by
+                # also catching the falsy 0, mapping a real zero-frequency
+                # write to the same None sentinel as "never written". That is
+                # exactly the distinction score_pair keeps via `is not None`.
+                key = lambda x: None if x is None else S.freq_to_semi(x)
             else:
                 key = lambda x: x
             Okey = [key(x) for x in Oraw]
