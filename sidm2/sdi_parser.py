@@ -976,12 +976,9 @@ class SDIModule:
                     break
         return events
 
-    def _decode_voice_d(self, v, max_ticks=40000):
-        """D tracks = arrays of (seq#, header) PAIRS: header hi nibble =
-        transpose, lo nibble = seq REPEAT count; seq# $fe = voice off;
-        track byte $ff = wrap to position 0 (the player LOOPS - Another_Day
-        $11A4: CMP #$FF -> LDY #$00; short looping tracks like Space_Suit
-        v1 = one pair + $ff under-decoded to 7 events before this)."""
+    def _walk_d(self, v, max_ticks, wrap=True):
+        """One D-track walk -> (events, end_tick).  `wrap` False stops at
+        the first $ff instead of looping, i.e. decodes a SINGLE pass."""
         track = self.track_ptrs[v]
         tpos = 0
         tick = 0
@@ -991,7 +988,7 @@ class SDIModule:
             guard += 1
             seq_no = self._u8(track + tpos)
             if seq_no == 0xFF:                   # wrap to 0 = song LOOP
-                if tpos == 0:                    # degenerate all-$ff track
+                if tpos == 0 or not wrap:        # degenerate track / one pass
                     break
                 tpos = 0
                 continue
@@ -1007,7 +1004,66 @@ class SDIModule:
                 if tick >= max_ticks:
                     break
             tpos += 2
-        return events
+        return events, tick
+
+    def _song_ticks_d(self, max_ticks):
+        """Song length = the LONGEST voice's SINGLE pass through its track.
+
+        A D track ends in $ff (loop), not $fe: across all 18 D-variant
+        files in SID/Gallefoss_Glenn every one of the three voices ends
+        that way and $fe appears nowhere, so no voice ever stops on its
+        own.  Without a bound the walk therefore runs to `max_ticks` and
+        the caller reads that ceiling back as the song length -- which is
+        how four files came to report an identical 2401s window (40000
+        ticks x fpt 3 / 50), a cap mistaken for four song lengths.
+
+        The bound cannot be "stop at the first $ff" either: voices have
+        unequal track lengths (Space_Suit = 6/1/3 pairs) and a short one
+        is MEANT to repeat under a long one, so stopping each voice at
+        its own first wrap would truncate it and leave it silent for the
+        rest of the song.  The longest single pass keeps every voice
+        looping exactly as the player does, for a length the music
+        actually defines.
+        """
+        cache = self.__dict__.setdefault('_song_ticks_d_cache', {})
+        if max_ticks not in cache:
+            # This measuring pass must leave NO trace: _play_seq_d carries
+            # the running instrument in self._cur_instr and mutates it in
+            # place, so walking three voices to measure them would hand the
+            # real decode a polluted instrument. Measured: without this
+            # snapshot 21 of 54 corpus voices decode differently than they
+            # did before the guard existed -- a silent change of the music,
+            # not the intended truncation.
+            live = getattr(self, '_cur_instr', None)
+            snap = list(live) if live is not None else None
+            try:
+                n = 0
+                for i in range(len(self.track_ptrs)):
+                    n = max(n, self._walk_d(i, max_ticks, wrap=False)[1])
+            finally:
+                if snap is None:
+                    self.__dict__.pop('_cur_instr', None)
+                else:
+                    live[:] = snap              # in place: _play_seq_d aliases
+                    self._cur_instr = live
+            # A track that decodes to nothing must not bound the others,
+            # and must not collapse the song to zero.
+            cache[max_ticks] = n or max_ticks
+        return cache[max_ticks]
+
+    def _decode_voice_d(self, v, max_ticks=40000):
+        """D tracks = arrays of (seq#, header) PAIRS: header hi nibble =
+        transpose, lo nibble = seq REPEAT count; seq# $fe = voice off;
+        track byte $ff = wrap to position 0 (the player LOOPS - Another_Day
+        $11A4: CMP #$FF -> LDY #$00; short looping tracks like Space_Suit
+        v1 = one pair + $ff under-decoded to 7 events before this).
+
+        The wrap is bounded by `_song_ticks_d`, never by `max_ticks` alone
+        -- see there for why neither the raw cap nor the first $ff is the
+        right stop.
+        """
+        return self._walk_d(
+            v, min(max_ticks, self._song_ticks_d(max_ticks)))[0]
 
     def _play_seq_d(self, v, seq, tick, transpose, events, max_ticks):
         """Variant D (Another_Day class): rows last dur+1 ticks. First
