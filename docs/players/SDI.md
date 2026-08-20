@@ -547,6 +547,12 @@ one file at a time.
 | refused | 62 | all one reason: `cannot be driven by measure_onsets (self-IRQ / multispeed)` |
 | errored | 117 | 98 `not an SDI play+3 rip`, 16 `WAVE overflow (>256 rows)`, 2 timeout, 1 `IndexError` |
 
+> ⚠️ **This 262 is stale.** `out/sdi` holds **281** distinct built songs as of
+> 2026-08-20 (see the dated section above `## Stage A`) — the gap is
+> unreconciled, not resolved by a fresh built/refused/errored count, because
+> the sweep that would have produced one did not run to completion. Do not
+> quote 262 as current without that caveat.
+
 | variant | voices | median | =100 | <90 |
 |---|---:|---:|---:|---:|
 | A | 120 | 99.9 | 30 | 8 |
@@ -635,6 +641,72 @@ ceiling (the commit message independently confirms `Lame`: 31 parts → 1,
 ~2405s trace → ~75s). The per-file voice scores two subsections above were
 measured against those pre-fix builds and are flagged there as not yet
 re-scored — rescoring needs the corpus sweep, which is out of scope here.
+
+### 2026-08-20 — the "262 of 441 build" headline is stale; the rebuild meant to explain it did not run (task `sdi-part-counts-stale-after-d-rebuild`)
+
+A full corpus re-sweep (`pyscript/sdi_native_sweep.py --jobs 8 --schedule
+span-desc`, PID 114492, launched 2026-08-20T14:54:14Z) was meant to refresh
+the built/refused/errored counts and explain the 262-vs-282 delta a4d47e4 had
+already spotted but deliberately left unwritten. **It did not run to
+completion.** Verified directly, not from a notification:
+
+- The log holds only its 3 startup lines (schedule + `-j8` banners) and zero
+  `N/441 done` lines.
+- The main process is **absent from the process list**
+  (`Get-CimInstance Win32_Process | Where CommandLine -match 'sdi_native_sweep'`
+  returns nothing), though it was confirmed alive at T+4.5min in the prior
+  session's own check.
+- **Zero files in `out/sdi` are newer than the sweep's own recorded start
+  timestamp.**
+- No `wrote <json>` line, no `ABORTING` line, no summary line of any kind.
+
+So `out/sdi` is **not** a freshly rebuilt corpus — it is exactly the state
+a4d47e4 already measured, and the built/refused/errored breakdown that would
+explain the delta below still does not exist.
+
+**Re-derived directly from disk today** (`find out/sdi -iname "*.sf2"`):
+
+| | count |
+|---|---:|
+| `.sf2` files | 5,048 raw → **5,039** excluding a stray scratch probe |
+| `.sf2.span` files | 4,956 |
+| distinct songs with ≥1 artifact | 282 raw → **281** excluding the same probe |
+
+The raw glob catches `out/sdi/_diag*` (`_diag.sf2` +
+`_diag_native_part01..08.sf2`, 9 files, mtime 2026-08-17 18:55) — a leftover
+single-file scratch probe, not one of the 441 corpus songs. **Not removed
+here** (this task is read-only on `out/sdi`); whoever next has write access
+should delete it.
+
+**281 built songs is the honest current figure — not 262 (the headline two
+sections below), and not the 282 a4d47e4's commit message reported** (that
+count didn't exclude the probe). The gap between 281 and 262 **predates this
+task, is unchanged by it, and remains unreconciled** — a completed sweep is
+still needed to produce a fresh built/refused/errored breakdown; this
+session's attempt did not produce one.
+
+**The `End_94`/`GT_Groove` anomaly a4d47e4 flagged is confirmed still
+present, unchanged, on disk today:**
+
+| song | native parts | vs. corpus median (6, p75=13) |
+|---|---:|---|
+| `End_94` | **1,190** | ~200x |
+| `GT_Groove` | **402** | ~67x |
+| `L-Forza_long_edit` | 174 | ~29x |
+| `Stort_Plaster` | 137 | ~23x |
+| `L-Forza_Remix` | 127 | ~21x |
+
+Median part count across all 281 songs is 6 (p25=3, p75=13, max=1,190). These
+five sit far outside that distribution. `git show 6aa2162` (the variant-D
+walk fix) touches only D-decode code and none of these five are variant D, so
+this is confirmed a **separate, still-unexplained defect** — not a side
+effect of the walk fix, and not something this task's failed rebuild attempt
+could confirm or refute either way.
+
+**Variant-D table below re-verified against disk today, unchanged** (as
+expected — nothing rebuilt): `Culture_Mix_1` 1 part, `Culture_Mix_2` 2,
+`Dream` 1, `Onkie_Donkie` 2, `Lame` 1 — exactly matches a4d47e4. No drift,
+confirming the corpus genuinely did not move.
 
 ## Stage A
 
