@@ -463,6 +463,44 @@ class ConfigPanel(QWidget):
             },
         }
 
+    def set_config(self, config: dict):
+        """Push an externally-owned config dict onto the panel's controls.
+
+        The inverse of `get_config()` -- used when a caller (preset apply,
+        saved-settings load, batch-history restore) changes `PipelineConfig`
+        out from under the panel and needs the widgets to catch up. Signals
+        are blocked while each control is updated so this does not re-emit
+        `config_changed` once per widget; callers that want the panel's
+        listeners refreshed should read `get_config()` (or the source config)
+        themselves afterwards.
+        """
+        mode = config.get("mode", "simple")
+        for radio in (self.simple_radio, self.advanced_radio, self.custom_radio):
+            radio.blockSignals(True)
+        self.simple_radio.setChecked(mode == "simple")
+        self.advanced_radio.setChecked(mode == "advanced")
+        self.custom_radio.setChecked(mode == "custom")
+        for radio in (self.simple_radio, self.advanced_radio, self.custom_radio):
+            radio.blockSignals(False)
+
+        driver = config.get("primary_driver")
+        if driver in self.DRIVERS:
+            self.driver_combo.blockSignals(True)
+            self.driver_combo.setCurrentText(driver)
+            self.driver_combo.blockSignals(False)
+
+        output_directory = config.get("output_directory")
+        if output_directory is not None:
+            self.output_dir_label.setText(output_directory)
+
+        enabled_steps = config.get("enabled_steps", {})
+        for step_id, checkbox in self.step_checkboxes.items():
+            if step_id not in enabled_steps:
+                continue
+            checkbox.blockSignals(True)
+            checkbox.setChecked(enabled_steps[step_id])
+            checkbox.blockSignals(False)
+
 
 class StatusBadge(QLabel):
     """

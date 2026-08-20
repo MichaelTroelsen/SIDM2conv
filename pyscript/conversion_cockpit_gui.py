@@ -44,7 +44,7 @@ except ImportError:
 # Import cockpit modules
 from conversion_executor import ConversionExecutor
 from pipeline_config import PipelineConfig, PipelineStep
-from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStreamWidget
+from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStreamWidget, ConfigPanel
 from cockpit_history_widgets import BatchHistorySectionWidget, HistoryControlWidget
 from batch_history_manager import BatchHistoryManager
 from cockpit_styles import ColorScheme, IconGenerator, StyleSheet
@@ -357,100 +357,18 @@ class CockpitMainWindow(QMainWindow):
         layout = QVBoxLayout(scroll_content)
         layout.setSpacing(15)
 
-        # === Mode Selection ===
-        mode_group = QGroupBox("Mode")
-        mode_layout = QVBoxLayout()
+        # === Configuration Panel (mode / driver / output dir / pipeline steps) ===
+        # ConfigPanel (cockpit_widgets.py) owns these four controls and emits
+        # a single `config_changed` dict on any edit; on_config_panel_changed()
+        # applies that dict directly onto self.config, the same PipelineConfig
+        # instance self.executor holds, so a selection here reaches
+        # ConversionExecutor._get_step_command() without any executor change.
+        self.config_panel = ConfigPanel()
+        self.config_panel.config_changed.connect(self.on_config_panel_changed)
+        layout.addWidget(self.config_panel)
 
-        mode_label = QLabel("Select conversion mode:")
-        mode_layout.addWidget(mode_label)
-
-        self.mode_simple_radio = QCheckBox("Simple Mode (Essential steps: conversion, packing, validation)")
-        self.mode_simple_radio.setChecked(True)
-        self.mode_simple_radio.toggled.connect(lambda: self.on_mode_changed("simple"))
-        mode_layout.addWidget(self.mode_simple_radio)
-
-        self.mode_advanced_radio = QCheckBox("Advanced Mode (All 14 pipeline steps)")
-        self.mode_advanced_radio.toggled.connect(lambda: self.on_mode_changed("advanced"))
-        mode_layout.addWidget(self.mode_advanced_radio)
-
-        self.mode_custom_radio = QCheckBox("Custom Mode (Choose your own steps)")
-        self.mode_custom_radio.toggled.connect(lambda: self.on_mode_changed("custom"))
-        mode_layout.addWidget(self.mode_custom_radio)
-
-        mode_group.setLayout(mode_layout)
-        layout.addWidget(mode_group)
-
-        # === Driver Configuration ===
-        driver_group = QGroupBox("Driver Configuration")
-        driver_layout = QVBoxLayout()
-
-        # Primary driver selection
-        driver_select_layout = QHBoxLayout()
-        driver_select_layout.addWidget(QLabel("Primary Driver:"))
-
-        self.driver_combo = QComboBox()
-        self.driver_combo.addItems(["laxity", "driver11", "np20"])
-        self.driver_combo.setCurrentText("laxity")
-        self.driver_combo.currentTextChanged.connect(self.on_driver_changed)
-        driver_select_layout.addWidget(self.driver_combo)
-        driver_select_layout.addStretch()
-
-        driver_layout.addLayout(driver_select_layout)
-
-        # Generate both option
-        self.generate_both_cb = QCheckBox("Generate both NP20 and Driver 11 versions")
-        driver_layout.addWidget(self.generate_both_cb)
-
-        # Output directory
-        output_layout = QHBoxLayout()
-        output_layout.addWidget(QLabel("Output Directory:"))
-
-        self.output_dir_label = QLabel(self.config.output_directory)
-        self.output_dir_label.setStyleSheet("background-color: #f0f0f0; padding: 5px;")
-        output_layout.addWidget(self.output_dir_label, 1)
-
-        output_browse_btn = QPushButton("Browse...")
-        output_browse_btn.clicked.connect(self.browse_output_directory)
-        output_layout.addWidget(output_browse_btn)
-
-        output_new_btn = QPushButton("New")
-        output_new_btn.clicked.connect(self.create_new_output_directory)
-        output_layout.addWidget(output_new_btn)
-
-        driver_layout.addLayout(output_layout)
-
-        # Options
-        self.overwrite_cb = QCheckBox("Overwrite existing files")
-        self.overwrite_cb.setChecked(self.config.overwrite_existing)
-        driver_layout.addWidget(self.overwrite_cb)
-
-        self.nested_dirs_cb = QCheckBox("Create nested directories")
-        self.nested_dirs_cb.setChecked(self.config.create_nested_dirs)
-        driver_layout.addWidget(self.nested_dirs_cb)
-
-        driver_group.setLayout(driver_layout)
-        layout.addWidget(driver_group)
-
-        # === Pipeline Steps ===
-        steps_group = QGroupBox("Pipeline Steps")
-        steps_layout = QVBoxLayout()
-
-        steps_label = QLabel("Select which steps to execute:")
-        steps_label.setStyleSheet("font-weight: bold;")
-        steps_layout.addWidget(steps_label)
-
-        # Create checkboxes for each pipeline step
-        self.step_checkboxes = {}
-        from pipeline_config import PipelineStep
-
-        for step in PipelineStep:
-            cb = QCheckBox(f"{step.description} {'(Required)' if step.default_enabled else ''}")
-            cb.setChecked(self.config.enabled_steps.get(step.step_id, step.default_enabled))
-            cb.toggled.connect(lambda checked, s=step.step_id: self.on_step_toggled(s, checked))
-            steps_layout.addWidget(cb)
-            self.step_checkboxes[step.step_id] = cb
-
-        # Presets buttons
+        # Presets buttons (apply a mode preset, or save the panel's current
+        # step selection + driver as a named custom preset)
         presets_layout = QHBoxLayout()
         presets_layout.addWidget(QLabel("Presets:"))
 
@@ -467,10 +385,37 @@ class CockpitMainWindow(QMainWindow):
         presets_layout.addWidget(save_preset_btn)
 
         presets_layout.addStretch()
-        steps_layout.addLayout(presets_layout)
+        layout.addLayout(presets_layout)
 
-        steps_group.setLayout(steps_layout)
-        layout.addWidget(steps_group)
+        # === Driver Options (fields ConfigPanel does not cover) ===
+        driver_group = QGroupBox("Driver Options")
+        driver_layout = QVBoxLayout()
+
+        # Generate both option
+        self.generate_both_cb = QCheckBox("Generate both NP20 and Driver 11 versions")
+        driver_layout.addWidget(self.generate_both_cb)
+
+        # Options
+        self.overwrite_cb = QCheckBox("Overwrite existing files")
+        self.overwrite_cb.setChecked(self.config.overwrite_existing)
+        driver_layout.addWidget(self.overwrite_cb)
+
+        self.nested_dirs_cb = QCheckBox("Create nested directories")
+        self.nested_dirs_cb.setChecked(self.config.create_nested_dirs)
+        driver_layout.addWidget(self.nested_dirs_cb)
+
+        # "New" output directory helper -- ConfigPanel's own Browse button
+        # covers picking an existing directory; this creates a fresh
+        # timestamped one and pushes it into the panel's output-dir label.
+        output_new_layout = QHBoxLayout()
+        output_new_btn = QPushButton("New Output Directory...")
+        output_new_btn.clicked.connect(self.create_new_output_directory)
+        output_new_layout.addWidget(output_new_btn)
+        output_new_layout.addStretch()
+        driver_layout.addLayout(output_new_layout)
+
+        driver_group.setLayout(driver_layout)
+        layout.addWidget(driver_group)
 
         # === Logging & Validation ===
         logging_group = QGroupBox("Logging & Validation")
@@ -1305,59 +1250,33 @@ class CockpitMainWindow(QMainWindow):
     # Configuration Methods
     # =========================================================================
 
-    def on_mode_changed(self, mode: str):
-        """Handle mode selection change"""
-        # Uncheck other mode radios
-        if mode == "simple":
-            self.mode_advanced_radio.setChecked(False)
-            self.mode_custom_radio.setChecked(False)
-        elif mode == "advanced":
-            self.mode_simple_radio.setChecked(False)
-            self.mode_custom_radio.setChecked(False)
-        elif mode == "custom":
-            self.mode_simple_radio.setChecked(False)
-            self.mode_advanced_radio.setChecked(False)
+    def on_config_panel_changed(self, cfg: dict):
+        """Handle ConfigPanel's config_changed signal (mode / driver /
+        output dir / any pipeline-step checkbox -- the panel emits its full
+        state on every edit, see cockpit_widgets.ConfigPanel.get_config()).
 
-        # Apply preset
-        self.config.set_mode(mode)
-        self.apply_config_to_ui()
+        Applies the dict directly onto self.config, which is the exact
+        PipelineConfig instance self.executor holds (see setup_executor()),
+        so a change here reaches ConversionExecutor._get_step_command()
+        without any change to the executor's interface.
+        """
+        self.config.mode = cfg["mode"]
+        self.config.primary_driver = cfg["primary_driver"]
+        self.config.output_directory = cfg["output_directory"]
+        self.config.enabled_steps.update(cfg["enabled_steps"])
         self.update_status_bar()
-
-    def on_driver_changed(self, driver: str):
-        """Handle driver selection change"""
-        self.config.primary_driver = driver
-        self.update_status_bar()
-
-    def on_step_toggled(self, step_id: str, checked: bool):
-        """Handle pipeline step checkbox toggle"""
-        if checked:
-            self.config.enable_step(step_id)
-        else:
-            self.config.disable_step(step_id)
-
-        # If mode was not custom, switch to custom
-        if self.config.mode != "custom":
-            self.mode_custom_radio.setChecked(True)
 
     def apply_preset(self, preset: str):
         """Apply a preset configuration"""
         self.config.set_mode(preset)
         self.apply_config_to_ui()
-
-        # Update mode radio buttons
-        if preset == "simple":
-            self.mode_simple_radio.setChecked(True)
-        elif preset == "advanced":
-            self.mode_advanced_radio.setChecked(True)
+        self.update_status_bar()
 
         self.log_widget.append_log("INFO", f"Applied {preset} preset")
 
     def apply_config_to_ui(self):
-        """Apply current config to UI controls"""
-        # Update step checkboxes
-        for step_id, checkbox in self.step_checkboxes.items():
-            enabled = self.config.enabled_steps.get(step_id, False)
-            checkbox.setChecked(enabled)
+        """Push self.config's live-editable state onto the ConfigPanel widget."""
+        self.config_panel.set_config(self.config.to_dict())
 
     def save_custom_preset(self):
         """Save the current step selection + driver as a named custom preset.
@@ -1375,7 +1294,7 @@ class CockpitMainWindow(QMainWindow):
 
         # Sync current UI selections into the live config before persisting
         self.config.mode = "custom"
-        self.config.primary_driver = self.driver_combo.currentText()
+        self.config.primary_driver = self.config_panel.get_config()["primary_driver"]
 
         self.settings.beginGroup(f"CustomPresets/{name}")
         self.config.save_to_settings(self.settings)
@@ -1398,27 +1317,14 @@ class CockpitMainWindow(QMainWindow):
         self.config = PipelineConfig.load_from_settings(self.settings)
         self.settings.endGroup()
 
+        self.config.mode = "custom"
         self.apply_config_to_ui()
-        self.driver_combo.setCurrentText(self.config.primary_driver)
-        self.mode_custom_radio.setChecked(True)
         self.update_status_bar()
 
         if self.executor:
             self.executor.config = self.config
 
         self.log_widget.append_log("INFO", f"Loaded custom preset '{name}'")
-
-    def browse_output_directory(self):
-        """Browse for output directory"""
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            "Select Output Directory",
-            self.config.output_directory or str(Path.home())
-        )
-        if directory:
-            self.config.output_directory = directory
-            self.output_dir_label.setText(directory)
-            self.update_status_bar()
 
     def create_new_output_directory(self):
         """Create a new output directory"""
@@ -1436,14 +1342,14 @@ class CockpitMainWindow(QMainWindow):
             new_path = Path(directory) / new_dir
             new_path.mkdir(exist_ok=True)
             self.config.output_directory = str(new_path)
-            self.output_dir_label.setText(str(new_path))
+            self.config_panel.output_dir_label.setText(str(new_path))
             self.update_status_bar()
             self.log_widget.append_log("INFO", f"Created output directory: {new_path}")
 
     def save_configuration(self):
         """Save current configuration to QSettings"""
         # Update config from UI
-        self.config.primary_driver = self.driver_combo.currentText()
+        self.config.primary_driver = self.config_panel.get_config()["primary_driver"]
         self.config.generate_both = self.generate_both_cb.isChecked()
         self.config.overwrite_existing = self.overwrite_cb.isChecked()
         self.config.create_nested_dirs = self.nested_dirs_cb.isChecked()
@@ -1465,10 +1371,9 @@ class CockpitMainWindow(QMainWindow):
         """Load configuration from QSettings"""
         self.config = PipelineConfig.load_from_settings(self.settings)
 
-        # Apply to UI
-        self.driver_combo.setCurrentText(self.config.primary_driver)
+        # Apply to UI (driver + output dir come from apply_config_to_ui() below,
+        # which pushes onto the ConfigPanel)
         self.generate_both_cb.setChecked(self.config.generate_both)
-        self.output_dir_label.setText(self.config.output_directory)
         self.overwrite_cb.setChecked(self.config.overwrite_existing)
         self.nested_dirs_cb.setChecked(self.config.create_nested_dirs)
         self.log_level_combo.setCurrentText(self.config.log_level)
@@ -1479,14 +1384,7 @@ class CockpitMainWindow(QMainWindow):
         self.stop_on_error_cb.setChecked(self.config.stop_on_error)
         self.timeout_combo.setCurrentText(f"{self.config.step_timeout_ms // 1000}s")
 
-        # Apply mode
-        if self.config.mode == "simple":
-            self.mode_simple_radio.setChecked(True)
-        elif self.config.mode == "advanced":
-            self.mode_advanced_radio.setChecked(True)
-        else:
-            self.mode_custom_radio.setChecked(True)
-
+        # Apply mode + driver + output dir + step selection to the ConfigPanel
         self.apply_config_to_ui()
         self.update_status_bar()
 
@@ -1778,21 +1676,22 @@ class CockpitMainWindow(QMainWindow):
             # Apply loaded configuration
             self.config = config
 
-            # Update UI to reflect new config
-            self.mode_simple_radio.setChecked(config.mode == "simple")
-            self.mode_advanced_radio.setChecked(config.mode == "advanced")
-            self.mode_custom_radio.setChecked(config.mode == "custom")
-
-            self.driver_combo.setCurrentText(config.primary_driver)
-            self.generate_both_cb.setChecked(config.generate_both)
-            self.output_dir_label.setText(config.output_directory)
-            self.overwrite_cb.setChecked(config.overwrite_existing)
-            self.create_nested_dirs_cb.setChecked(config.create_nested_dirs)
-            self.stop_on_error_cb.setChecked(config.stop_on_error)
-            self.concurrent_workers_spinbox.setValue(config.concurrent_workers)
-
-            # Update step checkboxes via apply_config_to_ui
+            # Update UI to reflect new config. Mode / driver / output dir /
+            # step selection live on the ConfigPanel; apply_config_to_ui()
+            # pushes self.config onto it in one call.
             self.apply_config_to_ui()
+
+            self.generate_both_cb.setChecked(config.generate_both)
+            self.overwrite_cb.setChecked(config.overwrite_existing)
+            self.nested_dirs_cb.setChecked(config.create_nested_dirs)
+            self.stop_on_error_cb.setChecked(config.stop_on_error)
+
+            # self.config was reassigned to a new PipelineConfig instance;
+            # resync the executor's reference (same pattern as
+            # load_configuration()/load_custom_preset()) so the restored
+            # settings actually reach ConversionExecutor.
+            if self.executor:
+                self.executor.config = self.config
 
             QMessageBox.information(
                 self,
