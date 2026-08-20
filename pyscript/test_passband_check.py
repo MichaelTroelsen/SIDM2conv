@@ -716,5 +716,131 @@ def test_mon_windowed_artifact_narrows_like_any_other_player(tmp_path):
     b = tmp_path / "Daring_Dots_sub0_part01.sf2"
     b.write_bytes(b"")
     (tmp_path / "Daring_Dots_sub0_part01.sf2.span").write_text("0 25\n")
-    assert pb.part_span(str(b)) == 25
     assert pb.window_for(pb.part_span(str(b)), 28) == (25, True)
+
+
+# --- mon-passband-check-does-not-glob-native-subtune-builds -----------------
+#
+# The old discovery globbed only `*_sub0_part01.sf2`, so a non-sub0 subtune
+# (`Hawkeye_sub2_part01.sf2`) or a single-window `_native.sf2` build was
+# invisible -- 20 of `out/mon`'s 27 scoreable builds, never 20 of 211 (most of
+# the 211 are legitimate part02..N siblings of an already-counted build, not
+# separately scoreable units).
+
+
+def test_mon_glob_covers_every_subtune_and_native_build(tmp_path):
+    """A song with three subtunes -- one windowed-only, one native-only, one
+    with BOTH -- must yield one representative per windowed sequence PLUS one
+    entry per native file, never collapsing the two into each other."""
+    names = [
+        # sub0: windowed only (3 parts) -- part01 is the representative.
+        "Song_sub0_part01.sf2", "Song_sub0_part02.sf2", "Song_sub0_part03.sf2",
+        # sub1: native only.
+        "Song_sub1_native.sf2",
+        # sub2: BOTH a windowed sequence and a native build -- two DIFFERENT
+        # artifacts made by two different code paths, per the task background
+        # (Cybernoid_II_sub0, Hawkeye_sub2/sub3 all ship both on disk).
+        "Song_sub2_part01.sf2", "Song_sub2_part02.sf2", "Song_sub2_native.sf2",
+    ]
+    for n in names:
+        (tmp_path / n).write_bytes(b"")
+
+    builds, skipped = pb._mon_list_builds(str(tmp_path), pb.PLAYERS["mon"])
+    got = sorted(os.path.basename(b) for b in builds)
+    assert got == sorted([
+        "Song_sub0_part01.sf2",
+        "Song_sub1_native.sf2",
+        "Song_sub2_part01.sf2", "Song_sub2_native.sf2",
+    ]), got
+    # part02/part03 are siblings of the sub0/sub2 windowed builds already
+    # selected via part01, not separately missing units.
+    assert "Song_sub0_part02.sf2" not in got
+    assert "Song_sub2_part02.sf2" not in got
+    assert skipped == []
+
+
+def test_mon_glob_reports_unplaceable_filenames_as_skipped_not_dropped(tmp_path):
+    """A file this player's naming pattern cannot parse must be REPORTED with
+    a reason, never silently absent from both the build list and any count."""
+    (tmp_path / "Song_sub0_part01.sf2").write_bytes(b"")
+    (tmp_path / "SomeOtherThing.sf2").write_bytes(b"")  # no _subN_ at all
+
+    builds, skipped = pb._mon_list_builds(str(tmp_path), pb.PLAYERS["mon"])
+    assert [os.path.basename(b) for b in builds] == ["Song_sub0_part01.sf2"]
+    assert len(skipped) == 1
+    name, reason = skipped[0]
+    assert name == "SomeOtherThing.sf2"
+    assert reason  # a non-empty reason, not just a bare filename
+
+
+def test_mon_parse_recovers_song_and_subtune_for_a_windowed_build():
+    """The original for `Song_sub2_part01.sf2` is `SID/Tel_Jeroen/Song.sid`
+    (there is no `Song_sub2.sid` on disk) driven at subtune 2 -- the same
+    `-a{sub}` convention `build_mon_native_song.py` itself uses."""
+    info = pb.build_info("out/mon/Hawkeye_sub2_part01.sf2", pb.PLAYERS["mon"])
+    assert info["orig_base"] == "Hawkeye"
+    assert info["subtune"] == 2
+    assert info["base"] == "Hawkeye_sub2"
+    assert info["sibling_glob"] == "Hawkeye_sub2_part*.sf2"
+
+
+def test_mon_parse_recovers_song_and_subtune_for_a_native_build():
+    """A native build's base label must stay distinguishable from its
+    windowed sibling's (`Hawkeye_sub2` vs `Hawkeye_sub2_native`) -- both can
+    exist on disk for the same (song, subtune) and are DIFFERENT artifacts,
+    never allowed to collide in the report or overwrite each other's row."""
+    info = pb.build_info("out/mon/Hawkeye_sub2_native.sf2", pb.PLAYERS["mon"])
+    assert info["orig_base"] == "Hawkeye"
+    assert info["subtune"] == 2
+    assert info["base"] == "Hawkeye_sub2_native"
+    assert info["sibling_glob"] is None  # no siblings; nparts must read 1
+
+
+def test_mon_measure_one_drives_the_original_at_its_own_subtune(monkeypatch, tmp_path):
+    """`_measure_one` must call siddump on the ORIGINAL with `-a{subtune}`,
+    not the constant `-a0` every other player uses -- a wrong subtune samples
+    a different song and would silently score against the wrong reference.
+    The artifact side must stay at `-a0` regardless: our own builds are
+    always single-tune."""
+    calls = []
+
+    voices = {0: {"freq": 0x1234, "wf": 0x41, "pul": 0}, 1: {}, 2: {}}
+
+    def fake_siddump(path, args):
+        calls.append((os.path.basename(path), tuple(args)))
+        return [(voices, {"volmode": 0x10})] * 3  # frame 0 dropped, 2 usable rows
+
+    monkeypatch.setattr(pb, "siddump_frames_full", fake_siddump)
+    monkeypatch.setattr(pb, "artifact_frames",
+                        lambda path, args: fake_siddump(path, args))
+    monkeypatch.setattr(pb, "find_original",
+                        lambda base, origs: f"SID/Tel_Jeroen/{base}.sid")
+
+    b = tmp_path / "Hawkeye_sub2_part01.sf2"
+    b.write_bytes(b"")
+
+    class _A:
+        seconds = 28
+
+    r = pb._measure_one(str(b), pb.PLAYERS["mon"], _A(), asserted_window=False)
+    assert r["kind"] == "measured"
+    orig_call = next(c for c in calls if c[0] == "Hawkeye.sid")
+    art_call = next(c for c in calls if c[0] == "Hawkeye_sub2_part01.sf2")
+    assert orig_call[1][0] == "-a2", orig_call
+    assert art_call[1][0] == "-a0", art_call
+
+
+def test_default_build_info_is_unchanged_for_every_other_player():
+    """`build_info` must fall back to the historic single-fixed-suffix scheme
+    for every player that does not declare `cfg["parse"]` -- widening mon's
+    discovery must not perturb hardtrack/dmc/sdi/fc/blackbird's base naming
+    or sibling counting."""
+    for player in ("hardtrack", "dmc", "sdi", "fc", "blackbird"):
+        cfg = pb.PLAYERS[player]
+        assert "parse" not in cfg
+        fake = "Some_Song" + cfg["suffix"]
+        info = pb.build_info(os.path.join("out", cfg["dir"][-1], fake), cfg)
+        assert info["base"] == "Some_Song"
+        assert info["orig_base"] == "Some_Song"
+        assert info["subtune"] == 0
+        assert info["sibling_glob"] == "Some_Song" + cfg["suffix"].replace("01", "*")

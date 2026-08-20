@@ -51,6 +51,7 @@ import concurrent.futures
 import functools
 import glob
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -60,6 +61,92 @@ from sidm2.fidelity_common import (  # noqa: E402
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ---------------------------------------------------------------------------
+# MoN artifact discovery: `out/mon` mixes two build shapes per (song,
+# subtune) that the historic single-suffix scheme (`"*" + cfg["suffix"]`,
+# matching only `*_sub0_part01.sf2`) cannot express -- see
+# `build_info`/`_default_parse` below for why a single fixed suffix string is
+# not enough once the subtune number varies.
+# ---------------------------------------------------------------------------
+
+# `{song}_sub{N}_part{PP}.sf2` (a `.span` sidecar per part) or
+# `{song}_sub{N}_native.sf2` (single-window, spanless by design -- see
+# `test_mon_native_artifacts_are_legitimately_spanless`). Both shapes are
+# written by `bin/build_mon_native_song.py` (`emit_one`, `f"{base}_sub{sub}_..."`).
+_MON_RE = re.compile(r"^(?P<song>.+)_sub(?P<sub>\d+)_(?:part(?P<part>\d+)|native)\.sf2$")
+
+
+def _mon_list_builds(build_dir, cfg):
+    """Every SCOREABLE out/mon artifact -- not just the sub0/part01 subset the
+    old fixed suffix glob matched.
+
+    `out/mon` held 211 `.sf2` files (2026-08-20) decomposing into 24 distinct
+    (song, subtune) part-sequences plus 3 ADDITIONAL single-window `_native`
+    builds for (song, subtune) pairs that also have a windowed sequence
+    (`Cybernoid_II` sub0, `Hawkeye` sub2, `Hawkeye` sub3 -- see
+    `test_mon_native_artifacts_are_legitimately_spanless`). A native build is
+    not a duplicate of part01: it comes from a different code path in the
+    same builder and is measured separately, never folded into or replacing
+    the windowed sequence's own representative.
+
+    Only ONE file represents a windowed sequence here (its lowest-numbered
+    part, normally part01) -- the rest of that sequence are siblings of the
+    SAME build, counted via `nparts`/`sibling_glob` in `build_info`, not
+    separate scoreable units. That is the same convention every other player
+    in this table already uses (only `*_part01.sid`/`.sf2` is globbed).
+
+    Returns (builds, skipped): `skipped` is `(filename, reason)` for any
+    `.sf2` in the directory the naming pattern above cannot place into a
+    (song, subtune, kind) triple -- reported, never silently dropped, so a
+    future MoN naming scheme shows up as a coverage gap instead of vanishing.
+    """
+    all_sf2 = sorted(
+        f for f in glob.glob(os.path.join(build_dir, "*.sf2"))
+        if not os.path.basename(f).startswith("_"))
+    groups = {}   # (song, sub) -> {"parts": {int: path}, "native": path|None}
+    skipped = []
+    for f in all_sf2:
+        name = os.path.basename(f)
+        m = _MON_RE.match(name)
+        if not m:
+            skipped.append((name, "does not match the mon "
+                             "_sub<N>_part<NN>/_native.sf2 naming pattern"))
+            continue
+        key = (m.group("song"), m.group("sub"))
+        g = groups.setdefault(key, {"parts": {}, "native": None})
+        if m.group("part"):
+            g["parts"][int(m.group("part"))] = f
+        else:
+            g["native"] = f
+    builds = []
+    for g in groups.values():
+        if g["parts"]:
+            builds.append(g["parts"][min(g["parts"])])
+        if g["native"]:
+            builds.append(g["native"])
+    return sorted(builds), skipped
+
+
+def _mon_parse(build_path):
+    """`build_info` override for one mon artifact: the subtune the ORIGINAL
+    must be driven at is encoded in the filename (`_sub{N}_`), but there is
+    no `Song_sub{N}.sid` on disk -- the original is `Song.sid` played at
+    subtune N (`siddump -a{N}`; the same convention `build_mon_native_song.py`
+    itself uses, e.g. `f'-a{sub}'`). Stripping a single fixed suffix, as
+    every other player does, cannot recover both the song stem AND the
+    subtune number at once when the subtune varies per artifact."""
+    name = os.path.basename(build_path)
+    m = _MON_RE.match(name)
+    song, sub, part = m.group("song"), m.group("sub"), m.group("part")
+    if part:
+        return {"base": f"{song}_sub{sub}", "orig_base": song,
+                "subtune": int(sub), "sibling_glob": f"{song}_sub{sub}_part*.sf2"}
+    # A native build has no siblings to count -- it is a single file, not a
+    # windowed sequence (`sibling_glob=None` -> `_measure_one` reports nparts=1).
+    return {"base": f"{song}_sub{sub}_native", "orig_base": song,
+            "subtune": int(sub), "sibling_glob": None}
+
 
 # Each player ships a different artifact: HardTrack writes a playable .sid
 # beside its .sf2, DMC writes only .sf2 and must be PSID-wrapped before siddump
@@ -74,8 +161,14 @@ PLAYERS = {
     # rebuilt every tune with a low-pass filter, whatever it selected") -- and
     # 131 of its 206 artifacts across 16 songs still predate that fix. The
     # builder being right is not the question this tool asks.
+    # "suffix" is kept only so `test_every_player_whose_builder_was_fixed_is_
+    # checkable`'s generic per-player sanity check (`cfg["suffix"].endswith(...)`)
+    # still has something to read; actual discovery/base-naming for mon goes
+    # through "list_builds"/"parse" below, because a single fixed suffix
+    # string cannot express a variable subtune number (see `_mon_parse`).
     "mon": {"dir": ("out", "mon"), "suffix": "_sub0_part01.sf2",
-            "origs": "Tel_Jeroen"},
+            "origs": "Tel_Jeroen", "list_builds": _mon_list_builds,
+            "parse": lambda b, _cfg: _mon_parse(b)},
     # These three builders do NOT call `passband_trace` at all, so they emit
     # low-pass unconditionally. HARDTRACK.md's cross-builder audit called that
     # "right by luck" for FC and SDI because their originals select plain
@@ -335,6 +428,32 @@ def find_original(base, origs):
     return None
 
 
+def build_info(build_path, cfg):
+    """(base, orig_base, subtune, sibling_glob) for one build.
+
+    `base` is the report label. `orig_base` is the ORIGINAL's file stem --
+    the same as `base` for every player whose filename encodes nothing beyond
+    "which song" (the historic default below). `subtune` is which subtune of
+    that original to drive with siddump (`-a{subtune}`; 0 for every player
+    except mon, whose filenames encode a subtune number the default single-
+    fixed-suffix scheme cannot separate from the song stem -- `Song_sub2_
+    part01.sf2`'s original is `Song.sid` at subtune 2, not a file called
+    `Song_sub2.sid`). `sibling_glob` is what to glob (relative to the build's
+    own directory) to count this build's total parts for `nparts`, or None
+    for a build with no siblings (a single-window build).
+
+    `cfg["parse"]` overrides the default for a player whose filenames need
+    more than "strip one fixed suffix" -- see `_mon_parse`.
+    """
+    parse = cfg.get("parse")
+    if parse:
+        return parse(build_path, cfg)
+    suffix = cfg["suffix"]
+    base = os.path.basename(build_path)[:-len(suffix)]
+    return {"base": base, "orig_base": base, "subtune": 0,
+            "sibling_glob": base + suffix.replace("01", "*")}
+
+
 def artifact_frames(path, args):
     """siddump an artifact, PSID-wrapping it first when it is a bare .sf2.
 
@@ -372,11 +491,17 @@ def _measure_one(b, cfg, a, asserted_window):
     sequential pass -- byte-identical whether or not `--jobs` parallelised
     this step, since only I/O runs concurrently and no shared mutable state
     is touched here."""
-    base = os.path.basename(b)[:-len(cfg["suffix"])]
+    info = build_info(b, cfg)
+    base, orig_base = info["base"], info["orig_base"]
+    subtune = info.get("subtune", 0)
     span = None if asserted_window else part_span(b)
     secs, derived = window_for(span, a.seconds)
-    args = ["-a0", f"-t{secs}"]
-    orig = find_original(base, cfg["origs"])
+    # The ORIGINAL may need a non-zero subtune (mon); OUR build is always a
+    # single-tune artifact, so the artifact side stays at subtune 0 even when
+    # the original side is not.
+    orig_args = [f"-a{subtune}", f"-t{secs}"]
+    art_args = ["-a0", f"-t{secs}"]
+    orig = find_original(orig_base, cfg["origs"])
     if not orig:
         return {"base": base, "kind": "no_original"}
     ref = cfg.get("ref")
@@ -384,19 +509,20 @@ def _measure_one(b, cfg, a, asserted_window):
         of = sim_reference(orig, secs)
     elif ref == "sdi_v":
         # per-file: None for the five non-V variants, which siddump drives
-        of = sdi_v_reference(orig, secs) or siddump_frames_full(orig, args)
+        of = sdi_v_reference(orig, secs) or siddump_frames_full(orig, orig_args)
     else:
-        of = siddump_frames_full(orig, args)
+        of = siddump_frames_full(orig, orig_args)
     if not has_evidence(of):
         return {"base": base, "kind": "dead"}
     om = mode_sequence(of)
     routed = routed_fraction(of)
-    dm = mode_sequence(artifact_frames(b, args))
+    dm = mode_sequence(artifact_frames(b, art_args))
     routed_seq = [g["filtctl"] & 0x0F for _v, g in of[1:]
                   if g.get("filtctl") is not None]
     pct, n, oc, dc, off, audible = compare(om, dm, routed_seq=routed_seq)
-    nparts = len(glob.glob(os.path.join(
-        os.path.dirname(b), base + cfg["suffix"].replace("01", "*"))))
+    sib_glob = info.get("sibling_glob")
+    nparts = (len(glob.glob(os.path.join(os.path.dirname(b), sib_glob)))
+              if sib_glob else 1)
     return {"base": base, "kind": "measured", "span": span, "secs": secs,
             "derived": derived, "om": om, "dm": dm, "routed": routed,
             "pct": pct, "n": n, "oc": oc, "dc": dc, "off": off,
@@ -434,12 +560,42 @@ def main(argv=None):
     cfg = PLAYERS[a.player]
     build_dir = os.path.join(ROOT, *cfg["dir"])
     # `_`-prefixed names are scratch (A/B baselines, probes), never shipped.
-    builds = sorted(b for b in glob.glob(os.path.join(build_dir, "*" + cfg["suffix"]))
-                    if not os.path.basename(b).startswith("_"))
+    # `list_builds`, when a player declares one (mon), replaces the plain
+    # single-suffix glob with something that can pick one representative per
+    # (song, subtune) AND per additional single-window build -- see
+    # `_mon_list_builds`. Every other player keeps the old behaviour exactly.
+    list_builds_fn = cfg.get("list_builds")
+    if list_builds_fn:
+        raw_builds, discovery_skipped = list_builds_fn(build_dir, cfg)
+    else:
+        raw_builds = glob.glob(os.path.join(build_dir, "*" + cfg["suffix"]))
+        discovery_skipped = []
+    builds = sorted(b for b in raw_builds if not os.path.basename(b).startswith("_"))
+
+    # The coverage line: how many artifact FILES this player's directory
+    # holds versus how many the run is actually about to measure, so a reader
+    # cannot mistake a subset for a census the way `--player mon` reporting
+    # "18/20" (of a 211-file directory) did before this. "Representative"
+    # files (siblings of an already-selected build -- part02..N of a windowed
+    # sequence) are not a gap: `nparts` inside `build_info`/`_measure_one`
+    # accounts for them per build. Genuinely unplaceable files are, and are
+    # named.
+    ext = ".sid" if cfg["suffix"].endswith(".sid") else ".sf2"
+    total_files = len([f for f in glob.glob(os.path.join(build_dir, "*" + ext))
+                       if not os.path.basename(f).startswith("_")])
+    skip_note = ""
+    if discovery_skipped:
+        shown = "; ".join(f"{n} ({r})" for n, r in discovery_skipped[:5])
+        skip_note = (f"; {len(discovery_skipped)} SKIPPED at discovery: {shown}"
+                     f"{' ...' if len(discovery_skipped) > 5 else ''}")
+    print(f"coverage: {total_files} {ext} file(s) in {build_dir} -> "
+          f"{len(builds)} representative build(s) selected for scoring"
+          f"{skip_note}")
+
     if a.files:
         want = set(a.files)
         builds = [b for b in builds
-                  if os.path.basename(b)[:-len(cfg["suffix"])] in want]
+                  if build_info(b, cfg)["base"] in want]
     sampled = bool(a.limit) and a.limit < len(builds)
     if a.limit:
         builds = builds[:a.limit]
@@ -574,6 +730,13 @@ def main(argv=None):
               f"{' ...' if len(dead) > 10 else ''}")
     print(f"\n{ok}/{len(builds)} builds select the original's passband "
           f"(or route nothing through the filter, where it cannot be heard)")
+    if discovery_skipped:
+        print(f"  {len(discovery_skipped)} file(s) in {build_dir} SKIPPED at "
+              f"discovery (not counted in the {len(builds)} above):")
+        for name, reason in discovery_skipped[:10]:
+            print(f"    {name} ({reason})")
+        if len(discovery_skipped) > 10:
+            print(f"    ... and {len(discovery_skipped) - 10} more")
     if unexercised:
         print(f"  {len(unexercised)} file(s) NOT COUNTED EITHER WAY: the "
               f"original never routes a voice and never selects a passband in "
