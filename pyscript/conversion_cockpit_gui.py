@@ -22,7 +22,7 @@ try:
         QTabWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
         QStatusBar, QProgressBar, QTextEdit, QTableWidget, QTableWidgetItem,
         QCheckBox, QComboBox, QLineEdit, QGroupBox, QHeaderView, QListWidget,
-        QSplitter, QFrame, QScrollArea
+        QSplitter, QFrame, QScrollArea, QInputDialog
     )
     from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject, QUrl, QSize
     from PyQt6.QtGui import QFont, QColor, QIcon, QDragEnterEvent, QDropEvent
@@ -1222,14 +1222,43 @@ class CockpitMainWindow(QMainWindow):
 
         # Filter for Laxity only if checkbox is checked
         if self.laxity_only_cb.isChecked():
-            # TODO: Filter by player type (requires player-id.exe integration)
-            self.log_widget.append_log("WARN", "Laxity-only filtering not yet implemented")
+            sid_files = self._filter_laxity_files(sid_files)
 
         # Add files to list
         self.file_list_widget.clear()
         self.file_list_widget.add_files([str(f) for f in sid_files])
 
         self.log_widget.append_log("INFO", f"Found {len(sid_files)} SID files")
+
+    def _filter_laxity_files(self, sid_files: List[Path]) -> List[Path]:
+        """Keep only files whose identified player maps to the native Laxity driver.
+
+        Uses DriverSelector.identify_player() (player-id.exe) + its
+        PLAYER_REGISTRY-derived mapping, the same source of truth
+        driver auto-selection uses -- NOT a raw "Laxity" substring match,
+        since e.g. "SidFactory_II/Laxity" maps to Driver 11, not the
+        native Laxity driver (see driver_selector.PLAYER_REGISTRY).
+        """
+        repo_root = str(Path(__file__).parent.parent)
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+        from sidm2.driver_selector import DriverSelector
+
+        selector = DriverSelector()
+        kept = []
+        for sid_file in sid_files:
+            try:
+                selection = selector.select_driver(sid_file)
+            except Exception as e:
+                self.log_widget.append_log("WARN", f"Player detection failed for {sid_file.name}: {e}")
+                continue
+            if selection.driver_name == "laxity":
+                kept.append(sid_file)
+
+        self.log_widget.append_log(
+            "INFO", f"Laxity-only filter: kept {len(kept)} of {len(sid_files)} files"
+        )
+        return kept
 
     def add_files_manually(self):
         """Add files manually via file dialog"""
@@ -1331,9 +1360,53 @@ class CockpitMainWindow(QMainWindow):
             checkbox.setChecked(enabled)
 
     def save_custom_preset(self):
-        """Save current configuration as custom preset"""
-        # TODO: Implement custom preset saving
-        self.log_widget.append_log("INFO", "Custom preset saving not yet implemented")
+        """Save the current step selection + driver as a named custom preset.
+
+        Persists under QSettings group "CustomPresets/<name>/Pipeline/..."
+        via PipelineConfig.save_to_settings(); load_custom_preset() reads
+        it back and pushes it onto self.config, which is what
+        ConversionExecutor._get_step_command() reads (driver + which of
+        the 14 steps run -> which commands actually get built per file).
+        """
+        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:")
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+
+        # Sync current UI selections into the live config before persisting
+        self.config.mode = "custom"
+        self.config.primary_driver = self.driver_combo.currentText()
+
+        self.settings.beginGroup(f"CustomPresets/{name}")
+        self.config.save_to_settings(self.settings)
+        self.settings.endGroup()
+
+        # Track known preset names so the UI can offer them for loading
+        known = self.settings.value("CustomPresetNames", [])
+        if isinstance(known, str):
+            known = [known] if known else []
+        known = list(known)
+        if name not in known:
+            known.append(name)
+        self.settings.setValue("CustomPresetNames", known)
+
+        self.log_widget.append_log("INFO", f"Saved custom preset '{name}'")
+
+    def load_custom_preset(self, name: str):
+        """Load a named custom preset saved by save_custom_preset() and apply it"""
+        self.settings.beginGroup(f"CustomPresets/{name}")
+        self.config = PipelineConfig.load_from_settings(self.settings)
+        self.settings.endGroup()
+
+        self.apply_config_to_ui()
+        self.driver_combo.setCurrentText(self.config.primary_driver)
+        self.mode_custom_radio.setChecked(True)
+        self.update_status_bar()
+
+        if self.executor:
+            self.executor.config = self.config
+
+        self.log_widget.append_log("INFO", f"Loaded custom preset '{name}'")
 
     def browse_output_directory(self):
         """Browse for output directory"""
@@ -1626,7 +1699,6 @@ class CockpitMainWindow(QMainWindow):
 
     def _view_result_details(self, filename: str, results: Dict):
         """View detailed results for a file"""
-        # TODO: Show a dialog with detailed file information
         details = f"File: {Path(filename).name}\n\n"
         details += f"Status: {results.get('status', 'unknown').upper()}\n"
         details += f"Driver: {results.get('driver', 'unknown')}\n"
@@ -2009,14 +2081,36 @@ class CockpitMainWindow(QMainWindow):
                 QMessageBox.warning(self, "Folder Not Found", "Output folder not found")
 
     def load_settings(self):
-        """Load saved settings from QSettings"""
-        # TODO: Load window geometry, recent files, etc.
-        pass
+        """Load saved window geometry, last input directory and recent files"""
+        geometry = self.settings.value("Window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        last_input_dir = self.settings.value("Paths/last_input_directory", "")
+        if last_input_dir:
+            self.dir_path_label.setText(last_input_dir)
+
+        recent = self.settings.value("Files/recent", [])
+        if isinstance(recent, str):
+            recent = [recent] if recent else []
+        self.recent_files = list(recent)
 
     def save_settings(self):
-        """Save settings to QSettings"""
-        # TODO: Save window geometry, recent files, etc.
-        pass
+        """Save window geometry, last input directory and recent files"""
+        self.settings.setValue("Window/geometry", self.saveGeometry())
+
+        input_dir = self.dir_path_label.text()
+        if input_dir and input_dir != "No directory selected":
+            self.settings.setValue("Paths/last_input_directory", input_dir)
+
+        # Most-recently-selected files, newest first, capped at 10
+        recent = list(getattr(self, "recent_files", []))
+        for f in self.selected_files:
+            if f in recent:
+                recent.remove(f)
+            recent.insert(0, f)
+        self.recent_files = recent[:10]
+        self.settings.setValue("Files/recent", self.recent_files)
 
     def closeEvent(self, event):
         """Handle window close event"""

@@ -10,6 +10,7 @@ Date: 2025-12-22
 """
 
 import os
+import re
 import sys
 import subprocess
 import time
@@ -203,10 +204,40 @@ class FileWorker(QRunnable):
         return success, message
 
     def _collect_results(self):
-        """Parse output files to collect results (simplified for now)"""
-        # TODO: Parse info.txt and other files to extract accuracy metrics
-        # For now, just mark as completed
-        pass
+        """Record which output files this file's pipeline actually produced,
+        and pull an accuracy percentage out of info.txt if one exists.
+
+        NOTE ON LOCKING: called from run() while self.executor._mutex is
+        already held (QMutex is non-recursive) -- do not lock/unlock here.
+
+        Note: none of the currently wired-up steps write an info.txt at
+        this path today (the "info_report" step only prints a placeholder
+        string, and the "conversion" step's sid_to_sf2.py invocation here
+        doesn't write one either) -- so result.accuracy correctly stays at
+        its 0.0 default unless/until a step starts producing one. That
+        would need changes to pipeline_config.py or scripts/sid_to_sf2.py,
+        both outside this fix's writable files.
+        """
+        output_dir = Path(self.executor.config.output_directory or "output")
+        base_name = Path(self.sid_file).stem
+        output_base = output_dir / base_name / "New"
+
+        result = self.executor.results[self.sid_file]
+
+        if output_base.exists():
+            result.output_files = sorted(
+                str(p) for p in output_base.rglob("*") if p.is_file()
+            )
+
+        info_file = output_base / "info.txt"
+        if info_file.exists():
+            try:
+                text = info_file.read_text(encoding="utf-8", errors="replace")
+                match = re.search(r"accuracy[^\d\-]*(-?\d+(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+                if match:
+                    result.accuracy = float(match.group(1))
+            except OSError:
+                pass
 
 
 class ConversionExecutor(QObject):

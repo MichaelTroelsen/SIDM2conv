@@ -15,7 +15,8 @@ try:
     from PyQt6.QtWidgets import (
         QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
         QProgressBar, QListWidget, QListWidgetItem, QTextEdit,
-        QCheckBox, QGroupBox
+        QCheckBox, QGroupBox, QRadioButton, QButtonGroup, QComboBox,
+        QPushButton, QFileDialog
     )
     from PyQt6.QtCore import Qt, pyqtSignal
     from PyQt6.QtGui import QFont, QColor, QTextCursor, QDragEnterEvent, QDropEvent
@@ -25,6 +26,8 @@ except ImportError:
     print("ERROR: PyQt6 is required for cockpit widgets")
     import sys
     sys.exit(1)
+
+from pipeline_config import PipelineStep
 
 
 class StatsCard(QGroupBox):
@@ -347,13 +350,22 @@ class ConfigPanel(QWidget):
     """
     Configuration panel widget
 
-    Provides controls for configuring pipeline parameters.
+    Provides controls for configuring pipeline parameters (mode, driver,
+    output directory, per-step enable/disable). Every control re-emits
+    `config_changed` with the panel's full state as a dict, in the same
+    shape as `PipelineConfig.to_dict()`'s live-editable subset -- a parent
+    window wires that dict onto its `PipelineConfig`, which is what
+    `ConversionExecutor._get_step_command()` reads when building each
+    step's command line.
     """
 
     config_changed = pyqtSignal(dict)  # Emits configuration dict
 
+    DRIVERS = ["laxity", "driver11", "np20"]
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.step_checkboxes = {}
         self.init_ui()
 
     def init_ui(self):
@@ -365,7 +377,15 @@ class ConfigPanel(QWidget):
         mode_group = QGroupBox("Mode")
         mode_layout = QVBoxLayout()
 
-        # TODO: Add radio buttons for Simple/Advanced/Custom
+        self.mode_button_group = QButtonGroup(self)
+        self.simple_radio = QRadioButton("Simple (Essential steps)")
+        self.advanced_radio = QRadioButton("Advanced (All pipeline steps)")
+        self.custom_radio = QRadioButton("Custom (Choose your own steps)")
+        self.simple_radio.setChecked(True)
+        for radio in (self.simple_radio, self.advanced_radio, self.custom_radio):
+            self.mode_button_group.addButton(radio)
+            radio.toggled.connect(self._on_control_changed)
+            mode_layout.addWidget(radio)
 
         mode_group.setLayout(mode_layout)
         layout.addWidget(mode_group)
@@ -374,7 +394,21 @@ class ConfigPanel(QWidget):
         driver_group = QGroupBox("Driver Configuration")
         driver_layout = QVBoxLayout()
 
-        # TODO: Add driver dropdown, output directory selection, etc.
+        driver_row = QHBoxLayout()
+        driver_row.addWidget(QLabel("Driver:"))
+        self.driver_combo = QComboBox()
+        self.driver_combo.addItems(self.DRIVERS)
+        self.driver_combo.currentTextChanged.connect(self._on_control_changed)
+        driver_row.addWidget(self.driver_combo)
+        driver_layout.addLayout(driver_row)
+
+        output_row = QHBoxLayout()
+        self.output_dir_label = QLabel("output")
+        output_row.addWidget(self.output_dir_label)
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self._browse_output_directory)
+        output_row.addWidget(browse_btn)
+        driver_layout.addLayout(output_row)
 
         driver_group.setLayout(driver_layout)
         layout.addWidget(driver_group)
@@ -383,13 +417,51 @@ class ConfigPanel(QWidget):
         steps_group = QGroupBox("Pipeline Steps")
         steps_layout = QVBoxLayout()
 
-        # TODO: Add checkboxes for each pipeline step
+        for step in PipelineStep:
+            checkbox = QCheckBox(step.description)
+            checkbox.setChecked(step.default_enabled)
+            checkbox.toggled.connect(self._on_control_changed)
+            self.step_checkboxes[step.step_id] = checkbox
+            steps_layout.addWidget(checkbox)
 
         steps_group.setLayout(steps_layout)
         layout.addWidget(steps_group)
 
         layout.addStretch()
         self.setLayout(layout)
+
+    def _browse_output_directory(self):
+        """Browse for the pipeline output directory"""
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Output Directory", self.output_dir_label.text()
+        )
+        if directory:
+            self.output_dir_label.setText(directory)
+            self._on_control_changed()
+
+    def _current_mode(self) -> str:
+        """Return the mode string for whichever radio button is checked"""
+        if self.advanced_radio.isChecked():
+            return "advanced"
+        if self.custom_radio.isChecked():
+            return "custom"
+        return "simple"
+
+    def _on_control_changed(self, *_args):
+        """Re-emit the full configuration whenever any control changes"""
+        self.config_changed.emit(self.get_config())
+
+    def get_config(self) -> dict:
+        """Collect the panel's current state as a PipelineConfig-shaped dict"""
+        return {
+            "mode": self._current_mode(),
+            "primary_driver": self.driver_combo.currentText(),
+            "output_directory": self.output_dir_label.text(),
+            "enabled_steps": {
+                step_id: checkbox.isChecked()
+                for step_id, checkbox in self.step_checkboxes.items()
+            },
+        }
 
 
 class StatusBadge(QLabel):
