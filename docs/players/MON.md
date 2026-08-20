@@ -17,8 +17,15 @@ it selected"*) is where `passband_trace` was written. **131 of the 206 `out/mon`
 `pyscript/passband_check.py --player mon`, which measures the ARTIFACT rather
 than the builder:
 
-**FIXED 2026-08-13 — 17 of 19 now correct** (the other 2 never exercise the
-filter in the window). Seven were stale artifacts and a rebuild with
+**FIXED 2026-08-13 — 17 of 19 correct at the time; re-measured 2026-08-20 as
+18 of 20** (`Supremacy` and `Viool_Tello` never exercise the filter in the
+window, both dates). The denominator grew because the corpus did, not because
+anything moved: the 20th song is a build added since. The 2026-08-20 run is also
+the first scoped to each part's **own** `.span` window (PATTERNS F8) — the
+sidecars only landed on 2026-08-14, so the 17/19 predates them and was measured
+over whole files. ⚠️ The denominator is **what `passband_check --player mon`
+globs**, and it does not glob every `_native` subtune build; treat 20 as a lower
+bound on the corpus, not a count of it. Seven were stale artifacts and a rebuild with
 `build_mon_native_song.py <sid> 0 auto` corrected them. **`Myth` was not**: it
 came back at 0.0% *after* a rebuild with its own builder, because
 `build_myth_native_song.py` never passed a passband either — a builder gap, not
