@@ -139,7 +139,13 @@ whole corpus is `Soap_Theme` at **98.5%** (19 frames, routed 73%; re-measured
 post-`00893cd` — the offset-fit rewrite moved this from the previously
 published 99.1%/8 frames). Cause: a **startup transient** — the original never
 writes a `$D418` default at INIT, so the first 19 frames run on whatever the
-register powers up holding, inaudible either way.
+register powers up holding. `passband_check.py`'s own `audible` field (gated
+on `$D417` routing a voice into the filter, computed only over the
+disagreeing frames) reads **0 of 19** over the file's own part-1 span (26s):
+none of the 19 mismatched frames are on a voice the original has routed into
+the filter in that window, so the transient is inaudible *in the sense of
+"not on a routed frame"* — not a measured loudness/onset figure for the gap
+itself.
 
 The 21 uncounted are not a pass either — `passband_check` refuses to score a
 window in which the original never routes a voice and never selects a mode.
