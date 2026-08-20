@@ -39,6 +39,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sidm2.fidelity_common import launch_failure  # noqa: E402
+from sidm2.sdi_parser import load_sid, SDIModule  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_DIR = os.path.join(ROOT, "SID", "Gallefoss_Glenn")
@@ -70,6 +71,51 @@ def corpus_files(limit=None, names=None):
     out = sorted(os.path.splitext(os.path.basename(p))[0]
                  for p in glob.glob(os.path.join(CORPUS_DIR, "*.sid")))
     return out[:limit] if limit else out
+
+
+def decoded_span(name):
+    """The trace window `bin/build_sdi_native_song.py` will use for `name`,
+    computed the SAME way the builder does it (its line ~402: max onset frame
+    across all 3 voices + 100) but WITHOUT the expensive part -- the siddump /
+    py65 trace itself. `decode_voice()` is a pure in-memory table walk over
+    the loaded binary, so scanning the whole 441-file corpus this way costs
+    well under a minute, not the 2.5 hours the traces do.
+
+    Returns None when the file can't be decoded at all (no SDI signature, or
+    the load throws) -- `build_one()` will REFUSE or ERROR on those anyway, so
+    they carry no cost signal for scheduling and sort last, not first.
+
+    This is the cost model measured in runs.jsonl (sdi-six-timeouts-at-j16):
+    build time vs trace window r=0.942, vs part count alone only r=0.420 --
+    GT_Groove (402 parts) and Culture_Mix_1 (4 parts) both cost ~1150s because
+    both trace 26-40 minutes of music, while part count alone would have
+    ranked them at opposite ends of the corpus.
+    """
+    sid = os.path.join(CORPUS_DIR, f"{name}.sid")
+    try:
+        d, la, _h = load_sid(sid)
+        m = SDIModule(d, la)
+        return max((e.frame for v in range(3) for e in m.decode_voice(v)),
+                    default=0) + 100
+    except Exception:
+        return None
+
+
+def schedule_longest_first(names):
+    """Reorder `names` by decoded span descending. A -jN pool consumes
+    ThreadPoolExecutor futures in SUBMISSION order as workers free up, so
+    submitting the corpus's 26-40 minute outliers (GT_Groove,
+    L-Forza_long_edit, the two Culture_Mix songs, Lame, Onkie_Donkie) first
+    starts them immediately across the pool instead of letting them queue
+    behind a long tail of 25-300s files and land in the LAST wave, where they
+    serialise back-to-back with nothing else left to overlap them against --
+    exactly what produced the -j16 timeouts in sdi-six-timeouts-at-j16.
+    Files whose span could not be decoded (None) sort last; they have no cost
+    signal and `build_one()` disposes of them quickly (refuse/error) either
+    way, so scheduling them early buys nothing."""
+    spans = {n: decoded_span(n) for n in names}
+    ordered = sorted(names, key=lambda n: (spans[n] is None, -(spans[n] or 0)))
+    return ordered, spans
 
 
 def parse_build_output(text):
@@ -168,6 +214,17 @@ def main(argv=None):
                          "order regardless of completion order, so a -jN run "
                          "stays comparable to -j1. NOTE --infra-abort changes "
                          "meaning under -j>1: see its help.")
+    ap.add_argument("--schedule", choices=("span-desc", "corpus-order"),
+                    default="span-desc",
+                    help="build order (default span-desc): schedule the "
+                         "longest DECODED TRACE WINDOW first so a -jN pool "
+                         "starts the corpus's 26-40 minute outliers "
+                         "immediately instead of letting them serialise "
+                         "behind a tail of short files -- see "
+                         "decoded_span()/schedule_longest_first() and "
+                         "runs.jsonl sdi-six-timeouts-at-j16. "
+                         "'corpus-order' restores the old alphabetical-by-"
+                         "filename order for comparison.")
     ap.add_argument("--infra-abort", type=int, default=3, metavar="N",
                     help="stop after N consecutive process-LAUNCH failures "
                          "(0 disables); once the host stops spawning children "
@@ -181,6 +238,14 @@ def main(argv=None):
 
     corpus = corpus_files(a.limit, a.files)
     print(f"SDI Stage B sweep -- {len(corpus)} file(s) from {CORPUS_DIR}", flush=True)
+    spans = {}
+    if a.schedule == "span-desc":
+        corpus, spans = schedule_longest_first(corpus)
+        undecoded = sum(1 for v in spans.values() if v is None)
+        top = ", ".join(f"{n}={spans[n]}" for n in corpus[:5] if spans.get(n) is not None)
+        print(f"  --schedule span-desc: ordered by decoded trace window "
+              f"descending (top 5: {top}); {undecoded} file(s) undecoded, "
+              f"sorted last", flush=True)
     results = {}
     consec_infra = 0
 
@@ -282,7 +347,8 @@ def main(argv=None):
         print(f"note: {s['thin_voices']} voice(s) scored over <250 compared "
               f"frames (5 s PAL); those are not fidelity claims")
     if a.json:
-        json.dump({"results": results, "summary": s},
+        json.dump({"results": results, "summary": s, "schedule": a.schedule,
+                   "order": corpus, "spans": spans},
                   open(a.json, "w", encoding="utf-8"), indent=1)
         print(f"\nwrote {a.json}")
     return 0
