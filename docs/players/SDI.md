@@ -487,6 +487,48 @@ previously published as 98.2%), `Bahbar_v` (no original to compare against),
 `Coming_Soon` 90.9%, `Funk_Facet` 99.0%, `Lederhosen` (static where the
 original changes twice).
 
+### 2026-08-19 correction — `Coming_Soon`/`Lederhosen` are not failures; `Neverending_Story` was a stale artifact, not a defect (task `sdi-passband-failures`)
+
+The **267 of 281** table above is superseded. A fresh full-corpus
+`passband_check --player sdi` pass, cross-checked against a rebuild at HEAD
+(`runs.jsonl` id `sdi-passband-failures`, head `80fed62`), found three of the
+rows above wrong:
+
+- **`Coming_Soon` is 100.0%**, not the 90.9% two sections above — original and
+  build both select `off/LP`, routed 85%. The 90.9% figure was stale.
+- **`Lederhosen` is not a failure.** It is in the **unexercised** bucket —
+  `off` on BOTH sides, measured inside its own part-1 span — not the failed
+  bucket the table two sections above put it in.
+- **`Neverending_Story`'s 16.3%/UNCONFIRMED reading (further above) was a
+  phantom, not the corpus's worst defect.** The 26 files on disk that produced
+  that reading are **46.8h old against a corpus median part-01 age of
+  21.4h**, predating both the phase-2 rebuild and the `.span` sidecar
+  (`PATTERNS.md` F8) the unconfirmed-row guard depends on. Rebuilding the file
+  at HEAD does not reproduce a worse score — the builder **refuses to build
+  it**: `REFUSING to build: this file cannot be driven by measure_onsets
+  (self-IRQ / multispeed)`, at 59/161 emulated onsets vs. trace. It belongs
+  with the 62 files the sweep table below already reports refused for that
+  same reason — **a refused build, not a filter defect.** Its 26 stale
+  artifacts were quarantined this session (moved, not deleted, to job scratch —
+  not this repo's working tree — pending a decision on whether the shipped
+  corpus should keep them).
+
+With that phantom row removed, a full re-run reports:
+
+| | |
+|---|---:|
+| select the original's passband | **271 of 280** |
+| unexercised | 8 |
+| unconfirmed | 0 |
+| failed | **1** — `Bahbar_v` only (no original SID on disk) |
+
+`271 + 8 + 1 = 280`. The **numerator is unchanged at 271** — this is a
+corrected denominator, not an improvement: the phantom row was removed, no
+build was fixed. Separately, `Arabia` and `Funk_Facet` (97.8%/99.0% above) are
+both **100.0%** with the SDI-scoped filter flags now defaulted on
+(`bin/build_sdi_native_song.py`, task `filt-flags-scope-to-sdi`) — leaving
+`Bahbar_v` (requires a source file not on disk) as the sole remaining failure.
+
 ### The corpus sweep (`pyscript/sdi_native_sweep.py`, 2026-08-12)
 
 The figures above came from `bin/_sdi_stageb_sweep.py` — **untracked**
