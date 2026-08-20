@@ -627,8 +627,17 @@ it differs from raw**, with its own `n`. Quote both: raw alone hides a
 regression behind a rest, and audible alone is blind to a release-tail defect
 (the exact trap `MATTGRAY.md` records).
 
-**Corpus effect (all 88 rebuilt, 2026-08-15).** 70 scored / 14 tables-not-located
-/ 4 errored, 210 voices. Per-voice worst-of-three-metrics:
+**Corpus effect (2026-08-15).** 70 scored / 14 tables-not-located / 4 errored,
+210 voices. Per-voice worst-of-three-metrics below. **Correction (2026-08-19,
+`shipped-corpora-stale-vs-head`): this was NOT "all 88 rebuilt."** Bisecting
+the on-disk `out/dmc/*.sf2` against the shipped corpus found 3 of the 88 —
+`Test`, `Fourth_Dimension`, `First_Try_PSX` — still building at an older
+commit (`Test` gave 10 parts at `1498c3b`, 7 at `afd2f63` — the actual
+2026-08-15 16:19 F10/F11 fix — and 7 at HEAD, versus 14 parts in what had
+shipped). They are deterministic and current as of that correction; the
+`Test`/`First_Try_PSX` before/after rows quoted below were measured directly
+and are unaffected, but the corpus-wide "all 88" framing was false for those
+3 files until the bisection rebuilt them.
 
 | | before | after |
 |---|---:|---:|
@@ -663,6 +672,29 @@ never opens, the oscillator sits in TEST reset, and freq and pulse are frozen
 while the original arpeggiates. A silent voice that the raw column had been
 reporting as 61.4% for as long as the file has been built. It is the **only**
 voice in the corpus where audible is more than 10 points below raw. Open.
+
+**`FILT_LEAD`/`FILT_EXACT_PB` — ZERO of 70 DMC songs respond (2026-08-19).**
+`filt-flags-adopt-as-default` first reported DMC as the one player these
+shared `detect_filter_drives` flags cost something: `Predictable_main`
+"1 part → 4 parts" and audible v1 freq "100.0 → 99.35" with the flags on.
+`dmc-predictable-main-part-split` retracted that same day: built serially at
+HEAD, flags-ON and flags-OFF `Predictable_main` are **byte-identical**
+(4 parts, combined md5 `154757d5924b` either way; 3 consecutive OFF builds
+also byte-identical to each other, confirming the serial build is
+deterministic). The apparent 1-part / regressed-freq result came from the
+OFF arm having been built via `pyscript/dmc_native_sweep.py --build -j8`,
+which is non-reproducible for this song — a build-concurrency flake
+(`dmc-corpus-rebuild-serial-vs-j8`, open), not a filter-flag effect. **DMC
+pays no cost from either flag**; both remain scoped to SDI only
+(`bin/build_sdi_native_song.py`, `169ef09`), whose own commit message still
+quotes the retracted "+3 parts, `Predictable_main` audible v1 freq 100.0 →
+99.35" figure as DMC's cost — read that clause as superseded by this
+correction, not as current.
+
+**`out/dmc` part count: 991, not 988.** 988 was the flaky `-j8`-built total
+(`Predictable_main` at its non-reproducible 1 part). A serial rebuild at HEAD
+gives `Predictable_main` 4 parts and the corpus totals **70 songs / 991
+parts**; any older note quoting 988 predates this fix.
 
 **What is still open**: a third sub-cause, OBSERVED but not explained.
 
