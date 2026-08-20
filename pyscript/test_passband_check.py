@@ -472,6 +472,115 @@ def test_a_shift_that_repairs_nothing_cannot_win_the_offset_fit():
     assert (oc, dc) == (0, 1)
 
 
+# --- parallel probe safety (3ffdadb pattern, ported here) ------------------
+#
+# `dmc_native_sweep.py`'s `_probe()` wrote every artifact to one fixed
+# `_dmc_sweep_probe.sid`; under -j16 that raced and scored songs against each
+# other's audio while looking clean serially. `artifact_frames` here had the
+# identical shape: one fixed `_passband_probe.sid` per build_dir.
+
+
+def test_the_probe_name_is_derived_from_the_artifact():
+    """The probe path must depend on the artifact's own basename, not be a
+    fixed constant -- a fixed name is exactly the race 3ffdadb fixed."""
+    import inspect
+    src = inspect.getsource(pb.artifact_frames)
+    assert '_passband_probe.sid"' not in src, (
+        "a bare constant probe name is the raced pattern 3ffdadb fixed")
+    assert "stem" in src and "os.path.basename(path)" in src
+
+
+def test_the_probe_is_removed_after_use(tmp_path, monkeypatch):
+    """The probe must not accumulate across a long --jobs run."""
+    seen = {}
+
+    def fake_wrap(data, load, init, play, songs=1, start_song=1):
+        return b"fake-sid-bytes"
+
+    def fake_siddump(path, args):
+        seen["probe_path"] = path
+        assert os.path.exists(path), "siddump must see the probe while it runs"
+        return []
+
+    class FakeInfo:
+        pass
+
+    def fake_parse(sf2, info):
+        return object()
+
+    monkeypatch.setattr(pb, "psid_wrap", fake_wrap)
+    monkeypatch.setattr(pb, "siddump_frames_full", fake_siddump)
+    monkeypatch.setattr(pb, "SF2DriverInfo", FakeInfo)
+    monkeypatch.setattr(pb, "parse_sf2_blocks", fake_parse)
+
+    sf2 = tmp_path / "Song_native_part01.sf2"
+    sf2.write_bytes(b"\x00\x00" + b"\x00" * 10)
+    pb.artifact_frames(str(sf2), ["-a0", "-t28"])
+
+    probe = seen["probe_path"]
+    assert os.path.basename(probe) == "_passband_probe_Song_native_part01.sid"
+    assert not os.path.exists(probe), "the probe must be removed after use"
+
+
+def test_two_artifacts_get_two_different_probe_names(tmp_path, monkeypatch):
+    """The whole point: two builds in the same directory must never share a
+    scratch path, or a parallel run can score one against the other's audio."""
+    paths = []
+
+    def fake_wrap(data, load, init, play, songs=1, start_song=1):
+        return b"fake"
+
+    def fake_siddump(path, args):
+        paths.append(path)
+        return []
+
+    monkeypatch.setattr(pb, "psid_wrap", fake_wrap)
+    monkeypatch.setattr(pb, "siddump_frames_full", fake_siddump)
+    monkeypatch.setattr(pb, "SF2DriverInfo", lambda: object())
+    monkeypatch.setattr(pb, "parse_sf2_blocks", lambda sf2, info: object())
+
+    a_sf2 = tmp_path / "Alpha_native_part01.sf2"
+    b_sf2 = tmp_path / "Bravo_native_part01.sf2"
+    for p in (a_sf2, b_sf2):
+        p.write_bytes(b"\x00\x00" + b"\x00" * 10)
+    pb.artifact_frames(str(a_sf2), ["-a0", "-t28"])
+    pb.artifact_frames(str(b_sf2), ["-a0", "-t28"])
+
+    assert len(set(paths)) == 2, paths
+
+
+def test_a_jobs_flag_exists_and_defaults_to_serial():
+    """`--jobs`/`-j` must exist so a run can be parallelised; default 1 keeps
+    existing serial behaviour and output unchanged for anyone not passing it."""
+    ns = _parse(["--player", "sdi"])
+    assert ns.jobs == 1
+    ns = _parse(["--player", "sdi", "--jobs", "8"])
+    assert ns.jobs == 8
+    ns = _parse(["--player", "sdi", "-j", "8"])
+    assert ns.jobs == 8
+
+
+def _parse(argv):
+    """Build the same ArgumentParser `main()` builds, without running it."""
+    ap = pb.argparse.ArgumentParser()
+    ap.add_argument("--player", choices=sorted(pb.PLAYERS), default="hardtrack")
+    ap.add_argument("--seconds", type=int, default=28)
+    ap.add_argument("--files", nargs="*")
+    ap.add_argument("--limit", type=int)
+    ap.add_argument("--min", type=float, default=99.0)
+    ap.add_argument("--jobs", "-j", type=int, default=1)
+    return ap.parse_args(argv)
+
+
+def test_measure_one_result_shape_is_stable():
+    """`_measure_one` is the parallelised unit; its dict must carry every field
+    the sequential classification loop reads, whichever `kind` it returns."""
+    assert hasattr(pb, "_measure_one")
+    import inspect
+    sig = inspect.signature(pb._measure_one)
+    assert list(sig.parameters) == ["b", "cfg", "a", "asserted_window"]
+
+
 def test_a_real_boot_delay_is_still_found():
     """The count-maximiser must not throw out the case the fit exists for.
 

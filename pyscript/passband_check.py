@@ -47,6 +47,8 @@ right", never "the song's is". A DIRTY result is still conclusive.
 Exit 0 = every build agrees, 1 = at least one disagrees, 2 = nothing to check.
 """
 import argparse
+import concurrent.futures
+import functools
 import glob
 import os
 import sys
@@ -336,18 +338,69 @@ def find_original(base, origs):
 def artifact_frames(path, args):
     """siddump an artifact, PSID-wrapping it first when it is a bare .sf2.
 
-    The wrap is the same one the builders and sweeps use; writing it beside the
-    source would litter `out/`, so it goes to a single scratch name that is
-    overwritten per file and never read again.
+    The wrap is the same one the builders and sweeps use. The probe name is
+    derived from the ARTIFACT, not a constant. A single shared scratch name is
+    invisible while this runs serially and is a race the moment it does not:
+    two `--jobs` workers writing and reading the same fixed path can score one
+    song against another song's audio -- exactly the bug `dmc_native_sweep.py`
+    shipped and fixed in 3ffdadb (`_dmc_sweep_probe.sid` -> a per-artifact
+    name). Ported here rather than reinvented. The probe is removed after use
+    so per-artifact names cannot accumulate under a long `--jobs` run.
     """
     if path.lower().endswith(".sid"):
         return siddump_frames_full(path, args)
     sf2 = open(path, "rb").read()
     info = SF2DriverInfo()
     sla = parse_sf2_blocks(sf2, info)
-    probe = os.path.join(os.path.dirname(path), "_passband_probe.sid")
+    stem = os.path.splitext(os.path.basename(path))[0]
+    probe = os.path.join(os.path.dirname(path), f"_passband_probe_{stem}.sid")
     open(probe, "wb").write(psid_wrap(sf2[2:], sla, 0x1000, 0x1003))
-    return siddump_frames_full(probe, args)
+    try:
+        return siddump_frames_full(probe, args)
+    finally:
+        try:
+            os.remove(probe)
+        except OSError:
+            pass
+
+
+def _measure_one(b, cfg, a, asserted_window):
+    """Everything about one build that touches disk or a subprocess: siddump
+    on the original, siddump on the artifact (via `artifact_frames`'s
+    per-artifact scratch probe), and the offset-fit comparison. Returns a
+    plain dict so the classification/printing that follows can stay a single
+    sequential pass -- byte-identical whether or not `--jobs` parallelised
+    this step, since only I/O runs concurrently and no shared mutable state
+    is touched here."""
+    base = os.path.basename(b)[:-len(cfg["suffix"])]
+    span = None if asserted_window else part_span(b)
+    secs, derived = window_for(span, a.seconds)
+    args = ["-a0", f"-t{secs}"]
+    orig = find_original(base, cfg["origs"])
+    if not orig:
+        return {"base": base, "kind": "no_original"}
+    ref = cfg.get("ref")
+    if ref == "sim":
+        of = sim_reference(orig, secs)
+    elif ref == "sdi_v":
+        # per-file: None for the five non-V variants, which siddump drives
+        of = sdi_v_reference(orig, secs) or siddump_frames_full(orig, args)
+    else:
+        of = siddump_frames_full(orig, args)
+    if not has_evidence(of):
+        return {"base": base, "kind": "dead"}
+    om = mode_sequence(of)
+    routed = routed_fraction(of)
+    dm = mode_sequence(artifact_frames(b, args))
+    routed_seq = [g["filtctl"] & 0x0F for _v, g in of[1:]
+                  if g.get("filtctl") is not None]
+    pct, n, oc, dc, off, audible = compare(om, dm, routed_seq=routed_seq)
+    nparts = len(glob.glob(os.path.join(
+        os.path.dirname(b), base + cfg["suffix"].replace("01", "*"))))
+    return {"base": base, "kind": "measured", "span": span, "secs": secs,
+            "derived": derived, "om": om, "dm": dm, "routed": routed,
+            "pct": pct, "n": n, "oc": oc, "dc": dc, "off": off,
+            "audible": audible, "nparts": nparts}
 
 
 def main(argv=None):
@@ -366,6 +419,16 @@ def main(argv=None):
                          "so; a sampled count is not a corpus verdict")
     ap.add_argument("--min", type=float, default=99.0, metavar="PCT",
                     help="fail below this frame-wise mode agreement")
+    ap.add_argument("--jobs", "-j", type=int, default=1, metavar="N",
+                    help="parallel workers for the siddump/compare step "
+                         "(threads; siddump is a subprocess so the GIL does "
+                         "not serialise it). Each build gets its own scratch "
+                         "probe name -- see `artifact_frames` -- so this is "
+                         "safe; a shared fixed probe name was the exact bug "
+                         "`dmc_native_sweep.py` fixed in 3ffdadb. Printing "
+                         "and pass/fail classification stay single-threaded "
+                         "and in build order, so -jN output matches -j1 "
+                         "exactly")
     a = ap.parse_args(argv)
 
     cfg = PLAYERS[a.player]
@@ -391,41 +454,36 @@ def main(argv=None):
     dead = []
     unconfirmed = []
     asserted_window = any(a_.startswith("--seconds") for a_ in (argv or sys.argv[1:]))
-    for b in builds:
-        base = os.path.basename(b)[:-len(cfg["suffix"])]
-        # A recorded span beats the global window, and it beats it in ONE
-        # direction: never widen past --seconds, because a longer window is the
-        # over-run this whole guard exists for. An explicit --seconds still
-        # wins, so an operator can always narrow further.
-        span = None if asserted_window else part_span(b)
-        secs, derived = window_for(span, a.seconds)
-        args = ["-a0", f"-t{secs}"]
-        orig = find_original(base, cfg["origs"])
-        if not orig:
+
+    # Measurement (siddump + compare, one call per build) may run in parallel;
+    # classification and printing below always run as a single sequential pass
+    # over `results` in build order, so -jN output is byte-identical to -j1.
+    worker = functools.partial(_measure_one, cfg=cfg, a=a,
+                                asserted_window=asserted_window)
+    if a.jobs and a.jobs > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as ex:
+            results = list(ex.map(worker, builds))
+    else:
+        results = [worker(b) for b in builds]
+
+    for r in results:
+        base = r["base"]
+        if r["kind"] == "no_original":
             print(f"{base:<28s} NO ORIGINAL FOUND -- cannot check")
             bad.append((base, "no original"))
             continue
-        ref = cfg.get("ref")
-        if ref == "sim":
-            of = sim_reference(orig, secs)
-        elif ref == "sdi_v":
-            # per-file: None for the five non-V variants, which siddump drives
-            of = sdi_v_reference(orig, secs) or siddump_frames_full(orig, args)
-        else:
-            of = siddump_frames_full(orig, args)
-        if not has_evidence(of):
+        if r["kind"] == "dead":
             # NOT a result about this build. Refuse loudly rather than compare
             # against silence -- see `has_evidence`.
             print(f"{base:<28s} NO REFERENCE TRACE -- siddump drove no voice "
                   f"on the ORIGINAL; nothing here can be compared")
             dead.append(base)
             continue
-        om = mode_sequence(of)
-        routed = routed_fraction(of)
-        dm = mode_sequence(artifact_frames(b, args))
-        routed_seq = [g["filtctl"] & 0x0F for _v, g in of[1:]
-                      if g.get("filtctl") is not None]
-        pct, n, oc, dc, off, audible = compare(om, dm, routed_seq=routed_seq)
+        span, secs, derived = r["span"], r["secs"], r["derived"]
+        om, dm, routed = r["om"], r["dm"], r["routed"]
+        pct, n, oc, dc, off, audible = (
+            r["pct"], r["n"], r["oc"], r["dc"], r["off"], r["audible"])
+        nparts = r["nparts"]
         on, _ = describe(om) if om else (["n/a"], 0)
         dn, _ = describe(dm) if dm else (["n/a"], 0)
         shown = "n/a" if pct is None else f"{pct:.1f}"
@@ -457,8 +515,6 @@ def main(argv=None):
             # genuinely static build against a modulating original cannot reach
             # the threshold anyway -- `Hopscotch` sat at 87.2%.
             why = (f"static vs {oc} changes" if oc and not dc else f"{pct:.1f}%")
-            nparts = len(glob.glob(os.path.join(
-                build_dir, base + cfg["suffix"].replace("01", "*"))))
             if nparts > 1 and not asserted_window and span is None:
                 # Our part 1 may have looped inside this window. Over-run can
                 # only MANUFACTURE disagreement, so this is not counted as a
