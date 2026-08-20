@@ -248,9 +248,32 @@ def psid_wrap(data, load, init, play, songs=1, start_song=1):
 # ---------------------------------------------------------------------------
 
 def run_siddump(path, args):
-    """Run the Python siddump on `path` with extra `args`; returns its stdout."""
-    return subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', path] + list(args),
-                          capture_output=True, text=True).stdout
+    """Run the Python siddump on `path` with extra `args`; returns its stdout.
+
+    RAISES on a non-zero exit instead of returning ''. A failed siddump used to
+    come back as an empty string, and an empty trace is NOT inert: the native
+    builders derive their per-note (FM, pulse) bundles from it, so `fits()` sees
+    counts under every cap and packs the whole song into ONE part — emitting a
+    silently wrong artifact with rc=0 that then scores clean. That is exactly
+    the 1-part `Predictable_main` an 88-file `-j8` corpus build produced and no
+    serial build ever reproduced. The trigger is spawn pressure, which is real
+    here: a `-j16` build running beside other work caused 3 process-launch
+    failures. Same discipline the zig64 tracer already has ("fails honestly …
+    check the exit code, don't just parse stderr") — this path simply never had
+    it, while four SCORERS guard emptiness and none of the three builders did.
+
+    `rc == 0` with empty stdout is deliberately left alone: that is a tune that
+    writes nothing, which `passband_check` and `validate_filter_accuracy` read
+    as *unexercised* rather than broken, and conflating the two would trade one
+    silent wrong answer for another.
+    """
+    r = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', path] + list(args),
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"siddump failed (rc={r.returncode}) on {path} with {list(args)}: "
+            f"{(r.stderr or r.stdout).strip()[:400] or '<no output>'}")
+    return r.stdout
 
 
 def iter_siddump_rows(txt):

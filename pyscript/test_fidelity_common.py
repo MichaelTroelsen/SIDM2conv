@@ -657,3 +657,42 @@ def test_series_shape_skips_none_instead_of_counting_it_as_a_change():
     assert FC.series_shape([100, None, None, 100, None]) == (0, 0)
     assert FC.series_shape([100, None, 140, None, 120]) == (2, 60)
     assert FC.series_shape([None, None]) == (0, 0)
+
+
+# --- run_siddump: a failed trace must not masquerade as an empty one ---------
+# The native builders derive their per-note bundles FROM the trace, so an empty
+# one makes `fits()` see counts under every cap and pack a whole song into ONE
+# part -- a silently wrong artifact, emitted with rc=0, that then scores clean.
+# That produced the 1-part `Predictable_main` no serial build reproduced.
+
+class _FakeCompleted:
+    def __init__(self, rc, out="", err=""):
+        self.returncode, self.stdout, self.stderr = rc, out, err
+
+
+def test_run_siddump_raises_on_nonzero_exit(monkeypatch):
+    """A failed siddump is an ERROR, not a tune that wrote nothing."""
+    monkeypatch.setattr(FC.subprocess, "run",
+                        lambda *a, **k: _FakeCompleted(1, "", "Error: File not found"))
+    with pytest.raises(RuntimeError) as e:
+        FC.run_siddump("whatever.sid", ["-t2"])
+    assert "rc=1" in str(e.value)
+    assert "File not found" in str(e.value)      # the real cause is carried, not swallowed
+
+
+def test_run_siddump_allows_empty_output_when_the_exit_was_clean(monkeypatch):
+    """THE DISTINCTION IS THE POINT. rc==0 with no rows is a tune that never
+    writes -- `passband_check` and `validate_filter_accuracy` read that as
+    *unexercised*, not broken. Raising here would trade one silent wrong answer
+    for another, so it must stay a plain empty string."""
+    monkeypatch.setattr(FC.subprocess, "run", lambda *a, **k: _FakeCompleted(0, ""))
+    assert FC.run_siddump("silent.sid", ["-t2"]) == ""
+
+
+def test_siddump_per_frame_propagates_the_failure_instead_of_returning_no_frames(monkeypatch):
+    """The pre-fix behaviour was 0 frames and no exception -- which is what made
+    the empty trace reach the builder in the first place."""
+    monkeypatch.setattr(FC.subprocess, "run",
+                        lambda *a, **k: _FakeCompleted(2, "", "boom"))
+    with pytest.raises(RuntimeError):
+        FC.siddump_per_frame("whatever.sid", ["-t2"])
