@@ -558,24 +558,34 @@ one file at a time.
 | A | 120 | 99.9 | 30 | 8 |
 | B | 75 | 99.9 | 16 | 10 |
 | C | 201 | 98.1 | 21 | 21 |
-| D | 15 | **95.9** | 2 | **7 of 15** |
+| D | 15 | **89.9** | 4 | **8 of 15** |
 | DELTA | 21 | 99.9 | 4 | 0 |
 | E | 336 | 99.7 | 59 | 17 |
 | V | 18 | 96.8 | 0 | 2 |
 
-**103 of the 262 have all three voices ≥99; 11 are 100/100/100.**
+**102 of the 262 have all three voices ≥99** (was 103 before the D rescore:
+`Culture_Mix_1` dropped out, its old 99.7 voice-0 read was itself stale —
+see below); **11 are 100/100/100.**
 
 Read these with three conditions attached:
 
-- **A median is not a pass rate.** 65 of 786 voices are below 90, and they are
-  not spread evenly: **variant D is 7 of its 15**, the only variant where a
-  broken voice is the common case (`Onkie_Donkie` 47.7/77.2/71.1, `Lame`
-  55.3/86.1/99.3, `Culture_Mix_2` 56.3/99.6/99.9 — yet `Culture_Mix_1` is
-  99.7/100/100). D is 5 files; treat its median as a sample, not a verdict.
-  ⚠️ **These five voice scores predate the 2026-08-20 walk-length fix below**
-  (measured against builds windowed to the old ~2401s tick-cap ceiling, not
-  the corrected 71-262s windows) and have not been re-scored since — read
-  them as historical, not current.
+- **A median is not a pass rate.** 66 of 786 voices are below 90, and they are
+  not spread evenly: **variant D is 8 of its 15**, the only variant where a
+  broken voice is the common case. D is 5 files; treat its median as a sample,
+  not a verdict. **Rescored 2026-08-20 against the post-walk-fix builds**
+  (`6aa2162`), each file measured over its own part-1 `.sf2.span` window, not
+  the stale ~2401s window the pre-fix figures below used:
+  `Onkie_Donkie` 70.5/100.0/83.7 (n=6800, span 0–136s, part 1 of 2),
+  `Lame` 50.9/88.0/99.9 (n=3550, span 0–71s),
+  `Culture_Mix_1` 94.2/100.0/100.0 (n=6600, span 0–132s),
+  `Culture_Mix_2` 54.1/92.3/100.0 (n=5000, span 0–100s, part 1 of 2),
+  `Dream` 74.3/87.6/89.9 (n=6200, span 0–124s). No `n` is underpowered
+  (all ≫250, the 5s-PAL floor). Scored via `build_sdi_native_song._fidelity`
+  against the on-disk part01 `.sf2` — a score-only read, no rebuild. The
+  RETIRED pre-fix figures were `Onkie_Donkie` 47.7/77.2/71.1, `Lame`
+  55.3/86.1/99.3, `Culture_Mix_2` 56.3/99.6/99.9, `Culture_Mix_1` 99.7/100/100
+  (measured against builds windowed to the old ~2401s tick-cap ceiling) — do
+  not quote them, they no longer describe anything on disk.
 - **The `n` is the SONG LENGTH, not per-voice information.** The builder now
   prints `voice N: X%  (n=…)` and routes through `fmt_pct(p, n=…)`, so a thin
   comparison gets the `!` marker — but the count is **identical across all three
@@ -638,9 +648,13 @@ does not touch. That is a refusal, not a regression.
 
 Before the fix all five reported windows near the old ~2401s tick-cap
 ceiling (the commit message independently confirms `Lame`: 31 parts → 1,
-~2405s trace → ~75s). The per-file voice scores two subsections above were
-measured against those pre-fix builds and are flagged there as not yet
-re-scored — rescoring needs the corpus sweep, which is out of scope here.
+~2405s trace → ~75s). **Rescored 2026-08-20** (task
+`sdi-d-voices-rescore-post-walkfix`) directly against these on-disk part01
+`.sf2`s, each over its own span above — see the updated figures two
+subsections up. The corpus sweep this note used to say was needed was not:
+`build_sdi_native_song._fidelity` reads an already-built `.sf2` and rewraps
+it as a PSID probe, so scoring these 5 files cost two `siddump` runs each,
+not a rebuild.
 
 ### 2026-08-20 — the "262 of 441 build" headline is stale; the rebuild meant to explain it did not run (task `sdi-part-counts-stale-after-d-rebuild`)
 
