@@ -17,15 +17,23 @@ it selected"*) is where `passband_trace` was written. **131 of the 206 `out/mon`
 `pyscript/passband_check.py --player mon`, which measures the ARTIFACT rather
 than the builder:
 
-**FIXED 2026-08-13 — 17 of 19 correct at the time; re-measured 2026-08-20 as
-18 of 20** (`Supremacy` and `Viool_Tello` never exercise the filter in the
-window, both dates). The denominator grew because the corpus did, not because
-anything moved: the 20th song is a build added since. The 2026-08-20 run is also
-the first scoped to each part's **own** `.span` window (PATTERNS F8) — the
-sidecars only landed on 2026-08-14, so the 17/19 predates them and was measured
-over whole files. ⚠️ The denominator is **what `passband_check --player mon`
-globs**, and it does not glob every `_native` subtune build; treat 20 as a lower
-bound on the corpus, not a count of it. Seven were stale artifacts and a rebuild with
+**FIXED 2026-08-13; the current figure is 22 of 27** (2026-08-20). **Both
+earlier figures — 17/19 and 18/20 — are RETRACTED, and not because the corpus
+grew.** They were measured over a glob of `*_sub0_part01.sf2`, which matched 20
+of the 27 scoreable artifacts and silently dropped four non-sub0 subtunes
+(`Hawkeye` sub2/sub3, `Supremacy` sub1/sub2) and all three single-window
+`_native` builds. A denominator that never announced its own coverage read as a
+corpus verdict while being a subset nobody chose for being representative.
+
+Widening it made the number **worse, which is the point**:
+`Cybernoid_II_sub0_native` scores **84.6%** — the original holds LP+BP while
+ours is briefly off before settling — and that artifact had never been measured
+at all. `passband_check --player mon` now exits 1 on it. The other 4 of 27
+(`Supremacy` sub0/1/2, `Viool_Tello` sub0) never exercise the filter, so they
+are counted neither way. Scoring the original at its **own** subtune (`-a{N}`,
+not a hardcoded `-a0`) was part of the same fix. Measurement is scoped to each
+part's own `.span` (PATTERNS F8); those sidecars landed 2026-08-14, so the
+17/19 predates them and was taken over whole files. Seven were stale artifacts and a rebuild with
 `build_mon_native_song.py <sid> 0 auto` corrected them. **`Myth` was not**: it
 came back at 0.0% *after* a rebuild with its own builder, because
 `build_myth_native_song.py` never passed a passband either — a builder gap, not
