@@ -566,6 +566,10 @@ Read these with three conditions attached:
   broken voice is the common case (`Onkie_Donkie` 47.7/77.2/71.1, `Lame`
   55.3/86.1/99.3, `Culture_Mix_2` 56.3/99.6/99.9 — yet `Culture_Mix_1` is
   99.7/100/100). D is 5 files; treat its median as a sample, not a verdict.
+  ⚠️ **These five voice scores predate the 2026-08-20 walk-length fix below**
+  (measured against builds windowed to the old ~2401s tick-cap ceiling, not
+  the corrected 71-262s windows) and have not been re-scored since — read
+  them as historical, not current.
 - **The `n` is the SONG LENGTH, not per-voice information.** The builder now
   prints `voice N: X%  (n=…)` and routes through `fmt_pct(p, n=…)`, so a thin
   comparison gets the `!` marker — but the count is **identical across all three
@@ -597,6 +601,40 @@ Read these with three conditions attached:
 > prints the resume command; the table above is the merge of the valid 274-file
 > portion with a chunked re-run of the other 167. Pinned by
 > `pyscript/test_sdi_sweep_launch_guard.py`.
+
+### Variant-D walk was bounded by the tick cap, not the song (fixed 2026-08-20, `6aa2162`)
+
+A D track ends in `$ff` (loop), not `$fe` — true on all three voices of all 18
+D-variant files, with `$fe` appearing nowhere — so no voice ever stopped on
+its own and the walk ran to the 40,000-tick ceiling, which every caller then
+read back as the song length. `sidm2/sdi_parser.py` now bounds each voice to
+its own longest repeating pass (`pyscript/test_sdi_d_loop_guard.py` pins the
+mechanism); see the commit for the rejected alternatives (first-`$ff` stop,
+LCM-of-voices) and the siddump-repeat-period validation.
+
+Re-measured directly against `out/sdi` (part + `.sf2.span` files on disk,
+2026-08-20): of the 18 D-variant files, **5 build** (unchanged by this fix —
+same 5 built before and after). The other **13 have no artifact at all,
+before or after** — `Another_Day_in_Paradize`, `Banana`,
+`Happy_Birthday_Tg-Acme`, `Holy_Josh`, `Jessie_Jazz`, `Max_Mix_1`,
+`Mini_Poelse`, `Mummy`, `Psycho`, `Psycho_II`, `Space_Suit`, `Sveitser_Ost`
+and `Twin_Peaks` — because they hit the Stage-B onset-drivability gate
+(`measure_onsets` below 85%, "self-IRQ/multispeed"), which the loop guard
+does not touch. That is a refusal, not a regression.
+
+| file | parts on disk | window on disk (`.sf2.span`) |
+|---|---:|---|
+| `Culture_Mix_1` | **1** | 0–132s |
+| `Culture_Mix_2` | **2** | 0–100s, 100–101s |
+| `Dream` | **1** | 0–124s |
+| `Onkie_Donkie` | **2** | 0–136s, 136–262s |
+| `Lame` | **1** | 0–71s |
+
+Before the fix all five reported windows near the old ~2401s tick-cap
+ceiling (the commit message independently confirms `Lame`: 31 parts → 1,
+~2405s trace → ~75s). The per-file voice scores two subsections above were
+measured against those pre-fix builds and are flagged there as not yet
+re-scored — rescoring needs the corpus sweep, which is out of scope here.
 
 ## Stage A
 
