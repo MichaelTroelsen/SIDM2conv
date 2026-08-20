@@ -461,8 +461,28 @@ def main(argv=None):
     worker = functools.partial(_measure_one, cfg=cfg, a=a,
                                 asserted_window=asserted_window)
     if a.jobs and a.jobs > 1:
+        # Progress only -- printed in COMPLETION order to stderr, never stdout,
+        # so a -jN run's stdout stays byte-identical to -j1's (the whole point
+        # of collecting `results` before printing a single table row). Ported
+        # from `dmc_native_sweep.py` (b48b5ca): that tool's -j16 run over 88
+        # files printed its header and then NOTHING for ~14 minutes, which was
+        # once mistaken for a hang and only diagnosed by checking artifact
+        # mtimes. `as_completed` fixes the silence; `pre` keyed by build path
+        # (not completion order) is what lets the result table below still
+        # walk `builds` in build order regardless of which finished first.
+        print(f"  -j{a.jobs}: siddump/compare parallelised", file=sys.stderr,
+              flush=True)
+        pre = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as ex:
-            results = list(ex.map(worker, builds))
+            futs = {ex.submit(worker, b): b for b in builds}
+            done = 0
+            for fut in concurrent.futures.as_completed(futs):
+                done += 1
+                b = futs[fut]
+                print(f"  ...{done}/{len(futs)} done "
+                      f"({os.path.basename(b)})", file=sys.stderr, flush=True)
+                pre[b] = fut.result()
+        results = [pre[b] for b in builds]
     else:
         results = [worker(b) for b in builds]
 

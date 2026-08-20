@@ -595,3 +595,126 @@ def test_a_real_boot_delay_is_still_found():
     pct, n, _oc, _dc, off, _aud = pb.compare(orig, ours)
     assert off == LAG, "a real lag must still be fitted, got off=%d" % off
     assert pct == 100.0
+
+
+# --- MoN: the shared span mechanism, not a second one -----------------------
+#
+# `out/mon` gained `.span` sidecars for its windowed builds (task
+# `mon-artifacts-lack-span-sidecar`). `_measure_one` calls `part_span`/
+# `window_for` unconditionally on every player's build path -- there is no
+# per-player branch -- so MoN inherits the same scoping SDI and HardTrack
+# already had, for free, the moment the sidecars existed on disk. These tests
+# pin that fact rather than assume it holds by construction: a per-player
+# branch added later would be exactly the "second mechanism" the task ruled
+# out, and it would silently exempt whichever player did not get it.
+
+
+def test_measure_one_scopes_every_player_the_same_way():
+    """No player name appears in `_measure_one`'s own source, and the span
+    call is unconditional -- so `--player mon` cannot have been routed around
+    the SDI/HardTrack scoping without this failing."""
+    import inspect
+    src = inspect.getsource(pb._measure_one)
+    assert 'span = None if asserted_window else part_span(b)' in src
+    for name in ('"mon"', '"sdi"', '"hardtrack"', '"dmc"'):
+        assert name not in src, (
+            f"a literal {name} in _measure_one would mean a per-player branch")
+
+
+def test_mon_native_artifacts_are_legitimately_spanless(tmp_path):
+    """`Hawkeye_sub2_native.sf2`, `Hawkeye_sub3_native.sf2` and
+    `Cybernoid_II_sub0_native.sf2` each ship a single-window build alongside
+    their windowed `_part01..N` set (both exist side by side in `out/mon`).
+    Their label carries no `part N/M`
+    (`test_the_emitter_writes_a_span_only_for_a_windowed_label`), so
+    `_write_span` emits no sidecar for them -- and `part_span` must read that
+    as 'measure the whole file', never as an error and never as a
+    zero-length window that would compare nothing."""
+    for name in ("Hawkeye_sub2_native.sf2", "Hawkeye_sub3_native.sf2",
+                 "Cybernoid_II_sub0_native.sf2"):
+        b = tmp_path / name
+        b.write_bytes(b"")
+        assert pb.part_span(str(b)) is None, name
+        assert pb.window_for(pb.part_span(str(b)), 28) == (28, False), name
+
+
+# --- --jobs progress (b48b5ca pattern, ported here) -------------------------
+#
+# `dmc_native_sweep.py`'s -j path submitted every song, waited for ALL of them,
+# and only then printed -- an 88-file -j16 run emitted its header and then
+# silence for ~14 minutes, once mistaken for a hang. `passband_check.py`'s -j
+# path had the identical shape: `list(ex.map(worker, builds))` blocks until
+# every future is done before the classification/print loop runs at all.
+
+
+def test_jobs_progress_is_emitted_on_stderr_not_stdout(tmp_path, monkeypatch):
+    """Progress must land on stderr. That -- not merely "only progress lines
+    differ" -- is what keeps a -jN run's STDOUT byte-identical to -j1's, which
+    is the guarantee the whole `--jobs` feature was built on: classification
+    and printing stay a single sequential pass over `results` in build order.
+
+    Also proves the result table survives completion happening out of build
+    order: `Bravo` is made to finish before `Alpha` (reversed alphabetically),
+    yet the printed table -- and the `results` list it walks -- must still
+    read Alpha before Bravo, because `pre` is keyed by build path and
+    re-walked via `builds`, not via completion order."""
+    import time as _time
+
+    build_dir = tmp_path
+    a_path = str(build_dir / "Alpha_part01.sid")
+    b_path = str(build_dir / "Bravo_part01.sid")
+    for p in (a_path, b_path):
+        open(p, "wb").write(b"")
+
+    fake_players = dict(pb.PLAYERS)
+    fake_players["_test_jobs"] = {"dir": (str(build_dir),),
+                                   "suffix": "_part01.sid", "origs": "*"}
+    monkeypatch.setattr(pb, "PLAYERS", fake_players)
+
+    order = []
+
+    def fake_measure_one(b, cfg, a, asserted_window):
+        base = os.path.basename(b)
+        # Bravo finishes first despite starting second (dict/glob order is
+        # alphabetical: Alpha then Bravo) -- proves completion order and
+        # build order can genuinely differ here, not just coincide.
+        _time.sleep(0.15 if base.startswith("Alpha") else 0.02)
+        order.append(base)
+        return {"base": base[:-len(cfg["suffix"])], "kind": "no_original"}
+
+    monkeypatch.setattr(pb, "_measure_one", fake_measure_one)
+
+    import io
+    import contextlib
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = pb.main(["--player", "_test_jobs", "--jobs", "2"])
+
+    assert rc == 1, "both builds report NO ORIGINAL FOUND, which is a failure"
+    stdout_text = out.getvalue()
+    stderr_text = err.getvalue()
+
+    # Completion order really was reversed -- otherwise this test would prove
+    # nothing about build-order survival.
+    assert order == ["Bravo_part01.sid", "Alpha_part01.sid"], order
+
+    # Progress lines exist, on stderr, one per build, in COMPLETION order.
+    prog_lines = [ln for ln in stderr_text.splitlines() if "done (" in ln]
+    assert len(prog_lines) == 2
+    assert "Bravo" in prog_lines[0] and "Alpha" in prog_lines[1]
+
+    # Stdout carries NO progress lines, and the result table stays in BUILD
+    # order (Alpha before Bravo) even though Bravo completed first.
+    assert "done (" not in stdout_text
+    assert stdout_text.index("Alpha") < stdout_text.index("Bravo")
+
+
+def test_mon_windowed_artifact_narrows_like_any_other_player(tmp_path):
+    """A MoN `_part01.sf2` with a real sidecar narrows exactly the way an SDI
+    or HardTrack one does -- same functions, same result shape, no MoN-only
+    code path to drift out of sync."""
+    b = tmp_path / "Daring_Dots_sub0_part01.sf2"
+    b.write_bytes(b"")
+    (tmp_path / "Daring_Dots_sub0_part01.sf2.span").write_text("0 25\n")
+    assert pb.part_span(str(b)) == 25
+    assert pb.window_for(pb.part_span(str(b)), 28) == (25, True)
