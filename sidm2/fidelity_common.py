@@ -266,14 +266,69 @@ def run_siddump(path, args):
     writes nothing, which `passband_check` and `validate_filter_accuracy` read
     as *unexercised* rather than broken, and conflating the two would trade one
     silent wrong answer for another.
+
+    A hung siddump is the same class of failure as a bad exit code — silently
+    blocking a corpus build forever — so this also enforces a `timeout=`,
+    scaled to the `-tN` (trace seconds) requested rather than a single fixed
+    constant, because trace wall-time scales with `-t` and there is no reason
+    to assume the corpus has already produced its longest song. `_siddump_timeout`
+    documents the measurements the budget is based on.
     """
-    r = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', path] + list(args),
-                       capture_output=True, text=True)
+    timeout = _siddump_timeout(args)
+    try:
+        r = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', path] + list(args),
+                           capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"siddump timed out (>{timeout:.0f}s) on {path} with {list(args)} — "
+            f"a hung siddump would otherwise block a corpus build forever")
     if r.returncode != 0:
         raise RuntimeError(
             f"siddump failed (rc={r.returncode}) on {path} with {list(args)}: "
             f"{(r.stderr or r.stdout).strip()[:400] or '<no output>'}")
     return r.stdout
+
+
+# Budget for one run_siddump() call. Measured (clean single run, no other
+# process contention) on the -tN each native builder actually uses for a full
+# trace (`secs = span // 50 + 4`, i.e. the whole song plus a 4s margin):
+#
+#   SID/JohannesBjerregaard/Balloon.sid                 -t404 -> 19.3s wall
+#     (0.0478 s wall / s trace) -- documented project-wide as the long pole:
+#     "Balloon: 77 parts merged into ONE 400s SF2 ... the best-evidenced
+#     number in the project" (docs/players/DMC.md)
+#   SID/Gallefoss_Glenn/Ghosts_n_Goblins_Arcade.sid     -t300 -> 13.9s wall
+#     (0.0464 s wall / s trace)
+#   SID/Shogoon/Music_Box.sid                            -t300 ->  4.1s wall
+#     (0.0137 s wall / s trace)
+#
+# The slowest observed rate is ~0.048 s wall per s of trace requested. The
+# per-second budget below (0.5) is ~10x that, and the fixed floor covers
+# `py -3` interpreter startup plus the spawn contention this module's
+# docstring already documents (3 real process-launch failures under a -j16
+# build) — a hang caused by spawn pressure, not by trace length, still needs
+# room to clear before the timeout fires. This scales with the `-t` actually
+# requested rather than pinning to Balloon's 404s, because a future corpus
+# song longer than Balloon would otherwise silently convert a legitimate
+# trace into a hard failure — exactly the class of silent wrongness the rc
+# check above was added to remove, arriving from the other direction.
+_SIDDUMP_TIMEOUT_FLOOR_S = 30.0
+_SIDDUMP_TIMEOUT_PER_TRACE_SECOND_S = 0.5
+
+
+def _siddump_timeout(args):
+    """Timeout (seconds) for a run_siddump() call, from the `-tN` in `args`.
+
+    Falls back to siddump_complete.py's own default trace length (60s, from
+    its argparse `-t/--seconds` default) when no `-tN` token is present.
+    """
+    requested = 60
+    for a in args:
+        m = re.match(r'^-t(\d+)$', str(a))
+        if m:
+            requested = int(m.group(1))
+            break
+    return _SIDDUMP_TIMEOUT_FLOOR_S + requested * _SIDDUMP_TIMEOUT_PER_TRACE_SECOND_S
 
 
 def iter_siddump_rows(txt):

@@ -696,3 +696,49 @@ def test_siddump_per_frame_propagates_the_failure_instead_of_returning_no_frames
                         lambda *a, **k: _FakeCompleted(2, "", "boom"))
     with pytest.raises(RuntimeError):
         FC.siddump_per_frame("whatever.sid", ["-t2"])
+
+
+# --- run_siddump: a hung process must not block a corpus build forever ------
+# Companion to the rc!=0 case above: a timeout is the same class of failure
+# (silent forever-hang instead of a loud error) and must raise the same way.
+
+def test_run_siddump_raises_on_timeout(monkeypatch):
+    """A hang must fail loudly and name the file/args/bound, exactly like the
+    rc!=0 path does -- so a corpus build says which file hung instead of
+    dying anonymously (or never returning at all)."""
+    seen = {}
+
+    def _hang(*a, **k):
+        seen["timeout"] = k.get("timeout")
+        raise FC.subprocess.TimeoutExpired(cmd=a[0], timeout=k.get("timeout"))
+
+    monkeypatch.setattr(FC.subprocess, "run", _hang)
+    with pytest.raises(RuntimeError) as e:
+        FC.run_siddump("stuck.sid", ["-t404"])
+    msg = str(e.value)
+    assert "stuck.sid" in msg
+    assert "-t404" in msg
+    assert "timed out" in msg.lower()
+    # The bound passed to subprocess.run must be the one quoted in the error,
+    # and must scale with the -t requested (see _siddump_timeout), not be a
+    # single constant that a longer trace than Balloon's 404s could clear.
+    assert seen["timeout"] == FC._siddump_timeout(["-t404"])
+    assert f"{seen['timeout']:.0f}" in msg
+
+
+def test_siddump_timeout_scales_with_the_requested_trace_length():
+    """The bound must clear the worst realistic -t, not just the one file it
+    was measured against -- so it has to grow with -t, not stay fixed."""
+    short = FC._siddump_timeout(["-t60"])
+    balloon = FC._siddump_timeout(["-t404"])           # the documented long pole
+    longer_than_balloon = FC._siddump_timeout(["-t900"])
+    assert short < balloon < longer_than_balloon
+    # Balloon's own measured wall time (19.3s, clean single run) must clear
+    # with room to spare -- the whole point of the margin.
+    assert balloon > 19.3 * 5
+
+
+def test_siddump_timeout_falls_back_to_the_tool_default_when_no_dash_t():
+    """siddump_complete.py itself defaults -t to 60s when omitted; the timeout
+    budget must assume that, not treat a missing -t as "unbounded"."""
+    assert FC._siddump_timeout(["-a0"]) == FC._siddump_timeout(["-t60"])
