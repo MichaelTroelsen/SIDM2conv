@@ -16,6 +16,24 @@ Matt Gray wrote his own driver from scratch — it is **not** derived from
 Hubbard or Galway — and refined it per game. Treat the map below as *one
 confirmed build*, not a canonical layout for all 55 of his HVSC files.
 
+### Three denominators, don't conflate (the SDI 343-348-324 trap, re-measured 2026-08-21)
+
+Three different questions over the same 55 top-level `SID/Gray_Matt/*.sid`
+files (the 2 `Worktunes/` files are not HVSC-catalogued and are excluded from
+the 55):
+
+| Question | Count | How |
+|---|---|---|
+| Does `native_dispatch.probe("mattgray", path)` **accept** it? | **13/55** | `locate()` finds every table by signature; raises otherwise |
+| Does `parse_sid()` **decode** it (tables + sequencer walk)? | **11/55** | the 2 accept-but-not-decode files (`Pogo_Stick_Olympics`, `Warriors`) fail on a pattern-with-no-`$ff`-terminator bug — open separately, see `mattgray-pattern-no-ff-terminator` |
+| How many Stage B **artifacts** are on disk? | **8 songs / 37 song×subtune / 78 built `.sf2` parts** | `out/mattgray_native/*.sf2`, one game per song, part-split for length |
+
+These are not disagreeing answers — accept ⊇ decode ⊇ built, each a stricter
+gate than the last. Of the 11 that decode, 36 of the resulting 37 built parts
+use `layout='signature'` and 1 (`Driller` sub 1) uses `layout='driller'`, the
+fast path — see *The `signature` decode is no longer unverified* below for
+what "1 of 55 HVSC files located by the fast path" means precisely.
+
 ---
 
 ## Why Driller first
@@ -830,6 +848,15 @@ decode.
 ("could not locate the track-pointer tables") on both its subtunes. It fails
 closed rather than mis-parsing, which is the right behaviour — but do not
 assume `locate()` can replace the fast path.
+
+**"1 of 55 HVSC files located by the fast path", defined.** `layout=='driller'`
+fires on **2 of the 55** top-level Gray_Matt files (the `Worktunes/` subfolder's
+2 files are excluded from the 55 — they are not HVSC-catalogued): `Driller.sid`
+itself, whose init/play the fast path was written FROM (Codebase64-corroborated,
+see *Why Driller first*), and `Make_My_Day.sid`. Excluding `Driller.sid` as the
+reference the fast path was derived from — not a file it *found* — the fast
+path locates **1 of the other 54**: `Make_My_Day`. Both readings are correct;
+CLAUDE.md's headline uses the 1-of-54 (novel-find) sense. Measured 2026-08-21.
 
 **2. The located tables are confirmed against the ORIGINAL's register trace**,
 ground truth that owes nothing to our build. In this player family
