@@ -215,3 +215,79 @@ def test_rank_exposes_the_underlying_dispatch_result(monkeypatch):
                         (("sdi", lambda p: {"ok": 1}), ("dmc", lambda p: {"ok": 1})))
     r = ND.rank("x.sid")
     assert r["dispatch"]["accepted"] == ["sdi", "dmc"]
+
+
+# --- hardtrack: the family that was UNPROBED ----------------------------------
+#
+# Same discipline as the rest of this file: these pin the MECHANISM -- that the
+# probe reaches its parser across the (load, data) argument inversion, that its
+# refusals read as verdicts rather than bugs, and that it discriminates at all.
+# They deliberately do NOT assert "33 of 150", because that count is a property
+# of today's signature and would fail the day it learns a new variant. The
+# measured breakdown lives in native_dispatch's own UNPROBED comment.
+
+HT_ACCEPTED = "SID/Shogoon/Altered_States_Tune_1.sid"     # in the Stage B corpus
+HT_NO_SIGNATURE = "SID/Shogoon/286AT_Heist.sid"           # no init pattern at all
+HT_WRAPPED = "SID/Shogoon/Commercial_Fake.sid"            # PSID init != module entry
+HT_MULTI_INSTANCE = "SID/Shogoon/Eternal.sid"             # 2 player instances
+
+
+def test_hardtrack_is_a_signature_family_not_construct_only():
+    """The whole point of the probe. A construct-only hardtrack would accept
+    everything and add no evidence to the ranking; it is in SIGNATURE because
+    four 6502 patterns must each match exactly once."""
+    assert "hardtrack" in ND.SIGNATURE
+    assert "hardtrack" not in ND.CONSTRUCT_ONLY
+    assert "hardtrack" not in ND.UNPROBED
+    assert dict(ND.PROBE_ORDER)["hardtrack"] is not None
+
+
+def test_hardtrack_probe_crosses_the_argument_inversion():
+    """HardTrackModule takes (load, data) where every other parser takes
+    (data, la), and reads the PSID header itself. Getting that wrong raises
+    TypeError -> ProbeBug, so an ACCEPT here is what proves the wiring."""
+    ok, evidence = ND.probe("hardtrack", HT_ACCEPTED)
+    assert ok, evidence
+    assert set(evidence) == {"load", "init_off", "instrument_base", "tables"}
+    assert isinstance(evidence["load"], int)
+
+
+def test_hardtrack_refusals_are_verdicts_not_probe_bugs():
+    """Every refusal path is a HardTrackError, which subclasses ValueError, so
+    it must come back through probe()'s reject path -- never as ProbeBug."""
+    for path in (HT_NO_SIGNATURE, HT_WRAPPED, HT_MULTI_INSTANCE):
+        ok, reason = ND.probe("hardtrack", path)
+        assert not ok, path
+        assert "HardTrackError" in reason, (path, reason)
+
+
+def test_hardtrack_refuses_a_wrapped_rip_rather_than_decoding_instance_zero():
+    """A DESIGN DECISION, pinned so it is not 'fixed' into a false accept: a rip
+    whose PSID vector is not the module's own entry, or which carries several
+    player instances, is refused. Those files are HardTrack-ish and still must
+    not be claimed -- decoding instance 0 would report the wrong song."""
+    _, wrapped = ND.probe("hardtrack", HT_WRAPPED)
+    assert "not the module entry" in wrapped
+    _, multi = ND.probe("hardtrack", HT_MULTI_INSTANCE)
+    assert "player instances" in multi
+
+
+def test_hardtrack_discriminates_over_a_real_mixed_player_directory():
+    """SID/Shogoon is tracked (150 files) and mixed-player, so this runs from a
+    fresh clone in well under a second. Bounds, not a count: a signature family
+    must accept SOME files and reject SOME, which is exactly what separates it
+    from the construct-only families that accept everything."""
+    import glob
+    files = sorted(glob.glob("SID/Shogoon/*.sid"))
+    assert len(files) > 100, "corpus missing -- this test needs SID/Shogoon"
+    accepted = [f for f in files if ND.probe("hardtrack", f)[0]]
+    assert 0 < len(accepted) < len(files)
+
+
+def test_hardtrack_wins_over_the_construct_only_families_that_also_accept():
+    """The ranking claim. dmc and mon accept this file too, but they accept
+    almost everything, so they are `weak` and carry no evidence -- hardtrack is
+    the unique signature match and rank() is therefore confident."""
+    r = ND.rank(HT_ACCEPTED)
+    assert r["signature"] == ["hardtrack"]
+    assert r["best"] == "hardtrack" and r["confident"] is True

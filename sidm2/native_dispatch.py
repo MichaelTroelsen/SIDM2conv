@@ -106,12 +106,34 @@ def _probe_mattgray(path):
     return {"load": la, "tables": p.locate()}
 
 
+def _probe_hardtrack(path):
+    """THE SHAPE DIFFERENCE THAT LEFT THIS FAMILY UNPROBED: HardTrackModule takes
+    `(load, data)` -- the inverse of every other parser's `(data, la)` -- and reads
+    the PSID header itself, so this probe goes through the `from_sid` classmethod
+    instead of the shared `load_sid`. That is the whole of the old TODO.
+
+    It is a SIGNATURE probe and a strict one, which is why `hardtrack` joins
+    SIGNATURE rather than CONSTRUCT_ONLY. Four independent 6502 opcode patterns
+    (init, pattern-pointer, frequency, instrument) must EACH match exactly once,
+    and the PSID init/play vector must be the module's own `load`/`load+3` entry
+    -- a wrapped rip is refused rather than decoded as instance 0. Every one of
+    those refusals is a HardTrackError, which subclasses ValueError, so `probe`
+    reads them as rejections through its normal path while a genuine caller
+    error still surfaces as ProbeBug.
+    """
+    from sidm2.hardtrack_parser import HardTrackModule
+    m = HardTrackModule.from_sid(path)
+    return {"load": m.load, "init_off": m.init_off,
+            "instrument_base": m.instrument_base,
+            "tables": (m.pattern_lo, m.freq_lo_table)}
+
+
 # Most specific first. See the docstring: this order only decides `first_match`,
 # and dispatch() reports collisions rather than letting the order hide them.
 PROBE_ORDER = (
     ("blackbird", _probe_blackbird),
     ("sdi", _probe_sdi),
-    ("hardtrack", None),          # HardTrackModule takes a different shape; see TODO
+    ("hardtrack", _probe_hardtrack),
     ("mattgray", _probe_mattgray),
     ("dmc", _probe_dmc),
     ("mon", _probe_mon),
@@ -172,19 +194,41 @@ def probe(player, path):
 # `mattgray` 895. DMC's own median is LOWER than several families it would have
 # to be told apart from, and the 1200s are a saturation artifact of
 # `tick_budget=400`. Note count is not evidence of ownership.
-SIGNATURE = frozenset({"blackbird", "sdi", "soundmonitor"})
+SIGNATURE = frozenset({"blackbird", "sdi", "soundmonitor", "hardtrack"})
 CONSTRUCT_ONLY = frozenset({"dmc", "mon", "hubbard", "mattgray"})
-# No probe at all, so this family can never accept and can never be ranked. It
-# is named rather than left out, because an unclassified family is invisible:
-# the classification test asserts these three sets cover PROBE_ORDER exactly,
-# and `hardtrack` was found missing by that test on its first run.
+# A family with no probe at all: it can never accept and can never be ranked.
+# Kept as a named set rather than deleted, because an unclassified family is
+# invisible -- the classification test asserts these three sets cover
+# PROBE_ORDER exactly, and `hardtrack` was found missing by that test on its
+# first run.
 #
-# THIS GAP HAS A MEASURED COST. `Pollena_2000` is a HardTrack file, and with no
-# HardTrack probe to claim it, `is_sdi_play3` accepts it unopposed -- one of the
-# two misroutes in the 48-file sample. A HardTrack probe would not merely add a
-# family; it would give the ranking something to collide with, which is what
-# turns a confident misroute into an honest abstention.
-UNPROBED = frozenset({"hardtrack"})
+# NOW EMPTY. `hardtrack` was the only member and is a SIGNATURE family as of
+# `_probe_hardtrack`, measured 2026-08-21 over all 150 files of SID/Shogoon:
+#
+#   accepted                  33   ranked `hardtrack`, confident, 0 collisions
+#   no init signature        111
+#   signature, then refused    6   3x "2 player instances", 1x "3 player
+#                                  instances", 2x PSID init/play != module entry
+#
+# THE ACCEPT SET IS EXACTLY THE SHIPPED STAGE B CORPUS -- the same 33 song names
+# as `out/hardtrack_native`, set-equal in both directions. That is external
+# ground truth rather than self-consistency, and it is why the 6 post-signature
+# refusals are correct rather than misses: a wrapped or multi-instance rip is
+# refused instead of decoded as instance 0.
+#
+# ONE PREDICTION IN THIS MODULE IS REFUTED BY THAT MEASUREMENT. The note here
+# used to say `Pollena_2000` is a HardTrack file which `is_sdi_play3` claimed
+# unopposed, and that a HardTrack probe would give the ranking something to
+# COLLIDE with, turning a confident misroute into an honest abstention. It does
+# not: `_probe_hardtrack` finds NO init signature in that file at all, so there
+# is no collision and `Pollena_2000` still ranks `sdi`, confident. It also has
+# no artifact in `out/hardtrack_native` and is named in neither HARDTRACK.md nor
+# CLAUDE.md, so the premise -- that it is a HardTrack file -- is unsupported.
+# Either it is not one, or it is a variant this signature does not cover; the
+# probe cannot tell those apart, and neither can this comment. What is settled
+# is that adding the probe did NOT fix that misroute, and any future claim that
+# it did should be checked against this paragraph.
+UNPROBED = frozenset()
 
 
 def rank(path, player_id=None):
