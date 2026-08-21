@@ -55,12 +55,43 @@ def _probe_dmc(path):
 
 
 def _probe_sdi(path):
+    """`is_sdi_play3` is weaker than it looks OFF ITS OWN CORPUS, so this adds
+    the one runaway-walk check that is measured to be safe.
+
+    The predicate is `play == init + 3`, two leading JMPs, and `locate()`. The
+    first two are common to many players; on SID/Shogoon -- a corpus SDI was
+    never meant for -- it claims 20 files, and NOT ONE of them has an SDI build
+    in out/sdi while `player-id` calls 17 of them DMC and 3 Music_Assembler.
+
+    THE OBVIOUS CHECK DOES NOT WORK, measured rather than assumed: "does it
+    decode notes" discriminates nothing, because the SDI decoder walks garbage
+    happily -- I_Always_Use_Always yields [8190, 8081, 8224] and Bilinski
+    [5362, 21991, 700], both larger than the real corpus median of 1471.
+
+    What DOES separate them is the SHAPE. A real song's three voices carry
+    different amounts of music; a walk that never found a real end runs all
+    three to the same cap. Across the 160 files of SID/Gallefoss_Glenn that
+    `is_sdi_play3` accepts, ZERO have three voice counts within 2% of each
+    other. Four of the 20 Shogoon claims do, including Dickshake_main at an
+    exact [668, 668, 668].
+
+    This catches 4 of the 20 -- partial recall, and the other 16 stay wrongly
+    confident. It is shipped because it is measured to cost nothing on the real
+    corpus, not because it closes the problem.
+    """
     from sidm2.sdi_parser import load_sid, SDIModule, is_sdi_play3
     d, la, h = load_sid(path)
     if not is_sdi_play3(d, la, h):
         raise ValueError("not an SDI play+3 rip")
     m = SDIModule(d, la)
-    return {"load": la, "tables": getattr(m, "lay", None)}
+    n = [sum(1 for e in m.decode_voice(v) if e.kind in ("note", "tie", "glide"))
+         for v in range(3)]
+    if min(n) and (max(n) - min(n)) <= 0.02 * max(n):
+        raise ValueError(
+            "all three voices decode to within 2%% of each other %s -- a "
+            "runaway walk, not a song (no file in the 160-file SDI corpus "
+            "does this)" % n)
+    return {"load": la, "tables": getattr(m, "lay", None), "notes": n}
 
 
 def _probe_mon(path):

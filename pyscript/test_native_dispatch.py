@@ -416,3 +416,72 @@ def test_an_ordinary_valueerror_is_still_a_refusal(monkeypatch):
     ok, reason = ND.probe("mattgray", MG_ACCEPTED)
     assert not ok
     assert "music_play shim" in reason
+
+
+# ---------------------------------------------------------------------------
+# The SDI probe's runaway-walk refusal (dispatch-confident-answers-uncorroborated)
+# ---------------------------------------------------------------------------
+
+_SHOGOON = os.path.join(ROOT, "SID", "Shogoon")
+_GALLEFOSS = os.path.join(ROOT, "SID", "Gallefoss_Glenn")
+_needs_shogoon = pytest.mark.skipif(not os.path.isdir(_SHOGOON),
+                                    reason="SID/Shogoon not available")
+_needs_gallefoss = pytest.mark.skipif(not os.path.isdir(_GALLEFOSS),
+                                      reason="SID/Gallefoss_Glenn not available")
+
+
+@_needs_shogoon
+@pytest.mark.parametrize("name", ["Dickshake_main", "Dickshake_end",
+                                  "I_Always_Use_Always", "Strange"])
+def test_sdi_refuses_a_runaway_walk_on_a_foreign_corpus(name):
+    """`is_sdi_play3` is `play == init+3` + two leading JMPs + locate(), and the
+    first two are common to many players. On SID/Shogoon it claimed 20 files,
+    none of which has an SDI build in out/sdi, and which player-id calls DMC
+    (17) and Music_Assembler (3).
+
+    "Does it decode notes" does NOT discriminate -- measured, the SDI decoder
+    walks garbage happily and these four produce MORE notes than the real
+    corpus median of 1471. The shape does: a real song's three voices carry
+    different amounts of music, a walk that never terminated runs all three to
+    the same cap. Dickshake_main is an exact [668, 668, 668].
+    """
+    ok, info = ND.probe("sdi", os.path.join(_SHOGOON, name + ".sid"))
+
+    assert ok is False
+    assert "runaway walk" in str(info)
+
+
+@_needs_gallefoss
+def test_the_runaway_check_costs_the_real_sdi_corpus_nothing():
+    """The refusal is shipped BECAUSE it is free on real material: zero of the
+    160 SID/Gallefoss_Glenn files that is_sdi_play3 accepts have three voice
+    counts within 2% of each other. A check that cost even one real file would
+    not be worth 4 false accepts."""
+    import glob as _glob
+    from sidm2.sdi_parser import load_sid, SDIModule, is_sdi_play3
+    uniform = []
+    for p in sorted(_glob.glob(os.path.join(_GALLEFOSS, "*.sid"))):
+        try:
+            d, la, h = load_sid(p)
+            if not is_sdi_play3(d, la, h):
+                continue
+            m = SDIModule(d, la)
+            n = [sum(1 for e in m.decode_voice(v)
+                     if e.kind in ("note", "tie", "glide")) for v in range(3)]
+        except Exception:
+            continue
+        if min(n) and (max(n) - min(n)) <= 0.02 * max(n):
+            uniform.append((os.path.basename(p), n))
+    assert uniform == [], f"the check would now refuse real SDI rips: {uniform}"
+
+
+@_needs_shogoon
+def test_hardtrack_accepts_are_untouched_by_the_sdi_change():
+    """The verify's constraint: HardTrack's accept set must not move. It is
+    validated against out/hardtrack_native by set equality in both directions,
+    so any drift here is a regression in the one probe with external ground
+    truth."""
+    import glob as _glob
+    n = sum(1 for p in sorted(_glob.glob(os.path.join(_SHOGOON, "*.sid")))
+            if ND.probe("hardtrack", p)[0])
+    assert n == 33
