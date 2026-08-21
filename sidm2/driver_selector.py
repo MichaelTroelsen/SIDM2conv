@@ -34,6 +34,14 @@ class DriverSelection:
     alternative_driver: str = ""  # Alternative driver (not recommended)
     alternative_accuracy: str = "" # Alternative accuracy
 
+    # --- NATIVE BUILDER ADVISORY (ROADMAP A4) ------------------------------
+    # These describe a `bin/` native builder that claims this file. They are
+    # ADVISORY and NEVER change `driver_name`: see identify_native_builder().
+    native_family: str = ""       # "sdi", "hardtrack", ... or "" for none
+    native_builder: str = ""      # "bin/build_sdi_native_song.py" or ""
+    native_confident: bool = False  # True only on a unique signature match
+    native_why: str = ""          # rank()'s own explanation, verbatim
+
 
 class DriverSelector:
     """Selects best SF2 driver based on source SID player type."""
@@ -127,6 +135,106 @@ class DriverSelector:
         'galway': PLAYER_REGISTRY['galway']['accuracy'],
     }
 
+    # -----------------------------------------------------------------------
+    # NATIVE_BUILDERS - family name from sidm2.native_dispatch -> the `bin/`
+    # script that builds it. This is the A4 wiring, and it is deliberately
+    # NOT a second PLAYER_REGISTRY:
+    #
+    #   * PLAYER_REGISTRY maps a player-id string -> an SF2 DRIVER this
+    #     package can actually run in-process.
+    #   * NATIVE_BUILDERS maps a probed family -> a standalone SCRIPT. Every
+    #     one of these reads `SID = sys.argv[1]` at MODULE level and then
+    #     siddumps, emulates and traces the tune for tens of seconds to
+    #     minutes. They are subprocess entry points, not importable
+    #     converters, so the pipeline NAMES the builder; it never calls it.
+    #
+    # That is why the dispatcher is ADVISORY. See identify_native_builder().
+    # -----------------------------------------------------------------------
+    NATIVE_BUILDERS = {
+        'blackbird':    'bin/build_blackbird_native_song.py',
+        'sdi':          'bin/build_sdi_native_song.py',
+        'hardtrack':    'bin/build_hardtrack_native_song.py',
+        'mattgray':     'bin/build_mattgray_native_song.py',
+        'dmc':          'bin/build_dmc_native_song.py',
+        'mon':          'bin/build_mon_native_song.py',
+        'hubbard':      'bin/build_hubbard_native_song.py',
+        'soundmonitor': 'bin/build_soundmonitor_native_song.py',
+    }
+
+    def identify_native_builder(self, sid_file: Path, player_type: Optional[str] = None) -> Optional[Dict]:
+        """Which `bin/` native builder claims this SID? ADVISORY, never a route.
+
+        Returns None when no family accepts, else::
+
+            {"family": str, "builder": str, "confident": bool,
+             "why": str, "candidates": [family, ...]}
+
+        `confident` is True only when `native_dispatch.rank()` found a UNIQUE
+        signature-bearing family. When it is False, `family` is the first
+        construct-only family that accepted and the answer is a CANDIDATE, not
+        a verdict -- `dmc` and `mon` accept nearly every file ever measured, so
+        their acceptance carries no information about ownership.
+
+        WHY THIS NEVER SETS `driver_name`, measured 2026-08-21 over 734 files:
+
+            SID/JohannesBjerregaard   88   best=None on all 88
+            SID/Gallefoss_Glenn      441   sdi 160, None 281
+            SID/Shogoon              150   hardtrack 33, sdi 20, None 97
+            SID/Gray_Matt             55   mattgray 11, soundmonitor 6,
+                                           sdi 1, None 37
+
+        ZERO SIGNATURE COLLISIONS ACROSS ALL 734 -- AND THAT IS NOT SAFETY.
+        No collision only means no two signature families claimed the same
+        file; it says nothing about whether the one that claimed it was right.
+        Checked against an independent identifier, ~26 of those confident
+        answers are unverified and some are probably wrong:
+
+          * 20 SID/Shogoon files rank `sdi` confidently. `player-id.exe` calls
+            17 of them DMC and 3 Music_Assembler -- not one SIDDuzz'It. Among
+            them is `Pollena_2000`, which native_dispatch's own comments already
+            record as a file `is_sdi_play3` "claimed unopposed".
+          * 6 SID/Gray_Matt files rank `soundmonitor` confidently, among them
+            `Sanxion_Re-load` and `Crazy_Comets_Special_Re-Mix`.
+            `is_soundmonitor` accepts 11 of the 20 files in its own SID/Fun_Fun
+            corpus and 6 of the 55 in Gray_Matt: 11/17 on that pair.
+
+        `player-id` is itself many-to-many with the builders -- that is ROADMAP
+        A4's founding measurement -- so this does not PROVE 26 misroutes. It
+        proves the confidence flag is not corroborated, which is enough: had
+        this been wired as a router, those 26 files would have produced wrong
+        SF2s silently. As an advisory the worst case is a misleading log line.
+
+        A unique signature match is the strongest evidence this module has and
+        it is still not proof of ownership. That is why `driver_name` is chosen
+        before this runs and is never revised by it.
+        """
+        try:
+            from sidm2 import native_dispatch
+        except ImportError:                       # module is optional
+            return None
+        try:
+            r = native_dispatch.rank(str(sid_file), player_id=player_type)
+        except native_dispatch.ProbeBug:
+            # A probe called its parser wrongly. That is a bug in the probe
+            # layer, never a verdict about this file, and it must not silently
+            # degrade driver selection -- so report "no advisory" and let the
+            # dispatcher's own tests be the place it surfaces.
+            return None
+        except Exception:
+            return None
+
+        accepted = list(r["signature"]) + list(r["weak"])
+        if not accepted:
+            return None
+        family = r["best"] or accepted[0]
+        return {
+            "family": family,
+            "builder": self.NATIVE_BUILDERS.get(family, ""),
+            "confident": bool(r["confident"]),
+            "why": r["why"],
+            "candidates": accepted,
+        }
+
     @classmethod
     def registered_drivers(cls) -> list:
         """Return list of all registered driver names."""
@@ -196,13 +304,38 @@ class DriverSelector:
 
         # Handle forced driver (expert override)
         if force_driver:
-            return self._handle_forced_driver(force_driver, player_type)
+            forced = self._handle_forced_driver(force_driver, player_type)
+            self._attach_native_advisory(forced, sid_file, player_type)
+            return forced
 
         # Select best driver based on player type
         selected_driver = self._select_best_driver(player_type)
 
         # Build selection result
-        return self._build_selection_result(selected_driver, player_type)
+        selection = self._build_selection_result(selected_driver, player_type)
+
+        # ROADMAP A4: attach the native-builder advisory. This runs AFTER the
+        # driver is chosen and cannot change it -- see identify_native_builder.
+        self._attach_native_advisory(selection, sid_file, player_type)
+        return selection
+
+    def _attach_native_advisory(self, selection: DriverSelection,
+                                sid_file: Path,
+                                player_type: Optional[str] = None) -> DriverSelection:
+        """Fill in `selection.native_*` from the probe dispatcher, in place.
+
+        Separate from select_driver so the forced-driver path can share it: an
+        expert who forces `--driver driver11` on a HardTrack rip should still be
+        told a native builder exists, because that is exactly the case the
+        default path is measured at 1-8% on.
+        """
+        adv = self.identify_native_builder(sid_file, player_type)
+        if adv:
+            selection.native_family = adv["family"]
+            selection.native_builder = adv["builder"]
+            selection.native_confident = adv["confident"]
+            selection.native_why = adv["why"]
+        return selection
 
     def _select_best_driver(self, player_type: str) -> str:
         """Select best driver based on player type.
@@ -318,6 +451,30 @@ class DriverSelector:
             alternative_accuracy=""
         )
 
+    @staticmethod
+    def _format_native_advisory(selection: DriverSelection) -> list:
+        """The native-builder lines, shared by the console and info-file forms.
+
+        THE WORD "CANDIDATE" IS LOAD-BEARING. An unconfident advisory names a
+        family that accepted without a signature, and `dmc`/`mon` accept nearly
+        every file ever measured, so printing that as a recommendation would be
+        worse than printing nothing at all.
+        """
+        if not selection.native_family:
+            return []
+        lines = []
+        if selection.native_confident:
+            lines.append(f"  Native builder:  {selection.native_family} "
+                         f"-- {selection.native_builder}")
+            lines.append(f"                   NOT run automatically: "
+                         f"py -3 {selection.native_builder} <file.sid>")
+        else:
+            lines.append(f"  Native builder:  CANDIDATE ONLY: "
+                         f"{selection.native_family} "
+                         f"-- {selection.native_builder}")
+            lines.append(f"                   {selection.native_why}")
+        return lines
+
     def format_selection_output(self, selection: DriverSelection) -> str:
         """Format driver selection for console output.
 
@@ -337,6 +494,8 @@ class DriverSelector:
         if selection.alternative_driver:
             lines.append(f"  Alternative:     {selection.alternative_driver} "
                         f"({selection.alternative_accuracy} accuracy - not recommended)")
+
+        lines.extend(self._format_native_advisory(selection))
 
         return '\n'.join(lines)
 
@@ -358,6 +517,8 @@ class DriverSelector:
         if selection.alternative_driver:
             lines.append(f"  Alternative:     {selection.alternative_driver} "
                         f"({selection.alternative_accuracy} accuracy)")
+
+        lines.extend(self._format_native_advisory(selection))
 
         return '\n'.join(lines)
 

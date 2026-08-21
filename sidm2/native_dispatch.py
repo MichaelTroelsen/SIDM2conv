@@ -108,11 +108,47 @@ def _probe_mattgray(path):
 
     `locate()` finds every table by signature and raises when any one is not
     identifiable, so this is a real predicate -- see SIGNATURE.
+
+    AND A THIRD CALLER ERROR HID BEHIND THOSE TWO, THIS TIME WITH NO ARITY TO
+    GIVE IT AWAY. The version above probed the WHOLE PSID image, which is only
+    one of the two shapes `parse_sid` handles. A Matt Gray RELOCATING
+    COMPILATION carries one self-contained tune per subtune and materialises
+    each as its own blob at its own address (`relocating_subtunes` /
+    `relocating_subtunes_v2`); `parse_sid` splits it and parses the blob with
+    `MattGrayParser(blob, dst, dst, dst + 2)`. Run against the unsplit image
+    there is no single table set to find, so `locate()` refused -- CORRECTLY,
+    and for a reason that read as a verdict about the file.
+
+    IT WAS WRONG ON EXACTLY THE FILES THE STAGE B CORPUS IS BUILT FROM.
+    `Last_Ninja_2` (13 blobs, v1) refused with "could not locate the
+    track-pointer tables" and `Tusker` (4 blobs, v2) with "play address
+    unreadable: address $e002 outside image $1000-$413f" -- both have shipped
+    `out/mattgray_native` artifacts, and Last Ninja 2 sub 0 is the headline
+    measurement in CLAUDE.md. `locate()` succeeds on blob 0 of both.
+
+    So the probe now mirrors `parse_sid`'s own dispatch rather than half of it.
+    That is the general lesson and it is worth more than this fix: a probe that
+    models FEWER shapes than the builder reports the builder's own corpus as
+    foreign, and nothing about the failure looks like a bug.
     """
-    from sidm2.mattgray_parser import load_sid, MattGrayParser
-    body, load, init, play, _songs, _start = load_sid(path)
+    from sidm2.mattgray_parser import (load_sid, MattGrayParser,
+                                       relocating_subtunes,
+                                       relocating_subtunes_v2)
+    body, load, init, play, songs, _start = load_sid(path)
+    blobs = (relocating_subtunes(body, load, init, songs)
+             or relocating_subtunes_v2(body, load, init, songs))
+    if blobs:
+        # Blob 0 is representative: every blob is a self-contained tune in the
+        # same format, so locating one is the predicate. Probing all 13 would
+        # cost 13x for no extra discrimination.
+        blob, dst = blobs[0]
+        p = MattGrayParser(blob, dst, dst, dst + 2)
+        return {"load": dst, "init": dst, "play": dst + 2,
+                "relocating": True, "subtunes": len(blobs),
+                "tables": p.locate()}
     p = MattGrayParser(body, load, init, play)
-    return {"load": load, "init": init, "play": play, "tables": p.locate()}
+    return {"load": load, "init": init, "play": play,
+            "relocating": False, "tables": p.locate()}
 
 
 def _probe_hardtrack(path):
@@ -212,13 +248,50 @@ def probe(player, path):
 #   hubbard       accepts  8 of 48   NO predicate -- construction alone
 #   dmc           accepts 48 of 48   `_locate` finds plausible tables anywhere
 #   mon           accepts 48 of 48   no predicate, no decode-level refusal
-#   mattgray      accepts  0 of 48   <- WAS A PROBE BUG, not a property of the
-#                                      parser: the probe unpacked a 6-value
-#                                      loader into 3 names. Fixed 2026-08-21;
-#                                      it now accepts 11 of 55 Gray_Matt files
-#                                      and 0 of 150 Shogoon, and is a SIGNATURE
-#                                      family because `locate()` raises when a
-#                                      table is not identifiable.
+#   mattgray      accepts  0 of 48   <- WAS TWO PROBE BUGS IN A ROW, neither a
+#                                      property of the parser. Fixed 2026-08-21;
+#                                      it now accepts 13 of 55 Gray_Matt files
+#                                      and 0 of the other 679 measured, and is a
+#                                      SIGNATURE family because `locate()` raises
+#                                      when a table is not identifiable.
+#
+# THE MATTGRAY LINE ABOVE MOVED TWICE IN ONE DAY AND THE SECOND MOVE IS THE ONE
+# WORTH READING. The first fix (a 6-value loader unpacked into 3 names) took it
+# 0 -> 11. The second took it 11 -> 13, and those two files are `Last_Ninja_2`
+# and `Tusker` -- both of which have shipped `out/mattgray_native` artifacts, and
+# Last Ninja 2 sub 0 is CLAUDE.md's headline Matt Gray measurement. The probe
+# modelled only ONE of the two shapes `parse_sid` handles, missing the
+# relocating compilation, so it called the builder's own corpus foreign. See
+# `_probe_mattgray`.
+#
+# THE CHECK THAT CAUGHT IT IS THE ONE THAT VALIDATED HARDTRACK: compare the
+# accept set against the SHIPPED corpus, not against itself. Now every one of
+# the 8 built songs is accepted (inclusion, not the equality HardTrack got --
+# 5 accepted songs have no artifact, which is a build backlog and not a parser
+# property). The remaining 42 refusals fall into 4 named classes: 23 whose play
+# routine is not the MoN music_play shim, 10 with PSID play=$0000 (RSID/self-IRQ
+# -- there is no play vector to read, so no static locate can ever claim them),
+# 8 where the tables are genuinely not locatable, and 1 whose play vector points
+# outside the loaded image.
+#
+# THREE NESTED DENOMINATORS, AND THEY ARE THREE QUESTIONS RATHER THAN THREE
+# DISAGREEING ANSWERS -- the same trap CLAUDE.md already records for SDI's
+# 343/348/324. Do not conflate them:
+#
+#   13  this probe accepts        -- `locate()` identifies every table
+#   11  `parse_sid` decodes       -- tables AND the sequencer walk completes
+#    8  Stage B has artifacts     -- decoded, built and emitted
+#
+# The 13 -> 11 step is `Pogo_Stick_Olympics` and `Warriors`, which fail with
+# "pattern at $1517/$2517 has no $ff terminator": their tables ARE located and
+# the WALK is what breaks. That is precisely the distinction CLAUDE.md draws
+# when it says the located tables "validate the TABLES, not the sequencer walk",
+# so the probe is not made stricter to match -- it answers the table question,
+# which is the one a dispatcher asks. Tightening it to require a full decode
+# would turn a cheap signature predicate into `_probe_dmc`.
+#
+# The 11 -> 8 step is a BUILD BACKLOG, not a parser property: five accepted
+# songs simply have no artifact yet.
 #
 # A REFUTED SCORING RULE, RECORDED SO IT IS NOT RETRIED: `_probe_dmc` returns a
 # decoded note count, and the obvious next move is to threshold it. Measured, it

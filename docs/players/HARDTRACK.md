@@ -967,6 +967,21 @@ HardTrack failures. A refusal count is only meaningful against the right
 denominator — fixed by distinguishing "not this player" from "this player,
 refused".
 
+**Cross-checked 2026-08-21** against `sidm2/native_dispatch.py`'s independent
+`_probe_hardtrack`/`dispatch()` (commit 9f2263b): re-run over all 150
+`SID/Shogoon/*.sid` files, it reproduces the same split exactly — 39 files
+carry the init signature, 33 accepted (set-equal to `out/hardtrack_native`),
+6 refused (the same six named above). `tools/player-id.exe "SID/Shogoon/*.sid"`
+independently confirms `Dune_Cover` is `Comer/Digi`, not `HardTrack_Composer`
+(the other 5 refusals — `Eternal`, `Fruitmania`, `Miecze_Valdgira_2`,
+`Zone_of_Darkness`, `Commercial_Fake` — all *do* id as `HardTrack_Composer`).
+So CLAUDE.md's "5 of 38" is the right count against the `player-id` population,
+and a probe/sweep reporting "6 of 39" is not a contradiction — it is measuring
+one file wider (a genuine opcode-signature match inside a `Comer/Digi`-wrapped
+file that both tools correctly decline to decode as HardTrack). Do not
+"reconcile" the two counts to the same number; they have different, both
+correct, denominators.
+
 
 ### What Stage B does not do
 

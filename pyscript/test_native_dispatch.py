@@ -299,13 +299,76 @@ MG_ACCEPTED = "SID/Gray_Matt/Driller.sid"          # the corroborated Matt Gray 
 MG_REFUSED = "SID/Shogoon/286AT_Heist.sid"         # not Matt Gray at all
 
 
+MG_RELOCATING = "SID/Gray_Matt/Last_Ninja_2.sid"    # 13 self-contained blobs
+MG_RELOCATING_V2 = "SID/Gray_Matt/Tusker.sid"       # 4 blobs, the v2 shape
+
+
 def test_mattgray_probe_reaches_its_parser():
     """It used to unpack a 6-value load_sid into 3 names and pass 2 args to a
     4-arg constructor. Either mistake makes this ACCEPT impossible."""
     ok, evidence = ND.probe("mattgray", MG_ACCEPTED)
     assert ok, evidence
-    assert set(evidence) == {"load", "init", "play", "tables"}
+    assert {"load", "init", "play", "tables"} <= set(evidence)
+    assert evidence["relocating"] is False, "Driller is the plain layout"
     assert evidence["tables"], "locate() returned no tables"
+
+
+def test_mattgray_probes_a_relocating_compilation_the_way_parse_sid_does():
+    """THE THIRD CALLER ERROR IN THIS PROBE, AND THE ONLY ONE WITH NO ARITY
+    MISTAKE TO GIVE IT AWAY.
+
+    `parse_sid` handles TWO shapes: the plain image, and a relocating
+    compilation which it splits into one self-contained blob per subtune and
+    parses as `MattGrayParser(blob, dst, dst, dst + 2)`. The probe modelled only
+    the first, so on a compilation it ran `locate()` over the unsplit image --
+    where there is no single table set -- and refused. The refusal was correct
+    about what it was asked and wrong about the file.
+
+    It was wrong on precisely the files Stage B is built from: `Last_Ninja_2`
+    ("could not locate the track-pointer tables") and `Tusker` ("play address
+    unreadable: address $e002 outside image $1000-$413f"). Both have shipped
+    artifacts in `out/mattgray_native`; Last Ninja 2 sub 0 is CLAUDE.md's
+    headline Matt Gray measurement.
+
+    Parameterised over both compilation shapes because they are found by
+    different detectors -- v1 for Last Ninja 2, v2 for Tusker -- and covering
+    one would leave the other exactly as exposed as before.
+    """
+    for path, want in ((MG_RELOCATING, 13), (MG_RELOCATING_V2, 4)):
+        ok, evidence = ND.probe("mattgray", path)
+        assert ok, "%s: %s" % (path, evidence)
+        assert evidence["relocating"] is True
+        assert evidence["subtunes"] == want
+        assert evidence["tables"], "locate() returned no tables for a blob"
+
+
+def test_every_built_mattgray_song_is_accepted_by_the_probe():
+    """SET-INCLUSION AGAINST THE SHIPPED CORPUS -- the check that made the
+    HardTrack probe trustworthy, applied here.
+
+    NOTE IT IS INCLUSION, NOT THE EQUALITY HARDTRACK GOT. Five accepted songs
+    have no artifact (Bangkok_Knights_Loader, Make_My_Day, Pogo_Stick_Olympics,
+    THEC64-Hall_of_Fame, Warriors). That is not a probe error -- it says the
+    builder has not been run on them -- so asserting equality here would pin a
+    build backlog as if it were a parser property. The direction that IS a
+    defect is a file the builder could build and the probe calls foreign, and
+    that is what this asserts.
+    """
+    import os
+    import re
+    out = os.path.join(ROOT, "out", "mattgray_native")
+    if not os.path.isdir(out):
+        import pytest
+        pytest.skip("no Stage B corpus on this machine")
+    built = {m.group(1) for m in
+             (re.match(r"(.+?)_sub\d+_part\d+\.sf2$", f) for f in os.listdir(out))
+             if m}
+    assert built, "corpus directory has no parseable artifact names"
+    refused = sorted(
+        name for name in built
+        if not ND.probe("mattgray",
+                        os.path.join(ROOT, "SID", "Gray_Matt", name + ".sid"))[0])
+    assert refused == [], "built by Stage B but refused by the probe: %s" % refused
 
 
 def test_mattgray_still_refuses_a_file_from_another_family():

@@ -292,6 +292,30 @@ def _convert_midi_to_sequence_events(midi_sequences: dict) -> list[list[Sequence
     return result_sequences
 
 
+def native_builder_for(input_path: str, player_type: str = None):
+    """Which `bin/` native builder claims this SID? ROADMAP A4's routing surface.
+
+    Returns None, or::
+
+        {"family": str, "builder": str, "confident": bool,
+         "why": str, "candidates": [family, ...]}
+
+    THIS NAMES A BUILDER; IT DOES NOT RUN ONE, and the difference is not a
+    shortcut. Every `bin/build_*_native_song.py` reads `SID = sys.argv[1]` at
+    module scope and then siddumps, emulates and traces the tune -- tens of
+    seconds to minutes per song. They are subprocess entry points, so calling
+    one from `convert_sid_to_sf2()` would turn a sub-second conversion into a
+    multi-minute build, and importing one would run it against this process's
+    argv. `driver_type` is therefore never derived from this result.
+
+    `confident` is False for `dmc`, `mon` and `hubbard`: those probes have no
+    signature to reject on, so their acceptance is a CANDIDATE and not a
+    verdict. Read it with `candidates`, never alone.
+    """
+    from sidm2.driver_selector import DriverSelector
+    return DriverSelector().identify_native_builder(Path(input_path), player_type)
+
+
 def detect_player_type(filepath: str) -> str:
     """Detect the player type of a SID file using player-id.exe
 
@@ -871,6 +895,24 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             logger.info(selector.format_selection_output(driver_selection))
             logger.info("=" * 70)
             logger.info("")
+
+            # ROADMAP A4. The case this exists for: `driver11` is the SAFE
+            # DEFAULT for an unrecognised player, and on a native rip that
+            # default is measured at 1-8% -- so the tool used to hand back a
+            # near-worthless SF2 without ever mentioning that a byte-exact
+            # native path for this exact file was sitting in `bin/`. Warn
+            # instead. It stays a WARNING and not a route because the builder
+            # is a multi-minute subprocess and because a confident probe answer
+            # is still not proof of ownership (see identify_native_builder).
+            if (driver_selection.native_confident
+                    and driver_type == 'driver11'
+                    and driver_selection.native_builder):
+                logger.warning(
+                    "This looks like a %s rip. Driver 11 is only the safe "
+                    "default here; the native builder is far more accurate: "
+                    "py -3 %s %s",
+                    driver_selection.native_family,
+                    driver_selection.native_builder, input_path)
         else:
             # Manual driver override - still document it
             logger.info(f"Using manually specified driver: {driver_type}")
