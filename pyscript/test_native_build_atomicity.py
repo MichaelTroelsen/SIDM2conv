@@ -182,6 +182,13 @@ BM._PENDING.append((staged, {out!r}))
 @pytest.mark.parametrize("tail, survives", [
     ("raise ValueError('WAVE overflow: 288 rows > 256')", False),
     ("pass", True),
+    # sys.exit(<nonzero>) raises SystemExit, which the interpreter's top-level
+    # handler treats specially and NEVER routes to sys.excepthook -- unlike
+    # every other exception, which _emit_excepthook already catches. Before
+    # the fix this fell through to the atexit hook with _UNWOUND still False
+    # and COMMITTED the staged part exactly like a clean exit; the assertion
+    # below (survives=False) is what makes that regression fail loudly.
+    ("sys.exit(1)", False),
 ])
 def test_atexit_commits_on_a_clean_exit_and_discards_on_a_refusal(
         tmp_path, tail, survives):
@@ -199,3 +206,38 @@ def test_atexit_commits_on_a_clean_exit_and_discards_on_a_refusal(
     assert not os.path.exists(out + BM._STAGE), "staging copy left behind"
     if not survives:
         assert "disk unchanged" in r.stdout
+
+
+# --- the builders that do NOT own this emitter still have to obey it ---------
+
+def test_blackbird_uses_the_shared_staging_and_has_not_re_forked_it():
+    """`build_blackbird_native_song.py` writes its own artifacts rather than
+    calling `emit_one`, and it already carries a VERBATIM FORK of
+    `prune_stale_parts` -- which is exactly how it missed the `.span` fix the
+    original received. So it is wired to the shared `_PENDING`/`commit_parts`
+    rather than given a fourth copy, and this pins that.
+
+    Verified end to end 2026-08-21 on Into_the_Unknown (3 parts): with the parts
+    deleted first, a mid-loop refusal printed 'discarded 3 staged part(s), disk
+    unchanged' and left ZERO artifacts, and a clean rebuild restored all three
+    byte-identically. That check needs the LFT corpus and a minute of CPU, so
+    what lives here is the structural half.
+    """
+    BB = pytest.importorskip("build_blackbird_native_song")
+
+    assert BB.BM is BM, "blackbird must share the ONE staging module"
+    assert BB.BM._PENDING is BM._PENDING, "shared queue, not a copy"
+
+    src = open(BB.__file__, encoding="utf-8").read()
+    # Pin the BRANCH, not just the body. Asserting only that the staging line
+    # exists passes against `if False:` around it -- a source check matches
+    # unreachable code just as happily, which a mutation run caught here.
+    assert "if len(bounds) > 1:" in src, (
+        "the multi-part guard is gone, so the staging body below it may be "
+        "unreachable while still matching a source scan")
+    assert "BM._PENDING.append((staged, out))" in src, (
+        "blackbird stopped staging its parts -- a refused multi-part build "
+        "would publish the parts it had already written")
+    assert "BM.commit_parts()" in src, (
+        "blackbird stages but never commits: every multi-part build would "
+        "silently produce nothing")

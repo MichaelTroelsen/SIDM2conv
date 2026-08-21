@@ -71,6 +71,12 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 import build_blackbird_driver_full as B
+# The SHARED staging machinery, not a fourth copy of it. This file already
+# carries a verbatim fork of `prune_stale_parts`, and that fork is exactly
+# how it missed the `.span` fix the original got. Importing the real one also
+# brings its atexit/excepthook/sys.exit net, which is the point: a refused
+# Blackbird build must drop its staged parts like every other builder's.
+import build_mon_native_song as BM
 from blackbird_everyframe_sim import (
     BlackbirdSim, asl as _asl, adc as _adc, ror as _ror, lsr as _lsr,
 )
@@ -2535,6 +2541,12 @@ def prune_stale_parts(prefix, nparts):
     own prune_stale_parts, ported verbatim)."""
     import glob
     import re
+    BM.commit_parts()                      # publish this build's staged set first
+    for f in glob.glob(f"{prefix}_part*" + BM._STAGE):   # a kill -9 leaves these
+        try:
+            os.remove(f)
+        except OSError:
+            pass
     removed = 0
     for f in glob.glob(f"{prefix}_part*.sf2"):
         mm = re.search(r"_part(\d+)\.sf2$", f)
@@ -3149,7 +3161,15 @@ def main():
                          full_schedule, opening_pair, row_state,
                          row0, row1, count_only=False)
         out = os.path.join(out_dir, f"{base}_native_part{pi:02d}.sf2")
-        open(out, "wb").write(br['sf2'])
+        # STAGED when this is one part of a SET: the set appears together or not
+        # at all. A single-part build writes straight through, matching the
+        # shared emitter's rule and keeping any in-process read-back working.
+        if len(bounds) > 1:
+            staged = out + BM._STAGE
+            open(staged, "wb").write(br['sf2'])
+            BM._PENDING.append((staged, out))
+        else:
+            open(out, "wb").write(br['sf2'])
         print(f"\n  part {pi}/{len(bounds)} rows[{row0}:{row1}) ({row1 - row0} rows): "
               f"wrote {out} ({len(br['sf2'])} bytes)")
         print(f"    instr={br['n_used_instr']} bundles {br['n_bundles_raw']}->"

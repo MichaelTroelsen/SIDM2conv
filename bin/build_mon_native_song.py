@@ -619,6 +619,30 @@ _PREV_EXCEPTHOOK = sys.excepthook
 sys.excepthook = _emit_excepthook
 
 
+def _emit_sys_exit(code=None):
+    """Wrap `sys.exit` so a nonzero/truthy refusal marks `_UNWOUND` before the
+    `SystemExit` it raises skips straight past `sys.excepthook`.
+
+    `sys.exit(code)` just raises `SystemExit(code)`, and the interpreter's
+    top-level handler treats `SystemExit` specially -- it NEVER calls
+    `sys.excepthook` for it, unlike every other exception, which
+    `_emit_excepthook` above already catches. Without this, a mid-loop
+    `sys.exit(<nonzero>)` reached `_finish_pending` at atexit with `_UNWOUND`
+    still False and COMMITTED a half-written part set -- exactly the defect
+    2bdbb71 exists to prevent, one layer down. A falsy code (`sys.exit()`,
+    `sys.exit(0)`, `sys.exit(None)`) is a clean exit by `sys.exit`'s own
+    convention and is left alone.
+    """
+    global _UNWOUND
+    if code:
+        _UNWOUND = True
+    _ORIG_SYS_EXIT(code)
+
+
+_ORIG_SYS_EXIT = sys.exit
+sys.exit = _emit_sys_exit
+
+
 @atexit.register
 def _finish_pending():
     """The net under builders whose part loop has no `prune_stale_parts` call.
@@ -628,12 +652,14 @@ def _finish_pending():
     clean exit the set is complete, so commit; on an exception the build refused
     or crashed, so drop it.
 
-    What this does NOT cover, stated rather than implied: `sys.exit(<nonzero>)`
-    raises SystemExit, which never reaches `sys.excepthook`, so it would commit
-    here. Every such refusal in these builders (`DMC tables not located`,
-    `implausible speed byte`) fires BEFORE the first emit, when nothing is
-    pending — which is why this is sound today and would stop being sound if one
-    were ever added mid-loop.
+    `sys.exit(<nonzero>)` raises SystemExit, which never reaches
+    `sys.excepthook` -- that used to mean it would commit here regardless of
+    where in the loop it fired. `_emit_sys_exit` (wrapping `sys.exit` itself,
+    just below `_emit_excepthook`) now marks `_UNWOUND` for any truthy exit
+    code, so a mid-loop refusal via `sys.exit` discards exactly like an
+    unhandled exception. Pinned by
+    `test_atexit_commits_on_a_clean_exit_and_discards_on_a_refusal[sys.exit(1)-False]`
+    in `pyscript/test_native_build_atomicity.py`.
     """
     if not _PENDING:
         return
