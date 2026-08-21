@@ -460,3 +460,67 @@ def test_the_builder_traces_the_psid_song_not_the_subtune():
     assert "f'-a{SUB}'" not in src, (
         "the builder still traces -a{SUB}; it must trace the derived psid_song")
     assert "song.psid_song" in src
+
+
+# --------------------------------------------------------------------------
+# A mis-located pattern table is refused BY NAME, not 512 bytes later
+# --------------------------------------------------------------------------
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_GRAY = os.path.join(_REPO, "SID", "Gray_Matt")
+needs_gray = pytest.mark.skipif(not os.path.isdir(_GRAY),
+                                reason="SID/Gray_Matt not available")
+
+
+@needs_gray
+@pytest.mark.parametrize("name", ["Pogo_Stick_Olympics.sid", "Warriors.sid"])
+def test_a_mislocated_pattern_table_is_refused_by_name(name):
+    """These two are accepted by the dispatcher probe (their tables ARE found)
+    and then fail the sequencer walk -- the 13-accept/11-decode gap.
+
+    The cause is not the walk. The table declares ONE pattern whose address
+    lands in the player's own code: Pogo's entry is $1517, ten bytes ahead of
+    its own play routine at $1557, and reads `a0 18 a9 00 99 18 d4 88 d0 fa 60`
+    -- the clear-SID loop. The walk then ran 512 bytes without meeting an $ff
+    and blamed itself: "pattern at $1517 has no $ff terminator", which accuses
+    the terminator rule of a LOCATE bug and sends the reader to the wrong file.
+    """
+    from sidm2.mattgray_parser import MattGrayError, parse_sid
+    with pytest.raises(MattGrayError) as e:
+        parse_sid(os.path.join(_GRAY, name), 1)
+
+    msg = str(e.value)
+    assert "pattern table mis-located" in msg
+    assert "no $ff terminator" not in msg, (
+        "the old message blamed the walk for a locate fault")
+    assert "unreachable" in msg and "declares only" in msg, (
+        "the refusal must quote BOTH counts -- the reader needs to see that the "
+        "table is degenerate, not that one reference is odd")
+
+
+@needs_gray
+def test_a_lone_out_of_range_reference_does_not_refuse():
+    """The sequencer treats `pat_no >= len(patterns)` as end-of-track
+    (`st.stopped = True`), so ONE unreachable reference is legal and a real rip
+    carries a lone $fd in a track. An earlier version of the guard used
+    `max(refs) >= n_patterns` and broke a passing test on real material; only a
+    MAJORITY of distinct references being unreachable means the locate is wrong.
+    """
+    import glob
+    from sidm2.mattgray_parser import parse_sid, TRK_STOP
+    decoded = 0
+    for f in sorted(glob.glob(os.path.join(_GRAY, "*.sid"))):
+        for sub in (1, 2, 3):
+            try:
+                song = parse_sid(f, sub)
+            except Exception:
+                continue
+            decoded += 1
+            refs = {b for t in song.tracks for b in t if b < TRK_STOP}
+            oor = {b for b in refs if b >= len(song.patterns)}
+            assert len(oor) * 2 <= len(refs), (
+                f"{os.path.basename(f)} sub{sub} decoded with a majority of its "
+                f"track references unreachable -- the guard let a bad locate through")
+    assert decoded == 26, (
+        f"{decoded} (file, subtune) pairs decode; the guard changed the corpus "
+        f"denominator, which it must not")

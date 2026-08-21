@@ -677,6 +677,31 @@ class MattGrayParser:
         # --- patterns
         pattern_addrs = [self.byte(pat_lo + i) | (self.byte(pat_hi + i) << 8)
                          for i in range(n_patterns)]
+        # THE TRACKS KNOW HOW MANY PATTERNS THERE ARE, so ask them before
+        # decoding one. On `Pogo_Stick_Olympics` and `Warriors` the table is
+        # mis-located: it declares ONE pattern whose address lands in the
+        # player's own code ($1517 is ten bytes ahead of Pogo's play routine at
+        # $1557, and reads `a0 18 a9 00 99 18 d4 88 d0 fa 60` -- the clear-SID
+        # loop), while the tracks reference 15+. Without this the failure
+        # surfaced 512 bytes later as "pattern at $1517 has no $ff terminator",
+        # which accuses the WALK of a locate bug and sends the reader to the
+        # wrong file. The invariant is exact on every rip that decodes: across
+        # all 26 (file, subtune) pairs the highest track reference is always
+        # < n_patterns, and usually == n_patterns - 1.
+        # A SINGLE out-of-range reference is LEGAL and must not refuse: the
+        # sequencer itself treats `pat_no >= len(patterns)` as end-of-track
+        # (`st.stopped = True`), and a real rip in the test corpus carries a
+        # lone $fd in a track. What is not legal is a table so small that most
+        # of the song cannot be reached -- so require a MAJORITY of the distinct
+        # references to be unreachable before calling the locate wrong.
+        refs = {b for t in tracks for b in t if b < TRK_STOP}
+        oor = {b for b in refs if b >= n_patterns}
+        if refs and len(oor) * 2 > len(refs):
+            raise MattGrayError(
+                f"pattern table mis-located: {len(oor)} of {len(refs)} distinct "
+                f"track references are unreachable (highest {max(oor)}) but the "
+                f"table at ${pat_lo:04x}/${pat_hi:04x} declares only "
+                f"{n_patterns} (first entry ${pattern_addrs[0]:04x})")
         patterns = [self._read_pattern(a) for a in pattern_addrs]
 
         # --- instruments
