@@ -57,7 +57,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sidm2.fidelity_common import (  # noqa: E402
-    siddump_frames_full, psid_wrap, part_span, window_for)
+    siddump_frames_full, psid_wrap, part_span, window_for,
+    provenance_census)
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -602,6 +603,25 @@ def main(argv=None):
     if not builds:
         print(f"no {a.player} builds in {build_dir} -- nothing to check")
         return 2
+
+    # PROVENANCE CENSUS, before a single number is printed. A sweep that
+    # averages artifacts built at different commits is measuring its own build
+    # history rather than the player -- and this corpus has actually done that:
+    # 31 of 33 shipped HardTrack builds predated a passband fix while the docs
+    # quoted them as current. One stamp means one build; more than one, or any
+    # `dirty`, means the number below is a blend and must be said so.
+    census, unstamped = provenance_census(builds)
+    if census or unstamped:
+        parts = [f"{n} at {c} ({t}){' ' + f if f else ''}"
+                 for (c, t, f), n in sorted(census.items(), key=lambda kv: -kv[1])]
+        if unstamped:
+            parts.append(f"{unstamped} UNSTAMPED (built before provenance existed)")
+        print("provenance: " + "; ".join(parts))
+        if len(census) > 1:
+            print(f"  !! {len(census)} distinct build stamps -- this corpus was "
+                  f"NOT built together; the aggregate below blends them")
+        if any(t == "dirty" for c, t, f in census):
+            print("  !! built from a MODIFIED tree -- not reproducible from its commit")
 
     print(f"{'file':<28s} {'original':<14s} {'ours':<14s} "
           f"{'oChg':>5s} {'dChg':>5s} {'off':>4s} {'agree':>7s} {'routed':>7s}")

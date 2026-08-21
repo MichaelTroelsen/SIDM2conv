@@ -820,6 +820,63 @@ def part_span(build_path):
     return None
 
 
+def build_provenance(build_path):
+    """Which commit built this artifact, and under what flags. None if unstamped.
+
+    Reconstructing this once cost NINE worktree builds -- the tree carried no
+    record of which commit produced an artifact, so the only way to date a
+    corpus was to rebuild it at candidate commits and compare. `emit_one` now
+    drops a `.prov` beside every artifact it writes; this reads it back.
+
+    Returns a dict with `commit`, `tree` ("clean"/"dirty"/"unknown"), `builder`
+    and `flags`, or None when the sidecar is absent -- an artifact built before
+    the stamp existed. None must stay distinguishable from a clean build at an
+    unknown commit: "not stamped" and "stamped as unknown" are different facts,
+    and collapsing them is how a stale corpus passes for a fresh one.
+
+    `tree` is the load-bearing field. An artifact built from a modified working
+    tree is NOT reproducible from its commit, so a bare sha would overstate what
+    is known about it.
+    """
+    # Same `.sid`-vs-`.sf2` keying as `part_span`: half the players are keyed on
+    # the PSID wrapper, and `emit_one` writes the sidecar beside the `.sf2`.
+    cands = [build_path + ".prov"]
+    if build_path.lower().endswith(".sid"):
+        cands.append(build_path[:-4] + ".sf2.prov")
+    for c in cands:
+        try:
+            with open(c) as f:
+                text = f.read()
+        except OSError:
+            continue
+        out = {"commit": "unknown", "tree": "unknown", "builder": "?", "flags": ""}
+        for line in text.splitlines():
+            k, _, v = line.partition(" ")
+            if k in out:
+                out[k] = v.strip()
+        return out
+    return None
+
+
+def provenance_census(build_paths):
+    """Group artifacts by their (commit, tree, flags) stamp.
+
+    The question this answers is the one that matters for a corpus number: were
+    these built TOGETHER? A sweep that averages artifacts from three different
+    commits is measuring its own build history, not the player. Returns
+    (census, unstamped) where census maps the stamp tuple -> count.
+    """
+    census, unstamped = {}, 0
+    for p in build_paths:
+        pr = build_provenance(p)
+        if pr is None:
+            unstamped += 1
+            continue
+        key = (pr["commit"], pr["tree"], pr["flags"])
+        census[key] = census.get(key, 0) + 1
+    return census, unstamped
+
+
 def window_for(span, seconds):
     """The comparison window for one build: (seconds, derived).
 

@@ -742,3 +742,86 @@ def test_siddump_timeout_falls_back_to_the_tool_default_when_no_dash_t():
     """siddump_complete.py itself defaults -t to 60s when omitted; the timeout
     budget must assume that, not treat a missing -t as "unbounded"."""
     assert FC._siddump_timeout(["-a0"]) == FC._siddump_timeout(["-t60"])
+
+
+# ---------------------------------------------------------------------------
+# Build provenance: which commit made this artifact, and under what flags
+# ---------------------------------------------------------------------------
+
+_PROV = ("commit a240049\ntree clean\n"
+         "builder build_dmc_native_song.py\nflags FILT_LEAD=1 DMC_WF=2\n")
+
+
+def _stamp(tmp_path, name, text=_PROV):
+    art = tmp_path / name
+    art.write_bytes(b"SF2")
+    (tmp_path / (name + ".prov")).write_text(text)
+    return str(art)
+
+
+def test_provenance_reads_back_every_field(tmp_path):
+    p = FC.build_provenance(_stamp(tmp_path, "song_part01.sf2"))
+    assert p == {"commit": "a240049", "tree": "clean",
+                 "builder": "build_dmc_native_song.py",
+                 "flags": "FILT_LEAD=1 DMC_WF=2"}
+
+
+def test_an_unstamped_artifact_is_None_not_a_stamp_of_unknowns(tmp_path):
+    """"Not stamped" and "stamped as unknown" are DIFFERENT facts. An artifact
+    built before provenance existed must not read as one built at an unknown
+    commit -- collapsing them is how a stale corpus passes for a fresh one, and
+    the whole point of this sidecar is dating a corpus."""
+    art = tmp_path / "old_part01.sf2"
+    art.write_bytes(b"SF2")
+
+    assert FC.build_provenance(str(art)) is None
+
+
+def test_a_sid_keyed_player_finds_the_sidecar_beside_the_sf2(tmp_path):
+    """Half the players in passband_check are keyed on the `.sid` PSID wrapper
+    and half on the `.sf2`, but emit_one writes the sidecar beside the `.sf2`.
+    part_span already carries this exact fallback; getting it wrong is silent --
+    every stamp reads absent and the corpus looks entirely unstamped."""
+    _stamp(tmp_path, "song_part01.sf2")
+    (tmp_path / "song_part01.sid").write_bytes(b"PSID")
+
+    p = FC.build_provenance(str(tmp_path / "song_part01.sid"))
+
+    assert p is not None and p["commit"] == "a240049"
+
+
+def test_the_census_separates_unstamped_from_stamped(tmp_path):
+    a = _stamp(tmp_path, "a_part01.sf2")
+    b = _stamp(tmp_path, "b_part01.sf2")
+    old = tmp_path / "c_part01.sf2"
+    old.write_bytes(b"SF2")
+
+    census, unstamped = FC.provenance_census([a, b, str(old)])
+
+    assert census == {("a240049", "clean", "FILT_LEAD=1 DMC_WF=2"): 2}
+    assert unstamped == 1
+
+
+def test_two_commits_are_two_stamps_which_is_the_whole_signal(tmp_path):
+    """A sweep that averages artifacts from different commits is measuring its
+    own build history, not the player. 31 of 33 shipped HardTrack builds once
+    predated a passband fix while the docs quoted them as current."""
+    a = _stamp(tmp_path, "a_part01.sf2")
+    b = _stamp(tmp_path, "b_part01.sf2",
+               _PROV.replace("a240049", "6a1f9c9"))
+
+    census, _ = FC.provenance_census([a, b])
+
+    assert len(census) == 2, "a corpus built at two commits must not read as one"
+
+
+def test_flags_are_part_of_the_identity_not_decoration(tmp_path):
+    """Same commit, different env flags, is a DIFFERENT build -- FILT_EXACT_PB
+    is strictly stricter and changes part counts. Grouping on commit alone would
+    call two incomparable corpora one."""
+    a = _stamp(tmp_path, "a_part01.sf2")
+    b = _stamp(tmp_path, "b_part01.sf2", _PROV.replace("FILT_LEAD=1 DMC_WF=2", ""))
+
+    census, _ = FC.provenance_census([a, b])
+
+    assert len(census) == 2

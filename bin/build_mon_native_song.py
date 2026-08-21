@@ -14,10 +14,12 @@ Usage:  py -3 bin/build_mon_native_song.py [SID/Tel_Jeroen/Hawkeye.sid] [subtune
 """
 import atexit
 import bisect
+import functools
 import contextlib
 import os
 import re
 import shutil
+import subprocess
 import time
 import sys
 
@@ -671,8 +673,10 @@ def prune_stale_parts(prefix, nparts):
     # exactly why it survived: the only symptom is the phantom-file inventory
     # this function exists to prevent.
     removed = 0
-    for f in glob.glob(f"{prefix}_part*.sf2") + glob.glob(f"{prefix}_part*.sf2.span"):
-        mm = re.search(r"_part(\d+)\.sf2(\.span)?$", f)
+    for f in (glob.glob(f"{prefix}_part*.sf2")
+              + glob.glob(f"{prefix}_part*.sf2.span")
+              + glob.glob(f"{prefix}_part*.sf2.prov")):
+        mm = re.search(r"_part(\d+)\.sf2(\.span|\.prov)?$", f)
         if mm and int(mm.group(1)) > nparts:
             os.remove(f)
             removed += 1 if not mm.group(2) else 0
@@ -2287,6 +2291,69 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
 _SPAN_RE = re.compile(r"part (\d+)/(\d+) \((\d+)-(\d+)s")
 
 
+_PROV_DENY = {"TEMP", "TMP", "TMPDIR", "PATH", "HOME", "USERPROFILE", "APPDATA",
+              "HVSC_ROOT", "VSID_TRACE_JS", "PYTHONPATH", "COMSPEC"}
+_ENV_RE = re.compile(r"environ(?:\.get)?\(\s*['\"]([A-Z][A-Z0-9_]{2,})['\"]")
+
+
+@functools.lru_cache(maxsize=1)
+def _build_flag_names():
+    """Every env var the builders read, SCANNED from source rather than listed.
+
+    A hand-kept list is the duplicated truth this repo keeps getting caught by:
+    it would be right on the day it was written and silently wrong the first time
+    someone adds a knob. There are 77 of them across bin/ and sidm2/ today.
+    """
+    import glob as _glob
+    names = set()
+    for d in ("bin", "sidm2"):
+        for f in _glob.glob(os.path.join(ROOT, d, "*.py")):
+            try:
+                with open(f, encoding="utf-8", errors="ignore") as fh:
+                    names |= set(_ENV_RE.findall(fh.read()))
+            except OSError:
+                pass
+    return sorted(names - _PROV_DENY)
+
+
+@functools.lru_cache(maxsize=1)
+def _provenance():
+    """commit + dirty + builder + the flags actually SET, computed once.
+
+    Reconstructing which commit built an artifact cost nine worktree builds once;
+    this is the cheap answer. `dirty` is the load-bearing field -- an artifact
+    built from a modified tree is NOT reproducible from its commit, and saying
+    only the sha would imply that it is.
+
+    Deliberately NO timestamp: a rebuild at the same commit stays byte-identical
+    across every sidecar, which is the property three separate no-regression
+    checks in this file's own history rest on.
+    """
+    def git(*a):
+        try:
+            out = subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
+                                 text=True, timeout=10)
+            return out.stdout.strip() if out.returncode == 0 else None
+        except Exception:
+            return None
+    commit = git("rev-parse", "--short", "HEAD") or "unknown"
+    st = git("status", "--porcelain")
+    tree = "unknown" if st is None else ("dirty" if st else "clean")
+    flags = " ".join(f"{k}={os.environ[k]}" for k in _build_flag_names()
+                     if k in os.environ)
+    return ("commit %s\ntree %s\nbuilder %s\nflags %s\n"
+            % (commit, tree, os.path.basename(sys.argv[0] or "?"), flags))
+
+
+def _write_prov(out_path, dst=None):
+    try:
+        with open((dst or out_path) + ".prov", "w") as f:
+            f.write(_provenance())
+    except OSError:
+        return False                      # provenance we cannot write is not fatal
+    return True
+
+
 def _write_span(out_path, label, dst=None):
     """Record the seconds this part covers, beside the artifact.
 
@@ -2489,10 +2556,13 @@ def emit_one(m, br, out_path, label):
     if gen.filter_addr >= 0xC000:                # approaching the $D000 memory wall
         flags += " MEMWALL"
     wrote_span = _write_span(out_path, label, dst=dst if staged else None)
+    wrote_prov = _write_prov(out_path, dst=dst if staged else None)
     if staged:
         _PENDING.append((dst, out_path))
         if wrote_span:
             _PENDING.append((dst + ".span", out_path + ".span"))
+        if wrote_prov:
+            _PENDING.append((dst + ".prov", out_path + ".prov"))
     print(f"  {label}: instr={len(instrs)} bundles={len(bundles)} filter={nfilt} "
           f"{len(sf2)}B top~${gen.filter_addr:04X} parse={'OK' if pla == B.LOAD_BASE else 'FAIL'}{flags}")
     return gen.filter_addr
