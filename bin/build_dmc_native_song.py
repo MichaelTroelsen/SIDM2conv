@@ -344,6 +344,20 @@ def build_song(shim, base_name, traces, span, emit=True):
         while t1 < span and fits(t0, align(min(t1 + STEP, span))):
             nxt = align(min(t1 + STEP, span))
             t1 = nxt if nxt > t1 else min(t1 + STEP, span)
+        # THE BASE WINDOW WAS NEVER PROBED. `fits` above is consulted only to
+        # decide whether to GROW past the first STEP, so a part that never grows
+        # is emitted unchecked -- DMC_Demo_IV_tune_5 packed 92 parts and died
+        # laying part 5 with 'WAVE overflow: 288 rows > 256' on a window fits()
+        # had never once seen (measured: parts 1, 2, 4 and 5 were all unprobed;
+        # part 3, the only one that grew, was probed at nw=181 and laid exactly
+        # 181 -- the probe and the real layout AGREE, so the split was the fault
+        # and not the counter). The music is not the problem either: the same
+        # song builds cleanly end to end at a 1s step. So shrink until it lays
+        # out. A window that already fits is untouched, which is why no song
+        # that builds today can change shape.
+        while t1 - t0 > fpt and not fits(t0, t1):
+            shrunk = max(fpt, (t1 - t0) // 2)
+            t1 = max(align(t0 + shrunk), t0 + fpt)
         bounds.append((t0, t1))
         t0 = t1
     parts = []

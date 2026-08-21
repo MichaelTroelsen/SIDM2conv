@@ -12,6 +12,7 @@ PWM / filter sweeps / per-frame slides / the gate envelope follow (B2+).
 
 Usage:  py -3 bin/build_mon_native_song.py [SID/Tel_Jeroen/Hawkeye.sid] [subtune]
 """
+import atexit
 import bisect
 import contextlib
 import os
@@ -565,19 +566,116 @@ def _hr_rows(rows, hard_restart):
     return rows
 
 
+_STAGE = ".staging"                 # suffix of an artifact written but not committed
+_PENDING = []                       # [(staged_path, final_path)] for THIS process
+_UNWOUND = False                    # an unhandled exception reached the interpreter
+_PART_RE = re.compile(r"^part (\d+)/(\d+)\b")
+
+
+def _stages(label):
+    """Is this emit one member of a multi-part SET, rather than a whole build?
+
+    Only a SET can be left half-written, so only a set is staged. A single-window
+    build writes its one file straight through, which keeps every in-process
+    read-back working exactly as before — the DMC legato A/B, for one, emits
+    parts and then re-opens them from disk to score them.
+    """
+    m = _PART_RE.match(label or "")
+    return bool(m) and int(m.group(2)) > 1
+
+
+def commit_parts():
+    """Publish every staged artifact at once. Returns how many pairs moved.
+
+    `os.replace` is atomic per file and the staged copy sits in the destination
+    directory, so no artifact is ever half-written; what this adds on top is that
+    the SET appears together or not at all.
+    """
+    global _PENDING
+    for tmp, final in _PENDING:
+        os.replace(tmp, final)
+    n = len(_PENDING)
+    _PENDING = []
+    return n
+
+
+def _discard_pending():
+    global _PENDING
+    for tmp, _ in _PENDING:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+    _PENDING = []
+
+
+def _emit_excepthook(*exc):
+    global _UNWOUND
+    _UNWOUND = True
+    _PREV_EXCEPTHOOK(*exc)
+
+
+_PREV_EXCEPTHOOK = sys.excepthook
+sys.excepthook = _emit_excepthook
+
+
+@atexit.register
+def _finish_pending():
+    """The net under builders whose part loop has no `prune_stale_parts` call.
+
+    `build_myth_native_song.py` is one: it loops over bounds and emits, and
+    nothing follows. Without this its parts would stage and never publish. On a
+    clean exit the set is complete, so commit; on an exception the build refused
+    or crashed, so drop it.
+
+    What this does NOT cover, stated rather than implied: `sys.exit(<nonzero>)`
+    raises SystemExit, which never reaches `sys.excepthook`, so it would commit
+    here. Every such refusal in these builders (`DMC tables not located`,
+    `implausible speed byte`) fires BEFORE the first emit, when nothing is
+    pending — which is why this is sound today and would stop being sound if one
+    were ever added mid-loop.
+    """
+    if not _PENDING:
+        return
+    if _UNWOUND:
+        # count the ARTIFACTS, not the entries: a part whose label carried no
+        # span queues one entry, not two, so `len // 2` under-reports it
+        n = sum(1 for _, final in _PENDING if final.endswith(".sf2"))
+        _discard_pending()
+        print(f"  build refused: discarded {n} staged part(s), disk unchanged")
+    else:
+        commit_parts()
+
+
 def prune_stale_parts(prefix, nparts):
-    """Delete `<prefix>_partNN.sf2` files with NN > nparts. A rebuild that packs
-    into fewer parts than a previous era otherwise leaves the old higher-numbered
-    parts on disk — the inventory then reports phantom files (Supremacy_sub2
-    showed 70 when the real build was 10) and a listener plays a stale tail."""
+    """Publish this build's staged parts, then delete `<prefix>_partNN.sf2`
+    files with NN > nparts. A rebuild that packs into fewer parts than a previous
+    era otherwise leaves the old higher-numbered parts on disk — the inventory
+    then reports phantom files (Supremacy_sub2 showed 70 when the real build was
+    10) and a listener plays a stale tail.
+
+    The commit belongs HERE because this already runs after every multi-part
+    loop and only on the path where the loop finished. A build that raises at
+    part 5 of 92 never reaches it, so parts 1-4 are dropped instead of shipping
+    as a plausible-looking 4-part build — the defect this pairing exists to fix.
+    """
     import glob
     import re
+    commit_parts()
+    for f in glob.glob(f"{prefix}_part*{_STAGE}"):     # a kill -9 leaves these
+        with contextlib.suppress(OSError):
+            os.remove(f)
+    # The `.span` sidecar is pruned WITH its artifact, not left behind. It was
+    # not, and `out/dmc` accumulated 352 spans over 31 songs whose `.sf2` had
+    # already been pruned (Cant_Stop 96, Ragtime_Anno_87 35) -- every one of them
+    # a part that no longer exists. Harmless to any READER, because nothing globs
+    # spans (`fidelity_common` derives each from a known build path), which is
+    # exactly why it survived: the only symptom is the phantom-file inventory
+    # this function exists to prevent.
     removed = 0
-    for f in glob.glob(f"{prefix}_part*.sf2"):
-        mm = re.search(r"_part(\d+)\.sf2$", f)
+    for f in glob.glob(f"{prefix}_part*.sf2") + glob.glob(f"{prefix}_part*.sf2.span"):
+        mm = re.search(r"_part(\d+)\.sf2(\.span)?$", f)
         if mm and int(mm.group(1)) > nparts:
             os.remove(f)
-            removed += 1
+            removed += 1 if not mm.group(2) else 0
     if removed:
         print(f"  pruned {removed} stale part files beyond part{nparts:02d}")
 
@@ -1479,6 +1577,19 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
         ftr = filter_trace(sid, sub, secs)
         pbtr = passband_trace(sid, sub, secs)
+    # A trace with NO FRAMES is the no-notes failure one layer down, and it is the
+    # one that guard cannot see: the notes decoded fine, so the build proceeds and
+    # derives every per-note (FM, pulse) bundle from an empty series, shipping held
+    # degenerate programs that a later sweep scores as a FIDELITY defect rather
+    # than the capture failure it is. dd67bee closed the loud half -- a siddump
+    # that FAILS now raises instead of returning '' -- and this closes the quiet
+    # half, a siddump that exits 0 having printed no rows. Raised, not returned,
+    # so it lands in the same refusal path as the no-notes and WAVE-overflow caps.
+    if not frames:
+        raise ValueError(
+            "trace has no frames -- refusing to build from an empty trace "
+            "(%s sub%s: the capture failed, not the fidelity)"
+            % (os.path.basename(str(sid)), sub))
     # The filter is ONE GLOBAL per-note cutoff ENVELOPE on the filter-routed voice;
     # it restarts on that voice's note-ons. Find those note-ons (the envelope attacks,
     # mapped back to the triggering note) -> `drives`; the span until the next restart
@@ -2176,8 +2287,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
 _SPAN_RE = re.compile(r"part (\d+)/(\d+) \((\d+)-(\d+)s")
 
 
-def _write_span(out_path, label):
+def _write_span(out_path, label, dst=None):
     """Record the seconds this part covers, beside the artifact.
+
+    `dst` is where the bytes actually go when the artifact is staged; the span
+    must travel with its `.sf2` rather than landing at the final name early,
+    or a refused build leaves a span with no artifact under it.
 
     Every scorer that compares a part against the original needs to know where
     the part ENDS: past it our build LOOPS while the original plays on, and the
@@ -2193,12 +2308,13 @@ def _write_span(out_path, label):
     """
     m = _SPAN_RE.search(label or "")
     if not m:
-        return
+        return False
     try:
-        with open(out_path + ".span", "w") as f:
+        with open((dst or out_path) + ".span", "w") as f:
             f.write("%s %s\n" % (m.group(3), m.group(4)))
     except OSError:
-        pass                              # a span we could not write is not fatal
+        return False                      # a span we could not write is not fatal
+    return True
 
 
 def emit_one(m, br, out_path, label):
@@ -2363,14 +2479,20 @@ def emit_one(m, br, out_path, label):
                  instr_names=[f"instr {i}" for i in range(len(instrs))],
                  sid_model=getattr(m, "sid_model", 6581))
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    open(out_path, "wb").write(sf2)
+    staged = _stages(label)
+    dst = out_path + _STAGE if staged else out_path
+    open(dst, "wb").write(sf2)
     from sidm2.models import SF2DriverInfo
     from sidm2 import sf2_parser
     di = SF2DriverInfo()
     pla = sf2_parser.parse_sf2_blocks(bytearray(sf2), di)
     if gen.filter_addr >= 0xC000:                # approaching the $D000 memory wall
         flags += " MEMWALL"
-    _write_span(out_path, label)
+    wrote_span = _write_span(out_path, label, dst=dst if staged else None)
+    if staged:
+        _PENDING.append((dst, out_path))
+        if wrote_span:
+            _PENDING.append((dst + ".span", out_path + ".span"))
     print(f"  {label}: instr={len(instrs)} bundles={len(bundles)} filter={nfilt} "
           f"{len(sf2)}B top~${gen.filter_addr:04X} parse={'OK' if pla == B.LOAD_BASE else 'FAIL'}{flags}")
     return gen.filter_addr
