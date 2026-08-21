@@ -291,3 +291,65 @@ def test_hardtrack_wins_over_the_construct_only_families_that_also_accept():
     r = ND.rank(HT_ACCEPTED)
     assert r["signature"] == ["hardtrack"]
     assert r["best"] == "hardtrack" and r["confident"] is True
+
+
+# --- mattgray: the probe that accepted nothing, and why it hid ----------------
+
+MG_ACCEPTED = "SID/Gray_Matt/Driller.sid"          # the corroborated Matt Gray map
+MG_REFUSED = "SID/Shogoon/286AT_Heist.sid"         # not Matt Gray at all
+
+
+def test_mattgray_probe_reaches_its_parser():
+    """It used to unpack a 6-value load_sid into 3 names and pass 2 args to a
+    4-arg constructor. Either mistake makes this ACCEPT impossible."""
+    ok, evidence = ND.probe("mattgray", MG_ACCEPTED)
+    assert ok, evidence
+    assert set(evidence) == {"load", "init", "play", "tables"}
+    assert evidence["tables"], "locate() returned no tables"
+
+
+def test_mattgray_still_refuses_a_file_from_another_family():
+    ok, reason = ND.probe("mattgray", MG_REFUSED)
+    assert not ok
+    assert "MattGrayError" in reason
+
+
+def test_mattgray_is_a_signature_family():
+    """`locate()` raises when any table is unidentifiable, so an accept is
+    evidence. While it sat in CONSTRUCT_ONLY the fixed probe still produced
+    best=None -- the fix was not finished until the classification moved."""
+    assert "mattgray" in ND.SIGNATURE
+    assert "mattgray" not in ND.CONSTRUCT_ONLY
+    r = ND.rank(MG_ACCEPTED)
+    assert r["signature"] == ["mattgray"]
+    assert r["best"] == "mattgray" and r["confident"] is True
+
+
+def test_a_wrong_arity_unpack_is_a_bug_not_a_refusal(monkeypatch):
+    """THE DEFECT THAT HID THE DEFECT, pinned. CPython raises ValueError for a
+    bad unpack, and ValueError is this module's REFUSAL type, so the broad
+    handler recorded a caller error as the file's verdict -- mattgray reported
+    'accepts nothing, including its own corpus' for as long as the probe
+    existed. BUG_EXCEPTIONS alone cannot catch this: ValueError must stay a
+    refusal in every other case."""
+    def bad(_path):
+        a, b, c = (1, 2, 3, 4, 5, 6)                # the original mistake
+        return {"a": a, "b": b, "c": c}
+    monkeypatch.setitem(dict(ND.PROBE_ORDER), "mattgray", bad)
+    monkeypatch.setattr(ND, "PROBE_ORDER", tuple(
+        (p, bad if p == "mattgray" else f) for p, f in ND.PROBE_ORDER))
+    with pytest.raises(ND.ProbeBug) as e:
+        ND.probe("mattgray", MG_ACCEPTED)
+    assert "unpacked its loader wrongly" in str(e.value)
+
+
+def test_an_ordinary_valueerror_is_still_a_refusal(monkeypatch):
+    """The other half: the unpack check must not swallow real refusals. Every
+    parser says 'not mine' with a ValueError."""
+    def refuses(_path):
+        raise ValueError("not a Matt Gray music_play shim")
+    monkeypatch.setattr(ND, "PROBE_ORDER", tuple(
+        (p, refuses if p == "mattgray" else f) for p, f in ND.PROBE_ORDER))
+    ok, reason = ND.probe("mattgray", MG_ACCEPTED)
+    assert not ok
+    assert "music_play shim" in reason
