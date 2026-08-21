@@ -24,7 +24,28 @@ the 55):
 
 | Question | Count | How |
 |---|---|---|
-| Does `native_dispatch.probe("mattgray", path)` **accept** it? | **13/55** | `locate()` finds every table by signature; raises otherwise |
+| Does `native_dispatch.probe("mattgray", path)` **accept** it? | **11/55** | `locate()` finds every table by signature; raises otherwise |
+
+**The probe was 13/55 until 2026-08-21, and the 2 it lost were never real.**
+`Pogo_Stick_Olympics` and `Warriors` were accepted on a `locate()` that had
+silently mis-placed two tables. `n_patterns` is `pat_hi - pat_lo`, and the
+search took the FIRST adjacent site pair rather than the widest, so it picked a
+pair ONE byte apart and declared a one-pattern song while the tracks referenced
+22 and 23. Taking the widest pair finds the real tables (`$16a6`/22 and
+`$268f`/23 — exactly covering those references), and every one of the 9 files
+that already decoded picks the same table it always did, because in all of them
+the real pattern table IS the widest candidate.
+
+That exposed the next link: `tune_tempo` was chosen BEFORE the pattern table and
+had been claiming its lo-table. Chosen after it, the only free candidate left
+for these two is the **arpeggio pointer table** (`$1511` → `$1517`/`$151b`,
+whose targets read `00 05 09 0c` and `00 04 07 0c`, chord shapes in semitones),
+whose pointer high byte would have been read as a tempo of 21 — a row every 2.6
+seconds where every decoding file reads 2–5. So they now REFUSE on the tempo
+table, with the pattern table underneath correctly located. Probe and decode are
+both 11/55 and the accept-but-not-decode gap is empty; a wrong tempo would have
+put every note in the song at the wrong time while the decode still looked fine.
+
 | Does `parse_sid()` **decode** it (tables + sequencer walk)? | **11/55** | the 2 accept-but-not-decode files (`Pogo_Stick_Olympics`, `Warriors`) fail on a pattern-with-no-`$ff`-terminator bug — open separately, see `mattgray-pattern-no-ff-terminator` |
 | How many Stage B **artifacts** are on disk? | **8 songs / 37 song×subtune / 78 built `.sf2` parts** | `out/mattgray_native/*.sf2`, one game per song, part-split for length |
 

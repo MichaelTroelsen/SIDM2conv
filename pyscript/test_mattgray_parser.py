@@ -474,28 +474,41 @@ needs_gray = pytest.mark.skipif(not os.path.isdir(_GRAY),
 
 @needs_gray
 @pytest.mark.parametrize("name", ["Pogo_Stick_Olympics.sid", "Warriors.sid"])
-def test_a_mislocated_pattern_table_is_refused_by_name(name):
+def test_the_two_unlocatable_files_refuse_on_the_tempo_table(name):
     """These two are accepted by the dispatcher probe (their tables ARE found)
     and then fail the sequencer walk -- the 13-accept/11-decode gap.
 
-    The cause is not the walk. The table declares ONE pattern whose address
-    lands in the player's own code: Pogo's entry is $1517, ten bytes ahead of
-    its own play routine at $1557, and reads `a0 18 a9 00 99 18 d4 88 d0 fa 60`
-    -- the clear-SID loop. The walk then ran 512 bytes without meeting an $ff
-    and blamed itself: "pattern at $1517 has no $ff terminator", which accuses
-    the terminator rule of a LOCATE bug and sends the reader to the wrong file.
+    The chain of causes, each found by fixing the one above it:
+      1. "pattern at $1517 has no $ff terminator" blamed the WALK for a locate
+         fault -- $1517 is the player's own clear-SID loop, ten bytes ahead of
+         Pogo's play routine at $1557.
+      2. The table declared ONE pattern because `n_patterns = pat_hi - pat_lo`
+         and locate took the FIRST adjacent site pair, which was one byte wide.
+         Taking the WIDEST pair finds the real table ($16a6/22 for Pogo,
+         $268f/23 for Warriors) -- exactly covering their 21 and 22 track refs.
+      3. That table was only reachable once `tune_tempo` stopped claiming it:
+         tempo was chosen BEFORE the pattern table and grabbed its lo-table.
+      4. And then no free site remains for tempo at all. The only candidate
+         left is the ARPEGGIO pointer table ($1511 -> $1517/$151b/$151f, whose
+         targets read `00 05 09 0c` and `00 04 07 0c` -- chord shapes in
+         semitones), whose high byte would have been read as a tempo of 21.
+    So these two still refuse, but on the last link rather than the first, and
+    the pattern table underneath is now correct.
     """
     from sidm2.mattgray_parser import MattGrayError, parse_sid
     with pytest.raises(MattGrayError) as e:
         parse_sid(os.path.join(_GRAY, name), 1)
 
     msg = str(e.value)
-    assert "pattern table mis-located" in msg
+    assert "could not locate the tempo table" in msg
     assert "no $ff terminator" not in msg, (
         "the old message blamed the walk for a locate fault")
-    assert "unreachable" in msg and "declares only" in msg, (
-        "the refusal must quote BOTH counts -- the reader needs to see that the "
-        "table is degenerate, not that one reference is odd")
+    assert "arpeggio pointer table" in msg, (
+        "the refusal must name what the last free candidate actually IS, or the "
+        "next reader re-derives it")
+    assert "located OK" in msg, (
+        "it must say the PATTERN table was found -- that is the part this "
+        "chain already fixed, and hiding it invites re-doing the work")
 
 
 @needs_gray

@@ -498,15 +498,15 @@ class MattGrayParser:
                 found["trk_v2_lo"], found["trk_v2_hi"] = win[2], win[3]
                 found["trk_v3_lo"], found["trk_v3_hi"] = win[4], win[5]
                 # tune_tempo is the next distinct table referenced after them
-                for j in range(i + 6, len(sites)):
-                    if sites[j][1] not in win:
-                        found["tune_tempo"] = sites[j][1]
-                        break
+                # -- but it is chosen AFTER the pattern table, not here. On
+                # Pogo_Stick_Olympics and Warriors the very next distinct site
+                # IS the pattern lo-table, so picking tempo first claimed it and
+                # left the pattern search nothing but an arpeggio-style pair one
+                # byte wide, which read as a one-pattern song.
+                tempo_scan = (i + 6, win)
                 break
         if "trk_v1_lo" not in found:
             raise MattGrayError("could not locate the track-pointer tables")
-        if "tune_tempo" not in found:
-            raise MattGrayError("could not locate the tempo table")
 
         # freq lo/hi: a pair of operands exactly NUM_NOTES apart, confirmed by
         # a 12-semitone octave rollover in the candidate hi table.
@@ -547,19 +547,25 @@ class MattGrayParser:
             (found["frq_lo"], found["frq_lo"] + NUM_NOTES),
             (found["frq_hi"], found["frq_hi"] + NUM_NOTES),
             (found["trk_v1_lo"], found["trk_v3_hi"] + 2),
-            (found["tune_tempo"], found["tune_tempo"] + 2),
         ]
 
         def free(a: int) -> bool:
             return not any(s <= a < e for s, e in claimed)
 
-        for (o1, a1), (o2, a2) in zip(sites, sites[1:]):
-            if (0 < o2 - o1 <= 8 and 0 < a2 - a1 < 256
-                    and free(a1) and free(a2)):
-                found["pattern_lobytes"], found["pattern_hibytes"] = a1, a2
-                break
-        if "pattern_lobytes" not in found:
+        # TAKE THE WIDEST PAIR, not the first. `a2 - a1` IS the pattern count
+        # (the lo-table is immediately followed by the hi-table), so a pair one
+        # byte apart claims a one-pattern song -- which is what Pogo and
+        # Warriors got, while their tracks referenced 22 and 23. Every file that
+        # already decoded picks the SAME table under this rule, because the real
+        # pattern table is the widest candidate in all nine of them; the narrow
+        # runners-up are arpeggio-style lo/hi pointer pairs (distance 1-3).
+        cands = [(a1, a2) for (o1, a1), (o2, a2) in zip(sites, sites[1:])
+                 if 0 < o2 - o1 <= 8 and 0 < a2 - a1 < 256
+                 and free(a1) and free(a2)]
+        if not cands:
             raise MattGrayError("could not locate the pattern pointer tables")
+        found["pattern_lobytes"], found["pattern_hibytes"] = max(
+            cands, key=lambda c: c[1] - c[0])
 
         # arpeggio table: a pair of sites one byte apart (lo/hi of a pointer)
         for (_o1, a1), (_o2, a2) in zip(sites, sites[1:]):
@@ -567,6 +573,33 @@ class MattGrayParser:
                 found["arpeggio_table"] = a1
                 break
         found.setdefault("arpeggio_table", 0)
+
+        # tempo, NOW that the pattern table is known: the next distinct site
+        # after the track group that is not inside the pattern table itself.
+        pat_lo = found["pattern_lobytes"]
+        pat_end = found["pattern_hibytes"] + (found["pattern_hibytes"] - pat_lo)
+        j0, win = tempo_scan
+        for j in range(j0, len(sites)):
+            a = sites[j][1]
+            # It must be free of EVERY table already placed, not just the
+            # pattern one. Without the `free(a)` test it landed on `instr_a0`
+            # for Pogo_Stick_Olympics and Warriors and read a tempo of 129 --
+            # 130 frames per tick, a row every 2.6 seconds, where every file
+            # that decodes reads 2-5. A silently wrong tempo is worse than a
+            # refusal: it makes every note in the song land at the wrong time
+            # while the decode still looks like it worked.
+            arp = found.get("arpeggio_table") or 0
+            if (a not in win and not (pat_lo <= a < pat_end) and free(a)
+                    and not (arp and a in (arp, arp + 1))):
+                found["tune_tempo"] = a
+                break
+        if "tune_tempo" not in found:
+            raise MattGrayError(
+                "could not locate the tempo table: every indexed-read site is "
+                "claimed by another table, and the only free pair is the "
+                "arpeggio pointer table (pattern table at $%04x/%d located "
+                "OK)" % (pat_lo, found["pattern_hibytes"] - pat_lo))
+
         return found
 
     def _duration_base(self) -> Optional[int]:
