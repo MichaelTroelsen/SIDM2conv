@@ -174,24 +174,35 @@ round shipped a verified, register-exact improvement (97.5% overall) that did
 onset timing + attack shape, with a systematic-offset/jitter split and an
 alignment timeline. The items below are what it still needs.
 
-### E1. Patch VICE for per-voice muting (unblocks everything else here)
-`vsid -help` confirms **VICE exposes no voice-mute option** (only engine/model/
-sampling). SID2WAV has `-m<num>` but is a 1997 build that **hangs outright on
-some newer tunes** — lft's `Glyptodont.sid` renders zero samples under it while
-VSID handles it fine. So today: the files most worth analyzing are exactly the
-ones that cannot be voice-isolated.
+### E1. Patch VICE for per-voice muting — ⛔ SUPERSEDED: shipped via sidplayfp, not VICE
+The premise still holds — `vsid -help` confirms **VICE exposes no voice-mute
+option** (only engine/model/sampling), and SID2WAV's `-m<num>` is a 1997 build
+that **hangs outright on some newer tunes** (lft's `Glyptodont.sid` renders zero
+samples under it while VSID handles it fine). But the *goal* — per-voice
+isolation on every file — was reached by changing renderer instead of patching
+one, so this item is closed without being done.
 
-- **Action**: add a voice-mute resource/CLI option to the local WinVICE build
-  (reSID exposes per-voice output internally; the mute can be applied at the
-  `sid_engine` write layer or as a reSID `voice.envelope` gate). The user has
-  **already patched WinVICE in the `siddetector` project** — reuse that same
-  build/toolchain rather than starting a fresh fork.
-- **Payoff**: per-voice isolation on *every* file, from one renderer, which
-  unblocks E2 and removes the tool's current SID2WAV dependency entirely.
-- **Guard**: cross-check a patched-VICE per-voice render against SID2WAV's
-  `-m` output on a file both can handle (e.g. `SID/Angular.sid`) before
-  trusting it — same "two independent tools must agree" discipline the
-  zig64/vsid trace cross-validation already uses.
+- **Shipped mechanism**: `sidm2/sidplayfp_wrapper.py` passes sidplayfp's
+  **`-u<voice>`** flag (one per muted voice, from its `mute_voices` digit
+  string) in place of SID2WAV's `-m<digits>`; `scripts/sid_to_sf2.py` exposes it
+  as **`--audio-export-voices`**, which routes through
+  `AudioExportIntegration.export_voice_stems` (`sidm2/audio_export_wrapper.py`)
+  to emit three isolated `<name>_voice1/2/3.wav` stems beside the full mix. That
+  flag **forces sidplayfp**, precisely because VSID has no per-voice mute.
+  sidplayfp also renders duration natively via `-t<seconds>`, so it does not
+  inherit SID2WAV's hang-on-unsupported-tune failure mode either.
+- **Why the VICE patch is not worth doing**: `C:\winvice` holds the
+  **GTK3VICE-3.7-win64 binary distribution — there is no source tree to patch**
+  (no `src/`, no `*.c`, no tarball). Reviving this would mean sourcing and
+  building VICE from scratch to duplicate a capability that already ships.
+- **Residual caveat — KEEP THIS, it is a real and separate gap**: **muting is
+  not clean isolation on every tune.** A muted voice can still influence what
+  the remaining voices produce — ring modulation, hard sync, and the shared
+  filter all cross-couple — so a stem is a **listening aid, not proof a voice is
+  silent**. `--audio-export-voices`' own help text says exactly this. Quantifying
+  or correcting that leakage is a much smaller, separate task; it is *not* a
+  reason to reopen the VICE fork, since a patched reSID voice gate would have had
+  the same coupling.
 
 ### E2. SidWiz-class oscilloscope video in the tool stack
 Per-channel oscilloscope video (original vs driver, one lane per SID voice) is
@@ -201,8 +212,12 @@ shareable. Two mature options: **[SidWizPlus](https://github.com/maxim-zhao/SidW
 **[Corrscope](https://github.com/corrscope/corrscope)** (Python, pip-installable,
 correlation-based triggering that holds complex waves steady).
 
-- **Blocked on**: E1 for per-voice tracks on VSID-only files, and **ffmpeg**,
-  which is not currently installed (both tools need it to encode video).
+- **Blocked on**: **ffmpeg** only, which is not currently installed (both tools
+  need it to encode video). **E2 no longer depends on E1** — per-voice tracks
+  ship today via `--audio-export-voices` (sidplayfp `-u<voice>`), including on
+  files VSID alone cannot isolate. Read those stems with E1's caveat in mind:
+  ring mod / sync / shared filter mean a stem is not a clean isolation, so an
+  oscilloscope lane can show energy in a "muted" voice.
 - **Action**: wrap whichever is chosen behind a `bin/` or `pyscript/` entry
   point that takes the per-voice WAVs the tightness tool already renders and
   emits a comparison video; do not vendor the tool, shell out to it.
@@ -361,8 +376,8 @@ something reproducible across files.
 | ~~11~~ | ~~E3c(c) multi-tick arming~~ | E3c | ✅ **DONE 2026-07-24** — 52% of missing retriggers recovered, zero regressions |
 | ~~11~~ | ~~E3c(a): the remaining 40 retriggers~~ | E3c | ✅ **DONE, found stale 2026-07-30** — E3f's combo fx indices (`build_blackbird_native_song.py:3025-3081`) already close this gate for the whole corpus (every file fits, worst case 25/26 spare codes); ADSR re-verified 100.0 on Glyptodont+Fargo same day. See `docs/CODE_REVIEW_2026-07.md` R5 for the residuals that remain (combo-space exhaustion now surfaced in `blackbird_sweep.py`; the `min_tempo<3` no-arming guard is now a diagnostic print, previously silent) |
 | 11b | Galway/ROMUZAK `fp_dec` `cmp #$90` → SF2II executes filter ADD rows as SET rows | E3d | S per driver + corpus re-verify |
-| 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
-| 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |
+| ~~12~~ | ~~Patch WinVICE for per-voice mute (reuse `siddetector` build)~~ | E1 | ⛔ **SUPERSEDED** — isolation ships via sidplayfp `-u<voice>` / `--audio-export-voices`; `C:\winvice` is binary-only. Residual: muting ≠ clean isolation |
+| 13 | SidWiz/Corrscope video in the tool stack (needs **ffmpeg** only — no longer E1) | E2 | M |
 | 14 | Calibrate remaining tightness detector defaults | E4 | S-M |
 
 **Standing constraints**: accuracy/byte-exactness over speed and file count; never ship lossy output silently; every "done" claim backed by the objective real-SF2II metric and, finally, the user's ears — the E track exists because that last check caught something the register metric could not.
