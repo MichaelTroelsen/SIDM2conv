@@ -96,5 +96,6 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "mcp-c64"
-  ]
+  ],
+  "outputStyle": "Concise"
 }
