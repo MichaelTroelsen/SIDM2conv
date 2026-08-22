@@ -245,4 +245,5 @@ tools/clap_venv/
 # freshly built instrumented SF2II (bin/sf2ii_vs_real.py); the tracked
 # bin/SIDFactoryII_dbg.exe is the fresh-clone fallback and stays untouched
 bin/SIDFactoryII_dbg.local.exe
-.claude/tasks/
+.claude/tasks/*
+!.claude/tasks/runs.jsonl
