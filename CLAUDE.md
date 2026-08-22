@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.27.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-08-12
+**SIDM2 v3.28.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-08-22
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs, CI/CD (5 workflows), audio-domain listening tooling (feature summary + spectrograms, calibrated), ~2,300 tests
 
@@ -228,3 +228,6 @@ do not add per-version entries here.
 **End of Quick Reference**
 
 **Size**: **34.5 KB / ~8.6k tokens** — this file is loaded into **every** session, so measure it in **bytes**, not lines. It had drifted to 32.5 KB while *staying inside* a ~226-line budget, because prose migrates into table cells and a line count cannot see that: **one** HardTrack table row was 6,696 bytes, 21% of the whole file. Trimmed back in v3.26.0 after verifying all 23 of its claims survive in `docs/players/HARDTRACK.md`. Keep per-player rows to a **verdict + the caveats needed to quote the numbers correctly + a `docs/players/` link** — mechanism, evidence and history belong in the player doc. | **For full docs**: See README.md and docs/
+
+## Task observation
+Activate the task-observer skill at the start of every task-oriented session.

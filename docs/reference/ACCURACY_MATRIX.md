@@ -1,8 +1,8 @@
 # SIDM2 Conversion Accuracy Matrix
 **Single Source of Truth for Accuracy Data**
 
-**Version**: 3.27.0
-**Last Updated**: 2026-08-12
+**Version**: 3.28.0
+**Last Updated**: 2026-08-22
 **Figures last re-measured**: v3.22.0 — unchanged in v3.23.0/v3.24.0/v3.25.0/v3.26.0/v3.27.0 for every pre-existing row **except HardTrack's second-build register figure, which v3.26.0 re-measured to 99.96% (was 99.89%)** after the last load+constant seed was replaced by a consumer-recovered address. **v3.27.0 re-measures the Matt Gray row** — Stage A only until now, and Stage B shipped this cycle (16 tunes / 3 games) — and changes no other row: its conversion-path change is confined to the Matt Gray Stage B builder (`merge_sounding_rests`, corpus-swept 17 files / 51 voices), and its HardTrack work **retired** a figure rather than moving one — the old "cutoff 94.6%" was measured over all frames, including frames where the filter is out of circuit, and is 100.0% byte-exact on the 757 frames where a voice is actually routed through it. The **HardTrack Composer** row is newly measured in v3.24.0, and its filter figures in **v3.25.0**; its **Stage B** figures were measured on the 33-file corpus at a 60 s window and ship stamped in **v3.25.0** (they sat under `[Unreleased]` until that bump).
 Neither release altered a conversion path. v3.23.0: `git diff 3e42a8c..0498d05 -- bin/ drivers_src/
 sidm2/ scripts/` touched only measurement/rendering code plus two pure additions to

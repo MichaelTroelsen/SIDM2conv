@@ -25,6 +25,140 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.28.0] - 2026-08-22
+
+### The filter passband: a register that was scored by nothing
+
+Every "filter 100%" figure this project had published was **cutoff only**. The
+mode bits of `$D418` — the passband — were measured by no scorer, on any player.
+
+- **`pyscript/passband_check.py`** now checks the **shipped builds** rather than
+  the builder that made them (`614c298`), with `--jobs` and progress printing
+  (`6032a95`), a **per-artifact** scratch probe (`c5f07a8` — one shared probe
+  file moved the DMC median 99.5 → 96.4 at `-j16` with 1130 of 1194 artifacts
+  byte-identical), and per-player references: Blackbird's **simulator**
+  (`1d6b1ce`) and SDI's **V path** (`4f9b47c`), because siddump cannot drive
+  either and comparing against that silence produced confident wrong readings.
+- **The offset fit was buying agreement by discarding frames** (`00893cd`), and
+  a passband is only audible on frames where the filter is actually routed
+  (`c3c4240`, `ad31594`). All `$D418` figures were re-measured against the fixed
+  fit (`c30a2fc`).
+- **The window was manufacturing disagreement.** Each artifact now records the
+  span it was built for (`0ae0738`); 41 UNCONFIRMED rows went to 0.
+- Corpus figures, measured after all of the above: **SDI 271/280**,
+  **HardTrack 32/33**, **MoN 22/27** (the glob had been scoring a subset —
+  `e68f439`), **Blackbird 16/16**.
+
+### `INIT_FMODE`: builds no longer open with the filter off
+
+`F_MODE` is zeroed at init, so every native build declared its real passband only
+when its first filter program ran. `INIT_FMODE` carries the passband the original
+holds at the window's first frame (`71a7024`). Nine DMC songs went from
+98.5–99.9% (`dChg=1`, the opening `off`→passband transition) to **9/9 at 100.0%**
+with `offsets=[0]`.
+
+**Opt-in, deliberately.** `emit_one` is shared by eight players — DMC, MoN, Sound
+Monitor, FC, HardTrack, SDI, Hubbard, Matt Gray. Emitting `lda #$00 / sta F_MODE`
+unconditionally adds 4 bytes and shifts every address after it, moving all eight
+corpora even at a zero value. The constant is always emitted (64tass needs the
+symbol to test it) and the instructions are guarded, so the flag-off path is
+byte-identical rather than merely equivalent.
+
+### Parallel corpus builds — the shared state is four files, not one
+
+PATTERNS **F12** (`20c506e`). Concurrent builders share `drivers_src/mon/layout.inc`,
+`freqtable.inc`, the **hardcoded** `drivers_src/romuzak/layout.inc`, and
+`out/romuzak_driver.prg` — the assembler output read straight back, the worst,
+because the PRG *is* the driver image.
+
+- Cross-process lock around the whole gen→copy→freqtable→assemble section
+  (`4d01910`); DMC 3.5 h → 14 min at `-j16`. The lock escaped a Windows
+  `PermissionError` and lost a song (`6ab60f3`).
+- Every scratch probe in every sweep audited for the `-j16` race; one latent case
+  fixed (`722bcaf`).
+- SDI's 11-hour serial sweep gained `--jobs` (`6023ca8`) and longest-first
+  scheduling (`282e4d1`); `-j` printed nothing for 14 minutes and looked hung
+  (`b48b5ca`).
+
+### Build contracts
+
+- **A refused build must leave the disk as it found it** — it emitted, then
+  refused (`2bdbb71`), and a `SystemExit` mid-loop would commit (`280b6cc`).
+- **A failed `siddump` returned `''` and the builders built from it** (`dd67bee`);
+  `run_siddump` is now bounded by a timeout scaled to the trace (`7003e9b`).
+- **Provenance**: every artifact carries a `.prov` sidecar naming the commit and
+  flags that built it (`a1e6f9a`). "The corpus is rebuilt" was quotable and false.
+
+### Native dispatch (advisory, not authoritative)
+
+`sidm2/native_dispatch.py` routes a SID to its native builder as an **advisory**
+(`8c76e23`, wired in `46147fe`). The inversion that made it work: rank a parser on
+whether it can **reject**, not on whether it can accept — 0 of 48 useful before,
+6 after (`d8a7072`). HardTrack's accept set *is* its shipped corpus (`9f2263b`);
+the SDI probe claimed foreign files and 4 are provably refused (`840f0f5`).
+
+### Player fixes
+
+- **Matt Gray**: track-table stride is per-build, not the constant 2 — 6/55 → 11/55
+  parse (`ad57a39`); trace the PSID song, not the track-table index — Motocross
+  30.6% → 100.0% (`1ff3bbd`); the corpus is 8 games, not 3, 20 new tunes build
+  (`951dcd1`); the pattern table was one byte wide and tempo was eating it
+  (`e245ff5`); a mis-located pattern table accused the walk 512 bytes later
+  (`f797fca`).
+- **HardTrack**: instrument field-5 **mode 2** is the SR-restart selector, shipped
+  on with the corpus rebuilt (`d0ec20c`); it is a correctness fix, **not** the
+  brightness fix (`7c89ab5`, `6a36062`).
+- **SDI**: `Juba-Jazz` 52.8% → **100.0%** — its filter is enabled by routing plus
+  `$D418` with the cutoff held at 0, and `detect_filter_drives` keyed on cutoff
+  jumps, so nothing was credited (`5c5c357`); the variant-D walk is bounded by song
+  length, not the tick cap (`6aa2162`); `FILT_LEAD`/`FILT_EXACT_PB` scoped to SDI
+  after the global default was refuted (`169ef09`).
+- **DMC**: the pitch residual is the SCALED-vibrato marker — Balloon v0 80.6 →
+  100.0 (`ca9678c`); a decode with no notes is refused rather than scored
+  (`1498c3b`, `a6980f3` — Nightdawn had scored a vacuous 100); the timing fixes
+  moved 39 voices up and 26 down in **raw** with **zero** audible regressions
+  (`0c3aadc`).
+- **Filter (shared)**: the canonical filter key omitted the passband — Tanks_3000
+  94.9 → 100.0 (`b905f97`); the substitution guard was blind to the passband —
+  Funk_Facet 99.0 → 100.0 (`e7ed257`).
+
+### Fidelity harness
+
+- The third guard — **"were there ENOUGH frames?"** (`ae33432`); the SDI fidelity
+  print carries its `n`, and the `n` is weaker than it looks (`94ed09b`).
+- A sweep that cannot launch a process must not call that a result (`fe4375d`);
+  the launch-failure classifier moved into the shared harness (`e947da4`).
+- A dead reference trace is refused rather than compared against silence
+  (`f637802`).
+
+### GUI
+
+- The seven Conversion Cockpit TODO stubs are filled (`4d4661a`), and
+  `ConfigPanel` is wired into the GUI — it had no call site at all (`cc973b2`).
+
+### Retracted this cycle
+
+Listed because each was published here and each was overturned by re-running the
+measurement rather than by re-reading the doc:
+
+- "MoN passband 18 of 20" — a **subset**, not a smaller corpus; it is 22 of 27
+  (`47e7902`, `e68f439`).
+- "All 88 DMC songs rebuilt", and the DMC cost of the filter flags (`0344d85`).
+- "Every native build opens on `$D418` off" — 2 of 33, not 33 of 33; refuted the
+  same day by its own author (`295d691`).
+- "Myth sub0 part-1 filter 77%" — does not reproduce; cutoff is 100.0% over
+  n=1000 (`313acf7`).
+- "9 mode-timing failures" — it was the window (`4bfa96c`); 8 MoN passband
+  failures — 7 were stale artifacts and Myth was a second builder gap (`bd6ef00`).
+- ROADMAP A4's premise (route on `player-id` strings) **and** its same-day
+  replacement (route on each parser's own locate) (`313acf7`, `4dc817d`).
+- "SDI 262 of 441 build" — unquotable; the disk says 281, and the rebuild meant to
+  settle it died in under five minutes having written nothing (`455e709`).
+- "Altered_States has a 47-frame startup latency" — not a latency; the original
+  declares its passband before it routes (`d85b0c2`).
+
+---
+
 ## [3.27.0] - 2026-08-12
 
 ### Matt Gray Stage B: a native build for 16 tunes, and two of its own claims retracted
