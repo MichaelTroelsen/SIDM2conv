@@ -38,6 +38,7 @@ References:
 Created: 2025-12-27 (Extracted from scripts/sid_to_sf2.py)
 Version: 2.9.1
 """
+from __future__ import annotations
 
 import logging
 import os

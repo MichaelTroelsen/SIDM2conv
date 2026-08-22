@@ -351,9 +351,21 @@ def detect_ch_seq_ptr(c64_data: bytes, sid_la: int, init_addr: int,
         # selectivity (their base scores are 50-100+, dwarfing the bonus)
         # while letting structurally-valid candidates with weak PLAY
         # observation still win over near-random alternatives.
+        #
+        # Special case: if ALL 6 table bytes appear in the PLAY-read set,
+        # this is overwhelming evidence the player uses this exact table as
+        # ch_seq_ptr during every PLAY tick. Promote score above the
+        # acceptance threshold even when sequence bodies score negatively
+        # (e.g., all-note sequences with b0=0x00 / n_traits<2). Note: audio
+        # is unaffected — we only change the editor view, not the embedded
+        # NP21 binary. _scan_table_at already validated that all 3 pointers
+        # are in-range and each walks to a terminator within 256 bytes.
         if play_reads:
             need = [lo_addr + v for v in range(3)] + [hi_addr + v for v in range(3)]
-            score += sum(1 for a in need if a in play_reads)
+            n_hits = sum(1 for a in need if a in play_reads)
+            score += n_hits
+            if n_hits == 6:
+                score = max(score, 5)
         if best is None or score > best[0]:
             best = (score, lo_addr, hi_addr, ptrs)
 
