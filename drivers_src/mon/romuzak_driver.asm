@@ -345,6 +345,18 @@ sri_l:  lda #$00                 ;   set_instr. NOT in the loop above: two more
         sta F_CLO
         sta F_CHI
         sta F_CNT
+        ; ...but the PASSBAND is not idle: $D418's mode bits are whatever the
+        ; register holds, and the original already holds its opening passband
+        ; here. Zeroing F_MODE made every build open with the filter OFF and
+        ; declare the real passband only when its first filter program ran --
+        ; measured on DMC as 9 builds opening `off/`, 8 of them audibly routed
+        ; during the gap. INIT_FMODE is (passband & 7) << 4, the same encoding
+        ; the filter runner stores, and defaults to $00 (unchanged behaviour)
+        ; when the builder does not emit it into layout.inc.
+.if INIT_FMODE != 0
+        lda #INIT_FMODE
+        sta F_MODE
+.endif
         sta SWTOG                ; swing phase starts at 0 (first row reloads SHORT)
         lda #$01
         sta zp_tcnt

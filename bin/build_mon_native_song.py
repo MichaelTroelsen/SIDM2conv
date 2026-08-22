@@ -1607,6 +1607,25 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
         ftr = filter_trace(sid, sub, secs)
         pbtr = passband_trace(sid, sub, secs)
+    # INIT_PASSBAND (opt-in): the passband the ORIGINAL already holds at this
+    # window's FIRST frame. The driver zeroes F_MODE at init ("filter program
+    # idle until a flag-$40 note"), so every build opens with $D418's mode bits
+    # OFF and only declares the real passband when its first filter program
+    # runs. Measured on DMC 2026-08-21: NINE builds open `off/` where the
+    # original does not, and EIGHT of them are audibly routed during the gap
+    # (Soap_Theme is the exception, 0 of its 19 mismatched frames routed).
+    #
+    # Windowed builds take the value at their OWN start, not frame 0 -- part 7
+    # of a song opens on whatever the original held entering part 7.
+    #
+    # OPT-IN because emit_one is shared by eight players: DMC, MoN, Sound
+    # Monitor, FC, HardTrack, SDI, Hubbard and Matt Gray all route through it,
+    # and switching this on by default would move every one of their corpora at
+    # once, unmeasured. Off, `_init_fmode` is never set and the emitted driver
+    # is byte-identical. Adopting it as a default is dmc-driver-init-passband-default.
+    if os.environ.get("INIT_PASSBAND") and pbtr:
+        _w0 = win[0] if win else 0
+        m._init_fmode = (pbtr[min(_w0, len(pbtr) - 1)] & 0x07) << 4
     # A trace with NO FRAMES is the no-notes failure one layer down, and it is the
     # one that guard cannot see: the notes decoded fine, so the build proceeds and
     # derives every per-note (FM, pulse) bundle from an empty series, shipping held
@@ -2486,6 +2505,19 @@ def emit_one(m, br, out_path, label):
                                                     filter_programs=filter_programs)
         shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"),
                         os.path.join(MON_DIR, "layout.inc"))
+        # Appended AFTER the copy and BEFORE B.wrap assembles: the .inc writer
+        # lives in build_romuzak_native_song.py, which serves the romuzak and
+        # galway drivers too, and this constant is meaningful only to the MoN
+        # driver.
+        #
+        # ALWAYS emitted, because 64tass has to see the symbol to test it (it has
+        # no `defined()`). The driver guards its two instructions with
+        # `.if INIT_FMODE != 0`, so a zero assembles to NOTHING and the .prg
+        # stays byte-identical -- emitting `lda #$00 / sta F_MODE`
+        # unconditionally would add 4 bytes and shift every address after it,
+        # moving all eight players' artifacts at once.
+        with open(os.path.join(MON_DIR, "layout.inc"), "a") as _f:
+            _f.write("INIT_FMODE = $%02x\n" % (getattr(m, "_init_fmode", 0) or 0))
         write_mon_freqtable(m)
         prg = B.assemble()
     if getattr(m, "hp_engine", 0):
