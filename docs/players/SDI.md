@@ -529,6 +529,59 @@ both **100.0%** with the SDI-scoped filter flags now defaulted on
 (`bin/build_sdi_native_song.py`, task `filt-flags-scope-to-sdi`) — leaving
 `Bahbar_v` (requires a source file not on disk) as the sole remaining failure.
 
+### 2026-08-22 correction — `Bahbar_v`'s "no original to compare against" was wrong (task `bahbar-v`)
+
+The **"`Bahbar_v` (no original SID on disk)"** verdict two sections above was
+itself stale. `SID/Gallefoss_Glenn/Bahbar.sid` **does exist on disk**, and its
+current build **scores 100.0%** (`passband_check --player sdi --files
+Bahbar`) — the premise that no original was available to compare against was
+never checked before it was written up. `Bahbar_v` is not a missing rip; it is
+a **superseded 11-part build from 17 Aug** (22 files: 11× `.sf2` + 11×
+`.sid`, no `.sf2.span` sidecars — predating the `.span` feature every other
+current SDI artifact carries), replaced by the **30-part `Bahbar_native`
+build from 18 Aug**, under a `_v` naming no other SDI song uses. The two are
+not duplicates — 0 of 11 overlapping parts are byte-identical, and the part
+split differs.
+
+The 22 stale `out/sdi/Bahbar_v_native_part*.{sf2,sid}` files were **moved (not
+deleted)** to `out/sdi/_quarantine/`, matching the `Neverending_Story`
+precedent above. A full `passband_check --player sdi` re-run afterward selected
+279 representative builds (was 280 — `Bahbar_v`'s part01 build is no longer
+one of them) and reported **no FAILED row**: **271 of 279** builds select the
+original's passband, 8 unexercised, 0 unconfirmed, 0 failed. The numerator is
+unchanged at 271; the last FAILED row is gone because its cause (a phantom
+"no original" premise) is gone, not because a build was fixed.
+
+### 2026-08-22 decision — `Short_Deel` stays in the corpus (task `short-deel-quarantine-decision`)
+
+`Short_Deel` (`SID/Gallefoss_Glenn/Short_Deel.sid`, one of the DELTA-variant
+/ zero-page-state cluster at line ~240 above) was checked for staleness
+alongside `Dream` and `End_94` in `sdi-stale-artifacts-three-more`, the same
+sweep that caught `Neverending_Story`. Rebuilding it at HEAD **refuses**,
+verbatim: `REFUSING to build: this file cannot be driven by measure_onsets
+(self-IRQ / multispeed). Pass --force to probe.` — 153/182 emulated onsets vs.
+trace, the identical refusal class as `Neverending_Story`, not a filter
+defect. Unlike `Neverending_Story`, Short_Deel's on-disk 6-part `out/sdi`
+artifact was **never rewritten** (the build refused before writing anything),
+and `passband_check` already files it correctly as **unexercised** (`off/off`
+both sides, measured inside its own part-1 span) — it was never inside the
+271-pass count and is not one of the failures either.
+
+**Decision: KEEP Short_Deel in the scored corpus, no artifacts changed.** It
+stays because it is genuinely **unexercised rather than failing** — the
+checker's own honest classification, not a stale or fabricated reading — and
+because it is the one piece of on-record evidence that the 85%
+`measure_onsets` onset-agreement gate is marginal for the DELTA /
+zero-page-state cluster: Short_Deel's own onset agreement is **84.1%**,
+a hair under the 85% threshold, in the same cluster whose median strict
+fidelity (55.5, see the DELTA row in the corpus sweep table below) is already
+the corpus's weakest. Quarantining a song for sitting just below a threshold
+would remove that evidence instead of recording it, which is the same reasoning
+`sdi-passband-failures`' notes gave for not quarantining `Bahbar_v`. This is
+the closed decision — do not re-ask it; if `Short_Deel` is ever rebuilt
+successfully (e.g. a `--force`-probed self-IRQ/multispeed fix), re-measure its
+onset agreement fresh rather than assuming 84.1% still holds.
+
 ### The corpus sweep (`pyscript/sdi_native_sweep.py`, 2026-08-12)
 
 The figures above came from `bin/_sdi_stageb_sweep.py` — **untracked**
