@@ -247,3 +247,8 @@ tools/clap_venv/
 bin/SIDFactoryII_dbg.local.exe
 .claude/tasks/*
 !.claude/tasks/runs.jsonl
+
+# graphify code-graph build output - 37 MB of rebuildable cache + a bundled
+# HTML report. Regenerate with /graphify; `graphify update` refreshes it in
+# place. Same class as .tokensave/ above.
+graphify-out/
