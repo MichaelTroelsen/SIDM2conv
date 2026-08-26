@@ -335,6 +335,102 @@ arrives three frames late. A register trace localises — it does not adjudicate
 
 ---
 
+### A/B Listening Pages ⭐ NEW
+
+The human-in-the-loop companion to every measurement above: a self-contained
+HTML page that plays the original and the conversion **at once** and swaps
+which one is audible, so the switch is gapless and position-matched.
+
+Every accuracy percentage in this project is a claim about whether a build
+*sounds* right. Until this tool the only ways to check one were an assistant
+reading a static spectrogram or a person opening two WAVs in a media player —
+and a comparison that loses its place between clicks is a comparison of two
+memories, not of two renders.
+
+**Usage**:
+```bash
+# Render a pair (one renderer drives both sides -- never two)
+ab-listen.bat stage SID\Angular.sid SF2\Angular.sf2 -t 60
+
+# ...plus the three solo stems per side, for the per-voice strips
+ab-listen.bat stage SID\Angular.sid SF2\Angular.sf2 --voices
+
+# Measure the staged pair (renders NOTHING -- pure function of the WAVs)
+ab-listen.bat chips --onset
+
+# Read the conversion's pattern rows, and map its instruments (opt-in, slow)
+ab-listen.bat patterns
+ab-listen.bat instrmap
+
+# Build the pages, then serve them (see the note below)
+ab-listen.bat build --chips build\listen\chips.json --notes LISTENING.md
+ab-listen.bat serve
+
+# One page with the audio inlined, to send somewhere the WAVs can't follow
+ab-listen.bat build --embed Angular
+```
+
+**On the page**: blind mode (labels become X/Y, sides randomise, guesses are
+tallied); a sync-offset slider that auto-detects a converted build reaching its
+first note a few frames after the original; both sides' amplitude envelopes with
+a `|difference|` strip; the same overlay split per voice; and a precomputed
+dual spectrogram (the FFT runs once at build time, so drawing costs the same
+however long the tune runs).
+
+**Serve it, don't open it** — the envelope overlay and the automatic sync read
+both WAVs with `fetch()`, which no browser allows over `file://`. Playback works
+either way, and `build` drops a double-clickable `build\listen\Listen.cmd`.
+
+**Caveats that travel with the page rather than living only here**: the
+envelopes are *amplitude*, so they show dropped notes, note lengths and silence
+and say nothing about pitch, timbre or filter; the two `mean |Δ|` figures are
+labelled pictures, not scores; and `--voices` isolation is a render with the
+other two voices **muted**, which is not clean isolation on a tune whose voices
+interact through the shared filter or through ring/sync.
+
+**The measures rail (`chips`)** computes from the staged WAVs alone — no
+renderer, no emulator — so it survives a rebuild and costs nothing to redo.
+Read it with three rules it enforces rather than assumes:
+
+1. **No chip is a score, and none is a pass/fail.** Onset match has *ordinal*
+   sensitivity and **no absolute gate**: a build that was 99.8% register-exact
+   measured **64.7%** against an original-vs-itself floor of **85–91%**. Any
+   threshold that flags a bad build condemns a good one, so `--onset` is opt-in
+   and ships labelled with no floor attached (measuring one costs nine
+   re-renders).
+2. **Which feature is informative depends on the defect**, which is why several
+   are emitted instead of one number. A-weighted level is the strongest
+   discriminator (1.5–1.6×) on timing and percussive defects and scores
+   **0.011 — noise —** on a vibrato-width pitch defect, where **chroma** fires
+   instead (0.072). A null dBA does *not* clear a tuning error. Every chip
+   carries a tooltip saying what it cannot see.
+3. **Absence of evidence is never agreement.** Two silent renders report "both
+   silent", never `0.0 dB`; an all-zero chroma reports "no pitched energy",
+   never a distance. That is the same vacuous-agreement shape
+   `fidelity_common.exercised()` exists to catch.
+
+**The instrument card (`instrmap`)** is opt-in because it costs two emulations
+per song. It names *which instrument* differs, not just which voice — and
+**emits no table at all when the ADSR key fails**, which is roughly a third of
+files. A row marked `unused both sides` is **no evidence**: neither agreement
+nor a defect, and greyed so it reads as neither. Angular scores 0 differ,
+9 agree, 18 no-evidence.
+
+**The pattern view (`patterns`)** places rows by the tempo written *in the
+file*, never fitted to the audio — so if the highlight drifts against what you
+hear, that drift **is** the row rate being wrong, and it is the only thing this
+view shows that the envelopes cannot. A voice whose sequence decodes to rows
+advancing no time is refused rather than drawn.
+
+Numbers in a page's rail are quoted verbatim from the `--chips` JSON — the page
+measures nothing of its own. JSON and not a scraped Markdown table on purpose: a
+scraper that stops matching returns zero rows and renders a confident empty
+rail, which reads exactly like "nothing to report".
+
+Ported from the `abpage.py` in the separate h2g repo.
+
+---
+
 ### Batch Analysis Tool ⭐ NEW
 
 Multi-pair SID comparison engine with aggregate reporting and validation integration.
