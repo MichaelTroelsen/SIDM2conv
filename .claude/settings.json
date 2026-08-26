@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_root_py.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking root-folder rule..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn_missing_test.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking for a matching test file..."
+          }
+        ]
+      }
+    ]
+  }
+}
