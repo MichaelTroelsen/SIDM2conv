@@ -1,223 +1,250 @@
-# Handoff — SIDM2 session, 2026-08-22
+# Session Handoff — 2026-08-24/26
 
 <original_task>
-Continued the `/whattask` → `/runqueue --until-blocked` orchestration loop from
-the prior session's handoff (this file, previously dated 2026-08-21/22), then
-pivoted to an ad-hoc user request mid-session: load `Rubicon` (Jeroen Tel,
-`SID/Tel_Jeroen/`) into the SF2 editor. The queue-loop portion had no new
-feature request — work the plan, verify everything, never commit from inside a
-runner, hand commits to the user. The Rubicon portion started as "just load
-it" and turned into a real parser-bug investigation after the user reported
-the loaded file had no song data.
+This session continued from a compacted context. The **originating** request was:
+port h2g's `abpage.py` into SIDM2 as a blind A/B listening rig, then add the three
+features the h2g page had and SIDM2's did not (measures rail, pattern view,
+instrument-map link), then stage the whole converted corpus.
+
+That arc was already essentially complete when this segment began. What this
+segment actually did, in the order the user asked for it:
+
+1. `/whattask` (unfocused) — produce the full open-task list, not just the abpage subsystem.
+2. `/whattask --dry-run` — re-print it.
+3. `/runqueue --until-blocked` ×2 — drain the plan.
+4. `/whattask` ×2 more — replan after each drain.
+5. **"commit and push"** ×2 — land the work.
+6. Fix `graphify update`, which had been failing all session.
+7. `/claude-code-setup:claude-automation-recommender` — recommend Claude Code automations.
+8. **"do 1. do 2."** — build the two recommended hooks.
+9. This handoff.
+
+**Standing constraints** (from the `/runtask`, `/runqueue`, `/whattask` command set):
+those commands NEVER commit, merge, push, branch, or open a PR. Every git
+operation in this session was performed only on the user's explicit instruction.
+`whattask.json` is rewritten only by `/whattask`. `runs.jsonl` is append-only,
+one JSON line per attempted task, written with a single `>>` — never
+read-and-write-back. `serial.lock` updates go through the `.claude/tasks/serial.lock.d`
+mutex. An undeclared `touches` path is a STOP, never a self-granted widen.
 </original_task>
 
 <work_completed>
 
-## 6 commits this session, `71a7024..5a6f7e6`, all pushed to origin/master
+## 1. Six commits, all pushed to `origin/master`
 
-| sha | what |
+| SHA | Commit |
 |---|---|
-| `c543cbd` | `release: cut 3.28.0` — version bump + all 4 pinned doc banners + CHANGELOG |
-| `25f84c5` | `docs(roadmap): E1 superseded` — voice isolation ships via sidplayfp, not a VICE patch |
-| `0ec8d89` | `docs: rewrite session handoff` — this file, for the *previous* (now-closed) session |
-| `d1b32d0` | `feat(laxity): land PR #5's all-6-in-reads floor, re-measured against today's corpus` |
-| `b4968ff` | `docs(sdi): Short_Deel keep-decision and Bahbar_v's stale premise, both corrected` |
-| `5a6f7e6` | `chore(tasks): record 3 more runqueue cycles` |
+| `d4dbc47` | `feat(listen): gapless blind A/B listening pages` — the whole abpage arc |
+| `fd0345e` | `chore: gitignore graphify-out/` — 37 MB of rebuildable cache |
+| `cfa3ab5` | `chore(tasks): record 5 runqueue cycles -- one done, four partial` |
+| `6df328f` | `chore(sid): add the LukHash corpus -- 13 files, a player family new to SIDM2` |
+| `33b7540` | `docs: session handoff -- the abpage arc and the Rubicon question` |
+| `470ec69` | `feat(hooks): enforce the root-folder rule, warn on missing test files` |
 
-Suite last confirmed green at **2602 passed / 8 skipped / 2 xfailed** (during
-the pr5 task; not re-run since — no code changed since that check).
+Range pushed: `5a6f7e6..470ec69`. Working tree clean at time of writing.
 
-## `/whattask` run twice this session (plan now at head `b4968ff`, 34 tasks, 52 closed, 31 ready)
+## 2. TWO REAL BUGS found by running the FULL suite before committing
 
-**First pass** (before any commits, plan head `71a7024`→`0ec8d89`): folded in 3
-newly-`done` tasks from the prior session's run log (`release-3-28`,
-`bahbar-v`, `roadmap-e1-vice-voice-mute`) plus one `partial`
-(`whattask-rule-not-live-in-plugin-cache`), closed them with `closed_by:
-"runtask:<id>"` (a deliberate, documented deviation from the schema's
-sha-or-decision two-form rule, since the work was verified-done but
-uncommitted or lives outside any git repo), added a new task
-`sdi-md-bahbar-v-stale-note` opened by `bahbar-v`'s run.
+Both were **invisible in isolation** — this is the important part. `pytest pyscript/test_abpage.py`
+alone gave 102 passed; the full suite gave **27 failures**.
 
-**Second pass** (after this session's commits, plan head `0ec8d89`→`b4968ff`):
-closed 5 more tasks — `pr5-v3-5-7-decide` (`d1b32d0`),
-`short-deel-quarantine-decision` + `sdi-md-bahbar-v-stale-note` (both
-`b4968ff`), `stale-worktree-decision` (`runtask:`, filesystem-only, no git
-diff), and `runs-log-not-durable` — this last one verified **directly**
-(`git ls-files .claude/tasks/runs.jsonl` confirms tracked) rather than trusted
-from its own stale `partial` runs.jsonl record, which predated the commit that
-actually satisfied it. Added `hardtrack-shogoon-rave-voice1-late` as a new
-task. Deliberately did **NOT** create a duplicate task for the opened id
-`dispatch-sdi-offset-clustering-verify` — folded its concrete finding into the
-already-existing `sdi-signature-is-weak-off-its-own-corpus`'s `verify` field
-instead, since the scope was identical.
+**(a) `row_schedule()` leaked `logging.disable(logging.CRITICAL)` process-wide.**
+`pyscript/abpage.py` silenced the SF2 parser's stderr narration and never restored it.
+That switch is global, so any program importing `abpage` lost logging permanently.
+It broke **27 tests across three unrelated files** — `test_stage7_emissions.py`,
+`test_sf2_diagnostics.py`, `test_sf2_logger_unit.py` — every one of them asserting
+against a log that had silently become `''`.
+FIX: scoped to the parse, saved/restored via `logging.root.manager.disable`, restored
+in a `finally` that covers the early returns. **Three regression tests added.**
 
-Both passes used `graphify-out/graph.json` (present, untracked) for the
-step-5b cross-check: found `pyscript/test_native_dispatch_wiring.py` as a real
-`EXTRACTED imports_from` dependent of `sidm2/native_dispatch.py` missing from
-2 tasks' `touches`, widened both.
+**(b) The staging tests' renderer stub was bypassed in a full-suite run.**
+`_stage_with` in `pyscript/test_abpage.py` stubbed via
+`monkeypatch.setitem(sys.modules, "pyscript.audio_tightness_tool", fake)`. But
+`abpage.stage()` does `from pyscript import audio_tightness_tool as att` (line 122),
+which reads the **attribute** off the already-imported `pyscript` package object and
+never consults `sys.modules`. In isolation nothing had imported that submodule, so the
+stub won. In a full run `test_audio_tightness_renderer.py:17` imports it first, the
+attribute exists, the stub is bypassed, and three tests invoked the **real VSID
+renderer** and died on "VSID produced no audio".
+FIX: `monkeypatch.setattr(_pyscript_pkg, "audio_tightness_tool", fake, raising=False)`
+alongside the `setitem`.
 
-**Plan is now 1 commit stale** (`5a6f7e6` landed after the second `/whattask`
-pass) — the delta is only `runs.jsonl` growth already reflected correctly via
-the run log (which `/runqueue`'s ready-set computation always reads fresh), so
-this is cosmetic, not a correctness gap, but the next `/whattask` invocation
-should note and fix it.
+**How they were pinned as mine rather than pre-existing:** ran the full suite with my
+two test files `--ignore`d → **2602 passed, zero failures**. Final state after both
+fixes: **2707 passed, 8 skipped, 2 xfailed**.
 
-## `/runqueue --until-blocked` run three times this session
+## 3. Five `/runqueue` cycles (2 runs of `--until-blocked`)
 
-**Invocation 1** (2 cycles): delegable fan-out `short-deel-quarantine-decision`
-(sonnet, done — documented the Short_Deel KEEP decision in
-`docs/players/SDI.md`), main task `pr5-v3-5-7-decide` (done — see below);
-then delegable `sdi-md-bahbar-v-stale-note` (done — corrected the stale
-Bahbar_v doc line) alongside main `runs-log-not-durable` (see below).
+| Task | Lane | Model/Effort | Outcome |
+|---|---|---|---|
+| `sdi-accuracy-matrix-d-figure-stale` | delegated | sonnet/low | **done** |
+| `laxity-decode-is-two-stage-and-the-viewer-runs-one` | main | opus/xhigh | partial |
+| `detect-filter-drives-blind-to-mode-only-changes` | main | opus/high | partial |
+| `editor-ground-truth-is-the-converted-sf2-not-the-original` | main | opus/high | **done** |
+| `laxity-parser-reads-runtime-pointers-as-the-sequence-table` | main | opus/xhigh | partial |
 
-**Invocation 2** (2 cycles, no delegable tasks left): main-only —
-`stale-worktree-decision` (done — removed 10 superseded `.claude/worktrees/
-agent-*` dirs, ~853MB reclaimed, `git worktree list` now shows only the main
-tree + `sidm2-mattgray`), then `hardtrack-voice1-early-noteon` (partial — see
-below).
+`runs.jsonl` grew from 125 → **130 records**, none torn, each appended with a single `>>`.
+Locks claimed and released under the mutex on every cycle; `serial.lock` is `[]` and
+`serial.lock.d` is gone.
 
-**Invocation 3** (1 cycle): main-only — `dispatch-confident-answers-
-uncorroborated` (partial — see below).
+### THE BIG TECHNICAL FINDINGS
 
-**Locking**: every cycle claimed/released `.claude/tasks/serial.lock` through
-the `serial.lock.d` mutex correctly (re-read registry from disk each time,
-tested-then-wrote inside one hold, `.tmp`+`mv -f`, released after). Registry
-was empty (`[]`) at the start of every cycle — no contention encountered all
-session. Every `runs.jsonl` append was written to its own file first, validated
-as parseable JSON, then appended with a single `printf '%s\n' ... >>` — twice
-this landed in the repo root by mistake (a scratchpad-path heredoc quirk) and
-had to be cleaned up with `rm` before the next git status check; caught both
-times, no stray files survive in the tree now.
+**Laxity / Angular — the ground-truth question is CLOSED, and it overturned two prior cycles.**
+- `SID/Angular.sid` and `SF2/Angular.sf2` are **byte-identical across the entire music
+  region: 978 of 978 bytes over `$1AF2–$1EC3`**, at the same C64 addresses. So the SID
+  Factory II view of the *converted* file IS a valid oracle for decoding the *original*,
+  and cycles 1–5's negative results are **wrong, not uninterpretable**.
+- **Cycle 3's "SF2/Angular.sf2 wraps the native NP21 player" is FALSE.** Not even 32
+  bytes of the original's player appear in the SF2; `$1000-$10FF` differs outright.
+  `SF2/Angular.txt` records the build: SIDM2 **v2.8.0**, 2026-06-09,
+  `Selected Driver: LAXITY (sf2driver_laxity_00.prg)`, a manual `--driver laxity`
+  override. The SF2 embeds a DIFFERENT player binary that is address-compatible with
+  NP21's data layout. The `@X-PLAYER BY LAXITY.MUSIC BY DRAX-` string sits at SF2 offset
+  675 but at `$101F` in the original — carried as metadata, not shared code.
+- **The `$1B1C`/`$1B2A` split lo/hi table is NOT ruled out** — cycles 3 and 5 both
+  rejected it on a bad decode. The region partitions **exactly, zero bytes unexplained**:
+  `$1AF2` + 3×14 orderlists = `$1B1C`; + 14 lo + 14 hi = `$1B38` = table entry 0; entries
+  `$1B38 $1B3B $1B8F $1BE5 $1C30 $1C6C $1CBD $1D0E $1D46 $1D9A $1DF0 $1E26 $1E58 $1E8B`,
+  all ascending, last ending at `$1EC3`. The table is byte-identical in both files.
+- **The discriminator is CLOSED**: `scripts/convert_all.py:284` uses `LaxityParser`'s raw
+  sequences ONLY for command analysis; line 289 separately calls
+  `LaxityPlayerAnalyzer(...).extract_music_data()`, which runs BOTH stages
+  (`laxity_analyzer.py:634-640`). So the 99.93–100% figure comes from the two-stage path.
+  **`LaxityParser` is half an API, not broken.**
+- **BUT the locate is broken far more widely than one file.** `laxity_parser.py:99-117`
+  reads `ch_seq_ptr` at `load+$0A1C`/`load+$0A1F` — the playroutine's **RUNTIME
+  current-sequence pointer**. On Angular that yields `$0334/$0341/$0336`, all **below the
+  `$1000` load address**, accepted by the check at line 125:
+  `if seq_addr > 0 and seq_addr < 0x10000`. The three extracted blobs are 232/230/219
+  bytes and blob 1 begins at blob 0's offset **+2** — overlapping windows of one code
+  region, not three sequences.
+- **Measured across the corpus** (a locate counts as good only when all three pointers
+  land inside the loaded image AND are distinct):
+  - `$099F` works on **2/17** (Angular, Omniphunk)
+  - `$0A1C` works on **1/17** (Stinsens_Last_Night_of_89)
+  - **14/17 are served by NEITHER**
+  `laxity_parser.py:18` already carries the epitaph: *"Old value 0x099F was wrong for
+  Stinsen (pointed into filter speed table)."* A constant swap trades two files for one.
+- Stage-two grammar, read from `LaxitySequenceParser.parse_sequence`:
+  `$00-$7E` note | `$7F` END | `$80-$9F` DURATION `((b & $1F)+1` frames) |
+  `$A0-$BF` INSTRUMENT | `$C0-$FF` command INDEX into the command table.
+- Orderlists confirmed against the editor for the first time: `$199F` → `$1AF2/$1B00/$1B0E`,
+  13 bytes + `$FF` each, first sequence per voice = **01 / 02 / 05** = the editor's
+  a000/a001/a002.
+- `tools/player-id.exe SID/Angular.sid` → **`Laxity_NewPlayer_V21`**. "Unsupported variant"
+  is dead.
 
-### `pr5-v3-5-7-decide` (done) — landed PR #5 with a real deviation from the literal instruction
+**`detect_filter_drives` — premise corrected.**
+- It is at `bin/build_mon_native_song.py:888`, NOT the SDI builder. `bin/build_sdi_native_song.py:36`
+  does `import build_mon_native_song as BM` and line 38 says *"detect_filter_drives and
+  _filt_exact are shared"*. The task's `touches` named only the SDI builder → the cycle
+  correctly refused to widen itself.
+- The passband-ENABLE case is **already fixed** (second pass, lines 953-965, the
+  Juba-Jazz / PATTERNS F9 fix) — narrow by design: only `$D417` none→some.
+- The **real remaining blindness is by SIGNATURE**: `detect_filter_drives(ftr, ...)` cannot
+  see `$D418` at all. `fidelity_common.siddump_filter_trace` returns **2-tuples** —
+  Funk_Facet row 100 is `(928, 241)` = (cutoff, `$D417`). The passband travels separately
+  as `pbtr` and only ever reaches `filter_program_for`. Fixing it means threading `pbtr`
+  in and updating every caller across MoN, DMC, SDI, FC, Myth.
+- **Funk_Facet frame 108 is NOT an instance of it.** `$D417` is constant `$F1` across
+  frames 100-119. Cutoff holds 256 for 104-108 then rises **+80/frame** from 109;
+  `FILT_FAST` is `0x40` = 64, so 80 CLEARS it and the attack **IS** detected — then
+  dropped because `cand` needs a note-on in `[105,110]` (`FILT_LEAD=4`) and there is none.
+  That is a missing **ANCHOR**, and belongs to `sdi-funk-facet-pre-onset-anchor`.
 
-The `/runhuman` decision said "apply the branch's 5 files." Applied only 4
-(`pyscript/annotate_asm.py`, `sidm2/ch_seq_ptr_scanner.py`,
-`pyscript/test_ch_seq_ptr_scanner.py`, `docs/v330_verification_2026-05-11.md`)
-— confirmed via `git log --oneline <merge-base>..master -- <file>` that all 4
-had **zero** commits since the PR's May base. **Deliberately withheld**
-`sidm2/conversion_pipeline.py`: 8 commits had touched it since, including
-`8c76e23`'s `native_builder_for` native-dispatch wiring the PR's copy
-predates entirely; applying it wholesale would have silently reverted that
-work to fix a `from __future__ import annotations` NameError that no longer
-reproduces on current master (confirmed: `py -3 -c "import
-sidm2.conversion_pipeline"` and `pytest pyscript/test_native_dispatch_wiring.py
---collect-only` both succeed cleanly unmodified).
+## 4. `graphify update` — root cause found and fixed
 
-Re-measured the corpus claim rather than carrying the stale May number
-forward (the decision required this): wrote a corpus-yield scanner mirroring
-`bin/_classify_c_class.py`'s own `SID/Laxity` + `ch_seq_ptr_was_valid`/
-`detect_ch_seq_ptr` methodology. Result: same **+13 files** by exact name as
-originally claimed, but the real percentages today are **253/286 (88.5%)
-before → 266/286 (93.0%) after**, not May's 251/286→264/286 — 2 files were
-already independently lifted by unrelated work since May. Recorded in a new
-"Re-measured 2026-08-22" section of `docs/v330_verification_2026-05-11.md`.
+It had failed **all session** with `error: path not found: \c\Users\mit\claude\c64server\sidm2`.
+- Cause: `graphify-out/.graphify_root` (read at graphify `cli.py:2179`) held the Git Bash
+  path `/c/Users/mit/claude/c64server/sidm2`. Windows `Path()` parses that as
+  `\c\Users\...`, a drive-relative path that does not exist.
+- Fix: rewrote it with the native path. `graphify update` now completes — re-extracted
+  364 files, **20,441 nodes / 32,016 edges**, at HEAD.
+- This unblocked `/whattask` step 5b's dependency cross-check, unavailable since 2026-08-22.
 
-### `runs-log-not-durable` — found and fixed a real bug in the decision's own instruction
+**CRITICAL CAVEAT, measured:** `graphify path` and `graphify query` **return confident
+false negatives on this repo.** The `bin_build_sdi_native_song -> bin_build_mon_native_song`
+import edge **IS** in `graph.json` links (1 edge), yet:
+- `graphify path "bin/build_sdi_native_song.py" "bin/build_mon_native_song.py"` → "No directed path found"
+- with `--undirected` → "No path found"
+- with the **correct** underscore node ids → "No directed path found"
 
-The `/runhuman` decision said: add `!.claude/tasks/runs.jsonl` after the
-existing `.claude/tasks/` gitignore line. **This does not work** — confirmed
-via `git check-ignore -v`, which kept reporting `runs.jsonl` as ignored by the
-line-248 rule even with the negation added. Per documented git behavior
-(gitignore(5): "It is not possible to re-include a file if a parent directory
-of that file is excluded"), a trailing-slash directory-exclusion pattern
-means git never even walks the directory to check for a per-file negation.
-**Fixed** by changing `.claude/tasks/` → `.claude/tasks/*` (glob the
-directory's entries instead of excluding the directory itself), which lets
-the negation actually take effect. Re-verified all 6 files in
-`.claude/tasks/` individually: `runs.jsonl` now resolves via the negation
-line and is genuinely tracked; `whattask.json`/`interview.json`/
-`serial.lock`/`.runqueue_session_pid`/`decisions.jsonl` all still resolve via
-the `*` rule and stay ignored — the exact split the decision intended, now
-actually achieved. This landed in commit `d1b32d0` (bundled in because it was
-already `git add`ed when that commit was made with no pathspec — see Critical
-Context below).
+It answers "no path" rather than "node not found" — the silent fuzzy-match failure.
+`graphify query "what depends on bin/build_mon_native_song.py"` returned
+`ROMUZAK_SF2_DRIVER_PLAN.md` and `build_galway_digi_songs.py`, neither a dependent.
 
-### `hardtrack-voice1-early-noteon` (partial) — caught my own measurement bug, found a real new defect
+**The working method:** read `graphify-out/graph.json` `links` directly, map node ids via
+their `src` field, treat a cross-file edge as a *prompt to look*, then confirm with
+`grep -rlE 'import X|from ... import X'` before widening any `touches`. Edges on this
+corpus carry **no `kind`**, so they cannot separate an import from a doc co-mention:
+50 of 58 tasks showed "neighbours" that were mostly noise.
 
-Scanned all 33 built HardTrack songs' voice-1 note onsets over each file's own
-part-1 `.sf2.span` window. First pass (nearest-frame greedy matcher, tol=20
-frames): 30/33 clean, 3/33 (`Fun_Factory`, `Shogoon-Rave`, `Something_to_Eat`)
-deviated. **Caught myself reproducing the exact "greedy matcher wider than
-note spacing" bug `docs/ROADMAP.md`'s own E3 fix already exists to prevent**:
-re-checked `Fun_Factory` with order-based (index-paired) alignment instead —
-onset counts DIFFER (48 orig vs 47 built), so index-pairing desyncs and
-produces a scattered, unreliable delta distribution (all multiples of 3 — the
-signature of cascading misalignment, not 44 independent early events). **The
-earlier "-6.0 median, n=44" figure for Fun_Factory is WITHDRAWN as evidence**
-— it neither contradicts nor extends the already-diagnosed root cause
-(`runs.jsonl:passband-fun-factory`, an isolated voice-1 wf test-bit blip that
-re-arms `_arm_filter`), which was derived independently by reading the
-register trace directly and still stands.
+Saved to auto-memory as `graphify-on-every-task.md` (user instruction: use graphify on
+**all** tasks).
 
-`Something_to_Eat`'s "n=1" outlier is a measurement artifact (only 2 onsets
-total in the window on each side, note names don't even match between the
-paired pair).
+## 5. The graphify cross-check, run on every task for the first time
 
-**`Shogoon-Rave` is a real, clean, NEW finding**: orig/built voice-1 onset
-counts match exactly (253==253, so order-based alignment is trustworthy here).
-Result: voice 1 sits at a consistent **+2 delta (5 frames LATE, not early)**
-for 239/253 onsets, covering essentially the ENTIRE part-1 span (the -3
-baseline only resumes at orig frame 1274 = 25.48s, past the [0,24]s span).
-Different song, different direction, different mechanism than Fun_Factory —
-opened as its own task `hardtrack-shogoon-rave-voice1-late`, not mis-filed
-under this one.
+Grep-confirmed widenings applied to the plan:
 
-### `dispatch-confident-answers-uncorroborated` (partial) — refuted design #4, found a promising design #5
+| Module | Was missing from `touches` |
+|---|---|
+| `sidm2/laxity_parser.py` | `sf2_viewer_core.py`, `scripts/test_converter.py`, `scripts/test_laxity_driver.py` |
+| `pyscript/sf2_viewer_core.py` | its **4** importers: `abpage`, `sf2_html_exporter`, `sf2_to_text_exporter`, `sf2_viewer_gui` |
+| `sidm2/sf2_editor_automation.py` | **5** test files, none previously declared |
+| `pyscript/sdi_native_sweep.py` | 2 sweep tests |
+| `sidm2/fidelity_common.py` | 6 scorers |
+| `pyscript/abpage.py` | `test_abpage_chips.py` |
 
-Re-ran `_probe_sdi` over `SID/Shogoon`: same 16 files still confidently claim
-`sdi` with nothing in `SIGNATURE` contesting them. **Tried and refuted a
-4th corroboration design** (byte-pattern reachability): built a py65 PC-trace
-recording every visited PC from `init_address` to the `$FFFF` sentinel,
-checked whether `locate()`'s matched byte offset was ever actually executed.
-Result: **reached=True for all 16** — their INIT routines genuinely execute
-through the matched pattern because it's a real (if generic) init-copy idiom
-in their own, non-SDI player. Reachability discriminates nothing.
+Plus **13** builders/tools with no test file, each now naming the one its task must CREATE.
 
-**Found a new, promising, NOT-yet-shipped lead instead**: clustering the 16
-by `locate()`'s matched offset-FROM-LOAD-ADDRESS (not absolute address) splits
-them into two tight groups — offset `$0807` (4 files) and offset `$0037` (9
-files) — and `tools/player-id.exe`, run fresh, calls **all 13 of exactly
-those files** "DMC", independently of the clustering. The remaining 3
-(`Chaos_Note`, `Nodule`, `Tekkno`) form a third group (locate() variant D, no
-A/C offset) that independently matches player-id's "Music_Assembler" verdict,
-file-for-file. This is evidentially different from the already-refuted
-"trust a single player-id verdict" design (2 independent signals converging,
-not one signal trusted alone) — but was **deliberately not shipped as code**:
-turning it into a downgrade rule needs verifying against the full 160-file
-`Gallefoss_Glenn` corpus first (must not regress the pinned hardtrack-33/
-mattgray-13/Gallefoss-160 counts), which is real corpus-scale work, not a
-quick follow-on.
+## 6. Two plan bugs fixed rather than carried as tasks
 
-## Ad-hoc: loading `Rubicon` (Jeroen Tel) into the SF2 editor
+- `detect-filter-drives-blind-to-mode-only-changes` now declares
+  `rw:bin/build_mon_native_song.py` (where the function actually lives) and its verify
+  records the corrected premise.
+- The Laxity work is now a real chain:
+  `editor-ground-truth-…` (done) → `laxity-parser-reads-runtime-pointers-…` →
+  `laxity-decode-is-two-stage-…` → `sf2-viewer-core-sequence-overread` /
+  `abpage-pattern-follow-correct-on-all-songs` → `abpage-flagship-corpus-stage`.
 
-User asked to load `SID/Tel_Jeroen/Rubicon.sid` into SF2 editor.
-`out/Rubicon.sf2` already existed (built Jul 30). Opened it via
-`py -3 pyscript/sf2_open_in_editor.py out/Rubicon.sf2` — succeeded (PID
-spawned), took a screenshot via `sf2_load_test.screenshot()` and viewed it:
-SID Factory II window titled `_load_Rubicon.sf2` (the harness's own loading
-mechanism copies the target into `bin/_load_<name>.sf2` first — confirmed
-byte-identical via `cmp` to `out/Rubicon.sf2`, so this was NOT a wrong-file
-bug, it genuinely loaded Rubicon's real content). Structure was visible
-(Commands/Instruments/Wave/Pulse/Filter tables populated) but Track 1/2/3
-columns were solid blue with no visible note rows, "Playing time: 0:00".
+## 7. Two Claude Code hooks built (`470ec69`) — the repo's first
 
-User reported "it loaded but there are not song data." Investigated and
-found the real root cause (see Critical Context for the full mechanism) —
-`mon_parser.py`'s `_locate()` silently falls back to a hardcoded, wrong
-address when none of its three known engine signatures match Rubicon's
-binary, producing a plausible-looking but empty decode instead of an honest
-failure. Presented findings and two next-step options to the user (harden
-the fallback vs. RE Rubicon's actual engine variant) — **awaiting answer, see
-Current State**.
+Analysis found **zero hooks configured**, no `.claude/settings.json` (only `.local`),
+1 subagent, 4 MCP servers, 87 permissions, 5 CI workflows.
+
+- **`.claude/hooks/block_root_py.py`** — PreToolUse(`Write|Edit`), **BLOCKS** a `.py`
+  written to the repo root (CLAUDE.md Critical Rule #1, previously enforced only by the
+  manual `cleanup.bat --scan`). Narrow by design: repo ROOT only.
+- **`.claude/hooks/warn_missing_test.py`** — PostToolUse(`Write|Edit`), **WARNS** when an
+  edited source has no `pyscript/test_<name>.py`. Warns, never blocks.
+- **`.claude/settings.json`** — new, project scope (trackable), wires both via
+  `$CLAUDE_PROJECT_DIR`.
+
+Six pipe-tests before wiring, **including the three that must stay SILENT**
+(`pyscript/*.py`, `CLAUDE.md`, a file that already has a test, a test file itself).
+**Hook 1 is verified live** — it blocked an attempted write of `hook_probe.py` to the root
+and no file was created.
+
+## 8. `/whattask` passes: 55 → 58 → 59 → 60 tasks
+
+- Restored a 39-task backlog from a scratchpad backup that focused passes had shelved.
+- Found **24 ids opened by run records that had never reached a plan**; 21 planned, 5 deduped.
+- **Caught a real miss of my own**: an earlier pass built from the backlog and run log
+  without reconciling `whats-next.md`, and dropped the LIVE Rubicon question. Now tracked
+  as `rubicon-locate-fallback-or-re`.
+- `SID/LukHash/` (13 new files) identified: **12 are `Hermit/SidWizard_V1.x`, 1 `Mssiah`** —
+  a player family with no entry in `DriverSelector.PLAYER_REGISTRY` and no `docs/players/` card.
 
 </work_completed>
 
 <work_remaining>
 
-## Immediate: Rubicon investigation — awaiting user's choice
+## THE ONE THING BLOCKED ONLY ON YOU
+
+### Rubicon investigation — awaiting user's choice (UNCHANGED, still unanswered)
 
 Two options were presented, response not yet received:
+
 1. **Harden `mon_parser._locate()`'s fallback** (bounded, mechanical): change
    `sidm2/mon_parser.py:188-189`
    (`else: self.tbl_olptr, self.olset_hi = 0x83FC, 0x7B`) to raise or return a
@@ -244,259 +271,198 @@ Neither has been started as code. Both `Rubicon.sid`'s sibling files
 (same `tbl_olptr=0x83fc`) — whatever fix lands should be re-checked against
 all three.
 
-## The `/whattask` plan: 31 of 34 tasks ready, none delegable
+## THE TASK PLAN
 
-Every remaining ready task is `mode: main`. Two categories:
+**`.claude/tasks/whattask.json` — 60 tasks, 15 closed, 46 ready, head `470ec69`.**
+It is **gitignored** (only `runs.jsonl` is tracked under `.claude/tasks/`), so it does not
+travel. Read it, don't read this file, for the task list.
 
-**Bounded, not yet attempted this session** (good candidates for a focused
-turn): `snapshot-rc16-silent`, `mattgray-tempo-table-unlocatable-on-two-files`
-(needs real disassembly — two wrong tempo heuristics already measured and
-rejected, don't re-derive), `cybernoid-ii-sub0-native-passband-mismatch`,
-`soundmonitor-instrument-fields`, `blackbird-prune-has-the-same-span-glob-bug`,
-`myth-builder-never-prunes-stale-parts`, `sf2-automation-stubs` (needs a live
-desktop SF2II singleton — same class of interactive automation just used for
-Rubicon), `roadmap-a1-a2`.
+**Zero delegable ready tasks.** 45 of 46 ready are `serial`; the only `parallel` one is
+`sidwizard-lukhash-unsupported-player`. `/runqueue` runs single-file until something
+unblocks. That is real arithmetic, not a labelling artifact — almost every task writes a
+corpus subtree or the shared MoN/ROMUZAK driver.
 
-**Multi-hour corpus rebuilds** sharing the `out/.mon_build.lock` /
-`drivers_src/mon/*` hazard (effectively serialized against each other
-regardless of cycle count): `dmc-driver-init-passband-default`,
-`packer-base-window-never-probed-in-six-builders`,
-`galway-microprose-soccer-renders-a-quarter-loud`, `dmc-corpus-rebuild-
-serial-vs-j8`, `hardtrack-rebuild-jobs`, `sdi-full-corpus-j8-timed-sweep`,
-`existing-corpora-are-unstamped-until-rebuilt`,
-`corpus-audit-empty-trace-artifacts`, and ~10 more — these need a dedicated
-turn each, not `/runqueue` cycling through bounded tasks.
+### Highest-value chain (Laxity), in strict order
 
-**Highest-value non-bounded item**: `sdi-signature-is-weak-off-its-own-
-corpus` (blocked on `dispatch-confident-answers-uncorroborated`, which is
-`partial` not `done` — so still not in the ready set by strict dependency
-satisfaction, but its `verify` field now carries the concrete offset-
-clustering lead from this session's investigation; the next attempt should
-verify that lead against the full 160-file Gallefoss_Glenn corpus rather than
-starting cold).
+1. **`which-files-back-the-laxity-99-93-figure`** (sonnet/medium) — cheap and it GATES the
+   rest. CLAUDE.md rates native Laxity NP21 at 99.93–100%, yet the locate feeding that path
+   fails on 14 of 17 `SID/*.sid`. Read `docs/players/LAXITY.md` and
+   `docs/reference/ACCURACY_MATRIX.md` for the named corpus and check whether those files
+   are among the ones whose locate succeeds. **Both outcomes are publishable**: if the
+   figure rests on 2–3 files, re-stamp the docs with the real denominator; if broader,
+   accuracy survives a broken locate and fixing it is safe.
+2. **`laxity-locate-fails-on-14-of-17-files-silently`** (opus/high) — the **minimum fix is a
+   REFUSAL, not a locate**: reject a pointer outside `[load, load+len)`. That turns 14 silent
+   wrong answers into 14 honest failures. Do it FIRST and separately, then measure how many
+   files stop converting. `pyscript/test_laxity_parser.py` **does not exist** — create it and
+   pin the `$0334`-below-load case.
+3. **`laxity-parser-reads-runtime-pointers-as-the-sequence-table`** (opus/xhigh) — the real
+   locate. **Do NOT swap the constant** (see Attempted Approaches). It needs a
+   **signature-based locate**, the lesson CLAUDE.md already records for HardTrack's
+   `vib_depth`. The searchable shape is in Work Completed §3.
+4. `laxity-decode-is-two-stage-and-the-viewer-runs-one` → `sf2-viewer-core-sequence-overread`
+   and `abpage-pattern-follow-correct-on-all-songs` → `abpage-flagship-corpus-stage`
+   (the ~5 h / ~8 GB staging the user authorised: **~100 songs, 60 s, WITH voices** —
+   `decisions.jsonl:abpage-scope-and-feature-order`, BINDING).
 
-**New task this session**: `hardtrack-shogoon-rave-voice1-late` — root-cause
-the 5-frames-late voice-1 pattern on Shogoon-Rave (see above), same
-disassembly depth as the already-closed Fun_Factory diagnosis.
+### Other ready work worth naming
 
-Run `/whattask` again before further `/runqueue` cycling — the plan is 1
-commit stale (`5a6f7e6` landed after the last real pass).
+- **`detect-filter-drives-blind-to-mode-only-changes`** (opus/xhigh) — now correctly scoped.
+  Needs a file that genuinely changes `$D418` with routing already on; Funk_Facet is not one.
+- **`ninety-four-sources-have-no-test-file`** (sonnet/medium) — **94 of 162** files under
+  `sidm2/` (74) and `bin/build_*` (20) have no test. This is a **triage** task, not a
+  test-writing sweep, plus the hook-scope decision below.
+- **`whattask-touches-named-a-writer-as-the-parser`** — 2 of 3 parts done. What remains is
+  **durability**: the `.graphify_root` repair is in gitignored `graphify-out/`, so it does
+  not travel and re-breaks if a full `graphify extract /c/...` runs from Git Bash.
+- **`sidwizard-lukhash-unsupported-player`** (opus/medium, the only parallel task) — check
+  `mcp__tdz-c64-knowledge` for an existing SidWizard card BEFORE any RE; it is Hermit's
+  documented modern tracker with public sources.
+
+### A decision the hooks left open
+
+Hook 2 fires on any edit to the 94 untested sources, so on the native builders it will fire
+often. A warning that always fires is one people learn to ignore. Options: leave it
+(accurate, noisy), narrow `WATCHED` in `.claude/hooks/warn_missing_test.py` to `sidm2/` only
+(drops 20 of 94), or treat the 94 as a debt list to work down.
+
+### Still `requires-user` besides Rubicon
+
+- `roadmap-e2-oscilloscope` — ffmpeg still not on PATH (agreed to install, not yet present).
+- `analysis-docs-are-gitignored` — should `*_ANALYSIS.md` exempt `docs/`?
+  Note `.gitignore:248` taught this repo that git never walks into a directory excluded by a
+  trailing-slash pattern, so a negation inside it is silently inert — verify with
+  `git check-ignore -v`, not by reading the pattern.
+
+### PR #5
+
+Decided: **merge then re-measure**. The runner cannot merge. Its 87%→92% figure is 114
+commits stale and **must not be quoted unmeasured**.
 
 </work_remaining>
 
 <attempted_approaches>
 
-## Onset-alignment: nearest-frame-with-wide-tolerance is a known trap, re-derived twice this session
+## Laxity — approaches RULED OUT across six cycles. Do not re-derive any of these.
 
-Both `hardtrack-voice1-early-noteon`'s Fun_Factory recheck AND (implicitly, by
-the same mechanism) the original wide-tolerance pass are examples of exactly
-the failure `docs/ROADMAP.md` E3 already fixed for the audio-tightness tool
-(`safe_tolerance_ms`, tolerance ≈ half the median inter-onset-interval): a
-greedy nearest-frame matcher with a tolerance wider than the note spacing
-pairs an onset with its neighbour instead of its true match. **Do not build a
-new onset scanner from scratch again** — either reuse the existing
-tolerance-safe matcher or verify onset COUNTS match exactly before trusting
-any order-based delta.
+- **(a)** Block 5's `sequence_index_address`/`sequence_data_address` — garbage on this file
+  (`$1ECB` is `$CB` filler, `$041E` is below the `$0D7E` load). CYCLE 1.
+- **(b)** Block 2 (Driver Common) — runtime state addresses only. CYCLE 1.
+- **(c)** `sf2_packer` `driver_top + 0x0903` — a Driver 11 constant. CYCLE 1.
+- **(d)** ANY contiguous absolute little-endian pointer table — exhaustive 64K search for
+  `$24CB` returned **0 hits**. CYCLE 2.
+- **(e)** "Reject false positives and the scanner numbering aligns" — WITHDRAWN; the scanner
+  never finds the sparse sequences 00/01 at all. CYCLE 2.
+- **(f)** Split lo/hi table at `$1B1C`/`$1B2A` — rejected in cycle 3 on a bad decode, and
+  **I re-rejected it in cycle 5** after re-decoding with the real `LaxitySequenceParser` and
+  the real 64-entry command table, which gave byte-identically the same wrong music.
+  **BOTH REJECTIONS ARE NOW SUSPECT** — cycle 6's 978/978 byte-identity proves the table
+  partitions the music region exactly. The *decoder* is the likely fault, not the locate.
+  Treat (f) as REOPENED.
+- **(g)** Forcing `_parse_laxity_sequences()` — reaches the branch, yields one sequence of
+  zeros. CYCLE 4.
+- **(h)** Running BOTH stages via `LaxityPlayerAnalyzer` — returns 3 sequences of
+  **846/843/795 events** with its own validator printing "Sequence 0 too long (846 events)".
+  Stage two runs fine; it is fed garbage. CYCLE 5.
+- **(i)** **Swapping the constant `$0A1C` → `$099F`** — measured and refuted. 2/17 vs 1/17,
+  with 14/17 served by neither. `laxity_parser.py:18` already records that `$099F` was tried
+  and rejected for Stinsen. A swap trades two files for one. CYCLE 6.
 
-## Dispatch corroboration: 4 designs refused, in order
+## Two hypotheses of my own, refuted this session
 
-1. Promote a construct-only family on a reliable player-id verdict —
-   precision fell 75.0%→71.4% (pre-existing, documented in
-   `sidm2/native_dispatch.py`'s own comments).
-2. Demote on a contradicting player-id verdict — the needed verdict isn't in
-   `RELIABLE_PLAYER_IDS` (pre-existing).
-3. Decode plausibility — the SDI decoder walks garbage happily, false accepts
-   produce MORE notes than real rips (pre-existing).
-4. **Byte-pattern reachability from INIT** (this session, py65 PC-trace) —
-   refuted: all 16 false positives' INIT routines genuinely execute through
-   the matched byte pattern (it's real code in their own, different player),
-   so reachability alone proves nothing.
+- **"Funk_Facet frame 108 is a mode-only change"** — no. `$D417` is constant `$F1`, and
+  `$D418` is not an input to the detector at all.
+- **"The frame-109 attack rises too slowly for `FILT_FAST`"** — no. +80 clears the 64
+  threshold comfortably; the attack IS detected and then dropped for want of an anchor.
 
-**Design 5 (offset-from-load clustering + independent player-id agreement)
-is NOT refused** — promising, unshipped, needs corpus-wide verification
-before it can safely change `native_dispatch.py`'s behavior.
+## Testing-apparatus failures worth remembering
 
-## gitignore negation after a directory-exclusion pattern: does not work
+- `pyscript/abpage_scroll_harness.js` passed **three times on a visibly broken page** before
+  being fixed to mirror the real DOM.
+- `pytest pyscript/test_abpage.py` alone gives 102 passed while the full suite gives 27
+  failures — **isolation is not evidence**. `pytest-randomly 4.1.0` is now installed, which
+  is what would have caught this at introduction.
+- I twice told the user a working graphify would have caught the wrong `touches`, then
+  measured it and found `graphify path` reports "no path" for an edge that IS in the links.
+  The data was there; the CLI does not surface it.
 
-`.claude/tasks/` (trailing slash = directory match) followed by
-`!.claude/tasks/runs.jsonl` is silently inert — git never traverses a
-directory matched by a trailing-slash pattern, so any negation inside it has
-no effect. Must use `.claude/tasks/*` (glob the entries) instead of
-`.claude/tasks/` for a per-file exception to work. This is documented git
-behavior (gitignore(5)), not a project-specific bug, and any OTHER
-directory-exclusion-with-per-file-exception pattern elsewhere in this repo's
-`.gitignore` should be checked for the same mistake — not yet audited.
+## Dead ends not pursued
 
-## Two scratch-file mishaps this session, both self-caught
-
-Writing a Python heredoc's output file via a relative path from inside a
-`py -3 - << 'PYEOF'` block landed the file in the shell's actual cwd (the repo
-root) rather than the intended scratchpad directory, twice
-(`line.jsonl`, `gen4_line.jsonl`, `dispatch_line.jsonl`). Caught each time via
-`git status --short` before it could be accidentally committed; cleaned up
-with `rm` immediately after use. **Prefer `Write` tool with an absolute
-scratchpad path over bash heredocs for generating JSONL lines** — simpler and
-avoids this class of mistake entirely.
+- Adding `context7` or other MCP servers — this repo already runs tokensave, retrodebugger,
+  c64bridge and tdz-c64-knowledge, and its real references are disassemblies, not JS docs.
+- Generating 94 test files mechanically — rejected as ceremony; the task is triage.
 
 </attempted_approaches>
 
 <critical_context>
 
-## The `mon_parser._locate()` silent-fallback bug (Rubicon), read directly from source
+## Numbers that must be quoted with their conditions
 
-`sidm2/mon_parser.py` locates a MoN engine's orderlist-pointer table via 3
-mutually-exclusive branches tried in order:
-1. `cp = _find(d, 0xA0, 0x05, 0xB9, None, None, 0x99)` → "selfmod" variant
-   (Hawkeye/Cybernoid-class).
-2. `cp_bd = _find(d, 0xA0, 0x05, 0xBD, None, None, 0x99)` → "stride" variant
-   (Cybernoid_II-class).
-3. `self._locate_b1(d)` → B1-indirect variant (mainstream Jeroen Tel:
-   Alloyrun, Beginning, Scout, Zynon_Zak, ...).
+- **99.93–100% native Laxity** is now in tension with a locate that fails on 14/17 files.
+  Do not repeat the figure until `which-files-back-the-laxity-99-93-figure` answers.
+- **PR #5's 87%→92%** is 114 commits stale. Never quote unmeasured.
+- **SDI D-variant is 89.9 / "8 of 15"**, not the retracted 95.9 / "7 of 15". Both surviving
+  mentions of the old pair (CLAUDE.md:175, ACCURACY_MATRIX.md:63) are **explicitly labelled
+  retractions and must be left alone** — verified this session, nothing was stale.
 
-Line 167 sets `self.ol_mode = "selfmod"` as an **unconditional initial
-default** BEFORE any of the three checks run. If branch 1 matches, this label
-is correct. If branch 2 or 3 matches, `ol_mode` gets overwritten
-appropriately. **But if ALL THREE MISS**, line 188-189 fires:
-```python
-else:
-    self.tbl_olptr, self.olset_hi = 0x83FC, 0x7B
-```
-— a hardcoded constant, with `ol_mode` STILL reading `"selfmod"` from the
-never-corrected line-167 default. Nothing anywhere signals "this file wasn't
-actually located." Verified directly for Rubicon: `_find(d, 0xA0, 0x05,
-0xB9, None, None, 0x99)` returns `None`, `_locate_b1(d)` returns `False`
-(both confirmed by calling them directly in a REPL-style check). Rubicon's
-load address is `$3F00` (init `$3F50`) — `0x83FC` is nowhere near that range,
-so every table read routed through it hits `_u8`'s own out-of-range sentinel
-(`return self.d[o] if 0 <= o < len(self.d) else 0xFF`), and the pattern/
-orderlist walk built on garbage produces exactly what was observed: 0 decoded
-events on all 3 voices, and a nonsense `speed=192` (normal MoN speed reload
-values are single digits).
+## Environment gotchas hit this session
 
-This is the SAME failure shape as the SDI dispatcher's false-positive problem
-investigated earlier this session (`dispatch-confident-answers-
-uncorroborated`) — a locate/probe reporting confidence it hasn't earned — but
-in `mon_parser` it's worse: there's no downstream guard at all (SDI's
-`SDIModule.__init__` at least `raise ValueError`s on a real locate failure;
-`mon_parser.MON.__init__` never checks and just proceeds with garbage).
-**This might affect other files beyond Rubicon** — any MoN/Tel file whose
-binary doesn't match branches 1-3 gets the same silent wrong answer, which is
-exactly why fixing the fallback (option 1 above) needs a corpus sweep first:
-some currently-"successful" conversions might secretly be running on this
-same garbage path and nobody has noticed because nothing currently checks for
-it.
+- **The Bash tool is Git Bash, not PowerShell.** PowerShell here-strings (`@'...'@`) are a
+  parse error. Use a message file + `git commit -F`, which is what worked.
+- **`jq` is NOT installed.** Validate JSON with Python.
+- Heredocs choke on backslashes in Python string literals — write the script to a file
+  instead (that is why the scratchpad has `genplan*.py`, `rec_*.py`, `xcheck*.py`).
+- `graphify-out/` is **37 MB** and now gitignored (`fd0345e`).
+- The repo pushes **directly to `master`** (`MichaelTroelsen/SIDM2conv`); that is its
+  established convention and the user asked for commit+push twice.
 
-## Precedent for `closed_by` deviating from the schema's two documented forms
+## Repo conventions that bit or nearly bit
 
-`/whattask`'s schema says `closed_by` is either a commit sha or
-`decision:<id>` (for a refused authorisation) — nothing else. This session
-established (and repeated 3 times) a THIRD, undocumented-in-the-schema but
-consistently-applied convention: `closed_by: "runtask:<id>"` for work that is
-verified `done` in `runs.jsonl` but has no commit to cite (either because it's
-genuinely uncommitted-but-verified, like `release-3-28` initially was, or
-because the work touches something outside any git repo entirely, like
-`stale-worktree-decision`'s filesystem-only worktree removal, or
-`whattask-rule-not-live-in-plugin-cache`'s edit to a file in the Claude Code
-plugin marketplace directory under the user's home). Every instance was
-flagged explicitly in the `reason` field and in the prose report as a
-deliberate, named deviation — never silently invented. If this pattern
-recurs enough, it may be worth proposing as a real schema addition
-(`closed_by: "runtask:<id>"` as a documented third form) rather than an
-ad hoc workaround each time.
+- `pyscript/test_version_stamps_agree.py` pins version, build date and the CHANGELOG heading
+  across five files — but **NOT** CLAUDE.md's own `**Size**:` stamp. Verified by hand this
+  session: 40,456 bytes = 39.5 KB, matching. A test for it is still missing.
+- CLAUDE.md is measured in **bytes**, not lines, and is loaded into every session.
+- `out/.mon_build.lock` is the external lock; the `hazards` array names the shared
+  MoN/ROMUZAK driver files. Checked absent before every cycle.
+- `passband_check` writes a scratch probe `.sid` beside each artifact — declare it in
+  `touches` even for a "read-only" task.
 
-## Environment / tooling notes
+## Files created this session (all committed)
 
-- Session model: Sonnet 5 (per environment context) — every task in the
-  `/whattask` plan that recorded `model: opus` and ran this session (`pr5-v3-
-  5-7-decide`, `hardtrack-voice1-early-noteon`,
-  `dispatch-confident-answers-uncorroborated`) was flagged as a model
-  discrepancy in its `runs.jsonl` record per the model-escalation policy — a
-  switch was never actually performed (mid-session model switches aren't
-  done silently), and in retrospect none of the three needed it: each
-  resolved via direct measurement/code-reading rather than repeated guessing.
-- `tools/player-id.exe` exists and works; output format is
-  `<path> <padding> <verdict>` on one line per file — extract with
-  `sed -E 's|^SID/.../[^ ]+\.sid *||'`, not by grepping the next line.
-- `pyscript/sf2_open_in_editor.py` spawns SIDFactoryII detached and F10-loads
-  a file; it works by copying the target to `bin/_load_<basename>.sf2` first
-  (a scratch-naming convention, gitignored via `bin/*.sf2` in `.gitignore`) —
-  the window title showing `_load_X.sf2` instead of the original filename is
-  expected, not a bug. `sf2_load_test.screenshot(label, outdir)` (imported
-  from `pyscript/sf2_load_test.py`) takes a real screenshot via `pyautogui`
-  for visual verification — this is how the Rubicon "no song data" report was
-  visually confirmed before diving into the parser.
-- A local hook blocks Grep/bash-grep on `.py` files in this repo with a
-  message suggesting `tokensave_signature_search`/`tokensave_search` — but no
-  tokensave MCP tools are actually connected in this session
-  (`ToolSearch` for them returns nothing). Override per-call with
-  `TOKENSAVE_DISABLE_GREP_HOOK=1 grep ...` when this happens; don't waste a
-  turn hunting for a tool that isn't there.
-- `graphify-out/` exists in the repo root (16MB `graph.json`, generated
-  2026-08-22 from an earlier `/graphify` pass) but is untracked — no
-  `.gitignore` entry for it either way, so it shows as `??` in every `git
-  status` this session. Left alone each time; flag if the user wants a
-  `.gitignore` entry added.
-- The `.claude/tasks/serial.lock` protocol (mutex dir `serial.lock.d/` +
-  registry file `serial.lock`) is documented in full at
-  `C:\Users\mit\.claude\plugins\marketplaces\mit-claude-setup\plugins\
-  mit-setup\LOCKING.md` — read that, not this file, for the exact acquire/
-  reap-orphans/claim/release sequence if resuming `/runqueue` work.
+`pyscript/abpage.py`, `abpage_chips.py`, `test_abpage.py`, `test_abpage_chips.py`,
+`abpage_browser_probe.py`, `abpage_scroll_harness.js`, `ab-listen.bat`,
+`docs/plans/ABPAGE_PORT_PLAN.md`, `.claude/hooks/block_root_py.py`,
+`.claude/hooks/warn_missing_test.py`, `.claude/settings.json`, `SID/LukHash/` (13 files).
 
-## Things NOT done, on purpose, worth remembering
+## Auto-memory written (outside the repo, will NOT travel)
 
-- `docs/players/SDI.md` now has TWO new dated sections from this session
-  (`short-deel-quarantine-decision`'s "2026-08-22 decision" and
-  `sdi-md-bahbar-v-stale-note`'s "2026-08-22 correction") stacked adjacent to
-  each other — both landed cleanly, neither overwrote the other, confirmed by
-  grep for both headers post-commit.
-- No full pytest suite re-run since the `pr5-v3-5-7-decide` task (which
-  confirmed 2602/8/2 with only 4 non-conversion-pipeline files changed) —
-  nothing has touched test-affecting code since, so this should still hold,
-  but wasn't re-verified after the later `/runqueue` cycles (which were all
-  read-only investigations plus the worktree deletion, none touching
-  `sidm2/`/`pyscript/` source).
-- `sf2-automation-stubs` (ready, `needs_main`, touches
-  `desktop-singleton:SF2II-editor`) is the SAME resource class as the manual
-  SF2II automation just used for Rubicon — if picking that task up, be aware
-  a live SF2II instance may already be running from the Rubicon session (PID
-  was left open per `sf2_open_in_editor.py`'s own "close manually when done"
-  behavior) and could collide.
+`~/.claude/projects/C--Users-mit-claude-c64server-sidm2/memory/graphify-on-every-task.md`
+— the user's standing instruction plus the CLI-false-negative caveat and the root fix.
+Indexed in `MEMORY.md`.
 
 </critical_context>
 
 <current_state>
 
-**HEAD `5a6f7e6`**, working tree clean except untracked `graphify-out/`
-(unchanged all session, not a repo concern). All 6 commits pushed to
-`origin/master`, confirmed via `git push` output each time
-(`<old>..<new> master -> master`).
+- **HEAD `470ec69`, working tree CLEAN, everything pushed to `origin/master`.**
+- **Test suite: 2707 passed, 8 skipped, 2 xfailed.** `pytest-randomly 4.1.0` active.
+- `.claude/tasks/whattask.json`: **60 tasks, 15 closed, 46 ready**, head `470ec69`. Gitignored.
+- `.claude/tasks/runs.jsonl`: **130 records**, none torn. Tracked and committed.
+- `serial.lock` is `[]`; the `serial.lock.d` mutex directory does not exist. No cycle in flight.
+- `graphify update` **works** — 20,441 nodes / 32,016 edges at HEAD. The repair is local-only.
+- Both hooks are **live**. Hook 1 verified by blocking a real write; hook 2 is loaded and
+  pipe-verified but was not triggered live (that would have meant editing a builder for a demo).
+- Nothing is half-applied. No temporary workarounds are in place. The one scratch artifact,
+  `graphify-out/.graphify_root.bak`, was deleted after the fix was confirmed.
 
-**`.claude/tasks/whattask.json`**: head `b4968ff` (1 commit stale vs current
-HEAD `5a6f7e6` — cosmetic only, run-log-based readiness is unaffected), 34
-tasks, 52 closed, 31 ready, all `main`-mode (0 delegable).
+**Open questions, in priority order:**
+1. Rubicon — harden the fallback, or RE the variant? (asked repeatedly, never answered)
+2. Hook 2's scope — leave, narrow to `sidm2/`, or work the 94 down?
+3. `*_ANALYSIS.md` — exempt `docs/`?
+4. ffmpeg on PATH (unblocks `roadmap-e2-oscilloscope`).
 
-**`.claude/tasks/runs.jsonl`**: tracked in git as of `d1b32d0`, currently 112
-lines, all committed (no pending append).
-
-**`.claude/tasks/decisions.jsonl`**: 9 records, unchanged all session, fully
-folded into the plan.
-
-**Rubicon SF2II session**: `bin/_load_Rubicon.sf2` (gitignored, harmless
-scratch copy) exists on disk; a SIDFactoryII process may still be running
-from `pyscript/sf2_open_in_editor.py`'s detached spawn (it does not
-self-close — "close the editor manually when done" is its own printed
-instruction). No code changes made toward either Rubicon remediation option.
-
-**Open question, unanswered**: which of the two Rubicon next-steps (harden
-`mon_parser._locate()`'s fallback, or RE Rubicon's actual engine variant) the
-user wants pursued — this is the very next thing to resolve when work
-resumes, before anything else.
-
-**Recommended next action**: get the user's answer on the Rubicon fork before
-doing anything else (it's the live, half-finished thread); if the answer is
-"harden the fallback," start with a corpus-wide sweep for other files
-silently hitting the same `0x83FC` path before touching the code, per Critical
-Context above. Once that's resolved, re-run `/whattask` (plan is 1 commit
-stale) before further `/runqueue` cycling.
+**Recommended next action:** answer Rubicon. It has now survived four planning passes
+unanswered, it is the only item stalled purely on a human rather than on other work, and
+both of its branches are otherwise ready to run.
 
 </current_state>
