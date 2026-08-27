@@ -121,15 +121,33 @@ class LaxityParser:
             # The orderlist for Laxity is typically just one sequence per voice
             # (more complex songs might have multiple sequences chained)
 
-            # Check if sequence address is valid (non-zero and within C64 addressable space)
-            if seq_addr > 0 and seq_addr < 0x10000:
-                # Try to extract sequence - it might be within loaded data at a different offset
-                # Some SID files use relocated players where sequences are at unexpected addresses
+            # The address must lie INSIDE THE LOADED IMAGE, not merely inside the
+            # 64K address space. The old test was `seq_addr > 0 and seq_addr <
+            # 0x10000`, which accepts anything at all: measured across the named
+            # corpus (docs/players/LAXITY.md:8, SID/Laxity/, 286 files) this
+            # constant produces a usable locate on SEVEN of them, and the other
+            # 279 were fed values like $007F, $4141, $0000 and, on Angular,
+            # $0334/$0341/$0336 -- all three BELOW the $1000 load address.
+            # Nothing noticed, because nothing checked.
+            #
+            # This is a REFUSAL, not a locate: it does not find the right
+            # sequences, it stops the wrong ones being returned as though they
+            # were right. Failing honestly is this repo's convention -- zig64
+            # prints FAILED: and exits non-zero rather than emitting an empty
+            # trace as a silent tune, and fidelity_common.score_pct returns None
+            # rather than 100.0 when there is nothing to score.
+            lo_bound = self.load_address
+            hi_bound = self.load_address + len(self.data)
+            if lo_bound <= seq_addr < hi_bound:
                 sequence_addresses.add(seq_addr)
                 orderlists[voice].append(seq_addr)  # Store address for now
                 logger.debug(f"Voice {voice}: sequence at ${seq_addr:04X}")
             else:
-                logger.warning(f"Voice {voice}: invalid sequence address ${seq_addr:04X}")
+                logger.warning(
+                    f"Voice {voice}: ch_seq_ptr ${seq_addr:04X} is outside the "
+                    f"loaded image ${lo_bound:04X}-${hi_bound - 1:04X} -- "
+                    f"refusing it rather than extracting from it"
+                )
 
         # Extract each unique sequence
         addr_to_index = {}
