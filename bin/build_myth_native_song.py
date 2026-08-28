@@ -212,6 +212,10 @@ def main():
         br = BM.build_native_song(m, SID, SUB, {}, [], win=(0, span), traces=traces)
         out = os.path.join(ROOT, "out", "mon", f"{base}_part01.sf2")
         BM.emit_one(m, br, out, f"{base} 0-{span // 50}s")
+        # A non-adaptive rebuild emits ONE part. If a previous adaptive era left
+        # parts 02..NN they are stale, and nothing else removes them -- see the
+        # comment on the adaptive path below.
+        BM.prune_stale_parts(os.path.join(ROOT, "out", "mon", base), 1)
         return
 
     # adaptive windowing (mirror build_mon_native_song.main): grow each window until a
@@ -233,6 +237,15 @@ def main():
         br = BM.build_native_song(m, SID, SUB, {}, [], win=(t0, t1), traces=traces)
         out = os.path.join(ROOT, "out", "mon", f"{base}_part{part:02d}.sf2")
         BM.emit_one(m, br, out, f"part {part}/{len(bounds)} ({t0 // 50}-{t1 // 50}s)")
+
+    # Every other native builder prunes after its part loop; this one did not,
+    # so a rebuild that packs into FEWER parts than a previous era left the old
+    # higher-numbered parts on disk. That is the phantom-file defect
+    # prune_stale_parts documents (Supremacy_sub2 showed 70 files for a 10-part
+    # build) and a listener plays the stale tail. It also publishes the staged
+    # set atomically; with nothing staged commit_parts() is a no-op, so this is
+    # safe on the direct-write path too.
+    BM.prune_stale_parts(os.path.join(ROOT, "out", "mon", base), len(bounds))
 
 
 def _write_freqtable():
