@@ -9,6 +9,12 @@ from pathlib import Path
 # Add parent directory to path for sidm2 imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Real-SID-corpus tests need a shared checkout; anchor to the repo, not a
+# hardcoded user path. A missing corpus SKIPs (see skipUnless below) -- a
+# SKIP still reads as a passing suite, so quote the skip count alongside any
+# green run of this file.
+_REPO_SID_DIR = Path(__file__).resolve().parent.parent / "SID"
+
 import unittest
 import os
 import tempfile
@@ -476,12 +482,12 @@ class TestIntegration(unittest.TestCase):
     """Integration tests with real SID file"""
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_parse_real_sid_file(self):
         """Test parsing the actual Unboxed_Ending_8580.sid file"""
-        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"
+        sid_path = str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")
         parser = SIDParser(sid_path)
         header = parser.parse_header()
 
@@ -492,12 +498,12 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(header.copyright, '2018 Bonzai')
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_extract_c64_data(self):
         """Test extracting C64 data from real file"""
-        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"
+        sid_path = str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")
         parser = SIDParser(sid_path)
         header = parser.parse_header()
         c64_data, load_address = parser.get_c64_data(header)
@@ -510,12 +516,12 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(c64_data[3], 0x4C)  # JMP
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_analyze_real_file(self):
         """Test analyzing the real SID file"""
-        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"
+        sid_path = str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")
         parser = SIDParser(sid_path)
         header = parser.parse_header()
         c64_data, load_address = parser.get_c64_data(header)
@@ -564,10 +570,10 @@ class TestInstrumentEncoding(unittest.TestCase):
 class TestNewFeatures(unittest.TestCase):
     """Tests for new improvement features"""
 
-    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+    SID_DIR = str(_REPO_SID_DIR)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_tempo_extraction(self):
@@ -585,7 +591,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertLessEqual(tempo, 31)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_filter_table_extraction(self):
@@ -603,7 +609,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(filter_addr, (int, type(None)))
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_pulse_table_extraction(self):
@@ -620,7 +626,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(pulse_table, bytes)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_command_mapping(self):
@@ -646,7 +652,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(name, "Duration")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_validation(self):
@@ -663,7 +669,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(extracted.validation_errors, list)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_pointer_table_parsing(self):
@@ -680,7 +686,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(extracted.pointer_tables, dict)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_improved_instrument_extraction(self):
@@ -737,7 +743,7 @@ class TestNewFeatures(unittest.TestCase):
 class TestPulseTableExtraction(unittest.TestCase):
     """Tests for pulse table extraction improvements"""
 
-    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+    SID_DIR = str(_REPO_SID_DIR)
 
     def _load_sid_data(self, filename):
         """Helper to load SID file and return data and load_address"""
@@ -748,7 +754,7 @@ class TestPulseTableExtraction(unittest.TestCase):
         return c64_data, load_address
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_pulse_table_finds_correct_address(self):
@@ -759,7 +765,7 @@ class TestPulseTableExtraction(unittest.TestCase):
         self.assertGreater(len(entries), 0, "Should extract at least one entry")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_pulse_table_extracts_multiple_entries(self):
@@ -770,7 +776,7 @@ class TestPulseTableExtraction(unittest.TestCase):
         self.assertGreater(len(entries), 5, "Should extract more than 5 pulse entries")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_pulse_entry_format(self):
@@ -782,7 +788,7 @@ class TestPulseTableExtraction(unittest.TestCase):
             self.assertEqual(len(entry), 4, f"Entry {i} should have 4 bytes")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_pulse_table_chain_patterns(self):
@@ -794,7 +800,7 @@ class TestPulseTableExtraction(unittest.TestCase):
         self.assertTrue(has_chain, "Should have chain patterns in pulse table")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_pulse_table_all_files(self):
@@ -808,7 +814,7 @@ class TestPulseTableExtraction(unittest.TestCase):
                 self.assertGreater(len(entries), 0, f"Found addr but no entries in {sid_file}")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_pulse_table_scoring_prefers_patterns(self):
@@ -824,7 +830,7 @@ class TestPulseTableExtraction(unittest.TestCase):
 class TestFilterTableExtraction(unittest.TestCase):
     """Tests for filter table extraction improvements"""
 
-    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+    SID_DIR = str(_REPO_SID_DIR)
 
     def _load_sid_data(self, filename):
         """Helper to load SID file and return data and load_address"""
@@ -835,7 +841,7 @@ class TestFilterTableExtraction(unittest.TestCase):
         return c64_data, load_address
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_filter_table_finds_correct_address(self):
@@ -846,7 +852,7 @@ class TestFilterTableExtraction(unittest.TestCase):
         self.assertGreater(len(entries), 0, "Should extract at least one entry")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_filter_table_extracts_multiple_entries(self):
@@ -857,7 +863,7 @@ class TestFilterTableExtraction(unittest.TestCase):
         self.assertGreater(len(entries), 1, "Should extract more than 1 filter entry")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_filter_entry_format(self):
@@ -869,7 +875,7 @@ class TestFilterTableExtraction(unittest.TestCase):
             self.assertEqual(len(entry), 4, f"Entry {i} should have 4 elements")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_filter_table_avoids_pulse_overlap(self):
@@ -884,7 +890,7 @@ class TestFilterTableExtraction(unittest.TestCase):
             self.assertNotEqual(filter_addr, pulse_addr, "Filter should not be at pulse address")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_filter_table_all_files(self):
@@ -898,7 +904,7 @@ class TestFilterTableExtraction(unittest.TestCase):
                 self.assertGreater(len(entries), 0, f"Found addr but no entries in {sid_file}")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "SID file not found"
     )
     def test_filter_table_pattern_detection(self):
@@ -916,10 +922,10 @@ class TestFilterTableExtraction(unittest.TestCase):
 class TestTableLinkageValidation(unittest.TestCase):
     """Tests for instrument table linkage validation"""
 
-    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+    SID_DIR = str(_REPO_SID_DIR)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_table_linkage_validation_runs(self):
@@ -936,7 +942,7 @@ class TestTableLinkageValidation(unittest.TestCase):
         self.assertIsInstance(extracted.validation_errors, list)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_instruments_have_valid_wave_ptr(self):
@@ -956,7 +962,7 @@ class TestTableLinkageValidation(unittest.TestCase):
             self.assertIn('Instrument', err)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_all_files_table_linkage(self):
@@ -980,8 +986,8 @@ class TestTableLinkageValidation(unittest.TestCase):
 class TestFullConversionPipeline(unittest.TestCase):
     """Integration tests for complete SID->SF2 conversion pipeline"""
 
-    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
-    SF2_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SF2"
+    SID_DIR = str(_REPO_SID_DIR)
+    SF2_DIR = str(Path(__file__).resolve().parent.parent / "SF2")
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -991,7 +997,7 @@ class TestFullConversionPipeline(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_converted_sf2_has_valid_load_address(self):
@@ -1022,7 +1028,7 @@ class TestFullConversionPipeline(unittest.TestCase):
         self.assertLessEqual(file_load_addr, 0xFFFE)
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_converted_sf2_metadata_preserved(self):
@@ -1052,7 +1058,7 @@ class TestFullConversionPipeline(unittest.TestCase):
         self.assertGreater(file_size, 100, "SF2 file too small")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID"),
+        os.path.exists(str(SID_DIR)),
         "SID directory not found"
     )
     def test_all_files_convert_successfully(self):
@@ -1080,7 +1086,7 @@ class TestFullConversionPipeline(unittest.TestCase):
                           f"Failed to create SF2 for {sid_file}")
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        os.path.exists(str(_REPO_SID_DIR / "Unboxed_Ending_8580.sid")),
         "Real SID file not found"
     )
     def test_converted_sf2_has_valid_sequences(self):
@@ -1118,7 +1124,7 @@ class TestFullConversionPipeline(unittest.TestCase):
 class TestAllSIDFiles(unittest.TestCase):
     """Test conversion with all SID files in the SID directory"""
 
-    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+    SID_DIR = str(_REPO_SID_DIR)
 
     # Files in SID_DIR whose SEQUENCE POINTERS the parser cannot currently
     # locate, so extract_music_data() returns no sequences for them. This is a

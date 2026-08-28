@@ -9,6 +9,7 @@ checkout; the pure-logic tests below run everywhere.
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -19,9 +20,14 @@ from sidm2.mattgray_parser import (  # noqa: E402
     MattGraySong, parse_sid, simulate,
 )
 
+# Anchored to a sibling checkout under the user's home rather than this repo,
+# since HVSC is a large third-party archive that lives outside version
+# control. HVSC_ROOT overrides for anyone with it elsewhere; if it's absent
+# entirely, needs_driller SKIPs below -- a SKIP still reads as a passing
+# suite, so quote the skip count alongside any green run of this file.
 HVSC = os.environ.get(
     "HVSC_ROOT",
-    r"C:\Users\mit\Downloads\HVSC_85-all-of-them\C64Music")
+    str(Path.home() / "Downloads" / "HVSC_85-all-of-them" / "C64Music"))
 DRILLER = os.path.join(HVSC, "MUSICIANS", "G", "Gray_Matt", "Driller.sid")
 
 needs_driller = pytest.mark.skipif(
