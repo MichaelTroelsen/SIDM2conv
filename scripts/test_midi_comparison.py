@@ -23,6 +23,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
+import pytest
+
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -31,9 +33,23 @@ try:
     MIDO_AVAILABLE = True
 except ImportError:
     MIDO_AVAILABLE = False
-    print("ERROR: mido library not installed")
-    print("Install with: pip install mido")
-    sys.exit(1)
+    # Under pytest: skip at module level, so collection succeeds. This file used
+    # to call sys.exit(1) here, which killed pytest's COLLECTOR outright with
+    # INTERNALERROR from any cwd where pytest.ini's --ignore did not apply.
+    #
+    # Run directly as the CLI its docstring describes: keep the old clean
+    # message and exit code. pytest.skip() raises Skipped, which outside a
+    # pytest run surfaces as an ugly traceback rather than a diagnostic -- so
+    # the two callers are separated by __name__ instead of one path serving both.
+    if __name__ == "__main__":
+        print("ERROR: mido library not installed")
+        print("Install with: pip install mido")
+        sys.exit(1)
+    pytest.skip(
+        "mido library not installed (pip install mido); this is a standalone "
+        "CLI comparison tool with no pytest test functions, not a real test module",
+        allow_module_level=True,
+    )
 
 from sidm2.sid_to_midi_emulator import convert_sid_to_midi
 
