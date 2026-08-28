@@ -157,7 +157,7 @@ SIDM2/
 | Source → Driver | Accuracy | Status |
 |----------------|----------|--------|
 | SF2-exported → Driver 11 | 100% | ✅ Perfect (including SidFactory_II/Laxity) |
-| Native Laxity NP21 → Laxity driver | 99.93-100% | ✅ Production |
+| Native Laxity NP21 → Laxity driver | 99.93-100% | ✅ Production. ⚠️ **99.93% is a TARGET, not a measurement** — the only measurement on record is 99.98% frame accuracy over **n=2** (`Stinsens_Last_Night_of_89`, `Broware`, 2025-12-28, `CHANGELOG.md:10450`), and its script is no longer in the tree. The 268-283/286 corpus rounds are a **pass/fail count**, not frame accuracy. See `docs/players/LAXITY.md` |
 | Native Laxity NP21 → Driver 11 | 1-8% | ⚠️ Use Laxity driver instead |
 | Martin Galway → trace native driver | ~100% | ✅ 40/40 build, 30/40 objectively clean (`bin/`, not default); see `docs/players/GALWAY.md` |
 | ROMUZAK V6.3 → native driver | ~98-100% | ✅ Byte-exact wf/pulse/AD-SR (`bin/`, not default); see `docs/players/ROMUZAK.md` |
@@ -232,7 +232,7 @@ do not add per-version entries here.
 
 **End of Quick Reference**
 
-**Size**: **39.5 KB / ~9.9k tokens** (+5.0 KB across the A/B-listening-page arc: the port, then the measures/pattern/instrument entry — re-measure and re-stamp here whenever you add to this file, the stamp sat at 34.5 KB while the file had already grown. The listening entries are dense on purpose: every caveat in them is one this repo has already had to retract a number over, and a shorter version would ship the numbers without the conditions that make them true) — this file is loaded into **every** session, so measure it in **bytes**, not lines. It had drifted to 32.5 KB while *staying inside* a ~226-line budget, because prose migrates into table cells and a line count cannot see that: **one** HardTrack table row was 6,696 bytes, 21% of the whole file. Trimmed back in v3.26.0 after verifying all 23 of its claims survive in `docs/players/HARDTRACK.md`. Keep per-player rows to a **verdict + the caveats needed to quote the numbers correctly + a `docs/players/` link** — mechanism, evidence and history belong in the player doc. | **For full docs**: See README.md and docs/
+**Size**: **40.1 KB / ~10.0k tokens** (+0.6 KB for the Laxity 99.93% provenance caveat; +5.0 KB before that across the A/B-listening-page arc: the port, then the measures/pattern/instrument entry — re-measure and re-stamp here whenever you add to this file, the stamp sat at 34.5 KB while the file had already grown. The listening entries are dense on purpose: every caveat in them is one this repo has already had to retract a number over, and a shorter version would ship the numbers without the conditions that make them true) — this file is loaded into **every** session, so measure it in **bytes**, not lines. It had drifted to 32.5 KB while *staying inside* a ~226-line budget, because prose migrates into table cells and a line count cannot see that: **one** HardTrack table row was 6,696 bytes, 21% of the whole file. Trimmed back in v3.26.0 after verifying all 23 of its claims survive in `docs/players/HARDTRACK.md`. Keep per-player rows to a **verdict + the caveats needed to quote the numbers correctly + a `docs/players/` link** — mechanism, evidence and history belong in the player doc. | **For full docs**: See README.md and docs/
 
 ## Task observation
 Activate the task-observer skill at the start of every task-oriented session.

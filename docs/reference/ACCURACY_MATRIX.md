@@ -36,7 +36,9 @@ are sub-rows under MoN, not separate counts.
 
 | Source Player | Best Driver | Accuracy | Status |
 |---------------|-------------|----------|--------|
-| **Laxity NewPlayer v21** (native) | Laxity Driver | **99.93–100%** | ⭐⭐⭐⭐⭐ Production (filter 100%, Stinsen-verified) |
+| **Laxity NewPlayer v21** (native) | Laxity Driver | **99.93–100%** ※ | ⭐⭐⭐⭐⭐ Production (filter 100%, Stinsen-verified) |
+
+※ **99.93% is a TARGET, not a measurement** (established 2026-08-28). The only measurement on record is 99.98% frame accuracy over **n=2** (`Stinsens_Last_Night_of_89`, `Broware`), 2025-12-28, round-trip SID→SF2→SID — `CHANGELOG.md:10450` states it *exceeds the 99.93% target*. Its script (`test_laxity_accuracy.py`) is no longer in the tree, so it is not currently reproducible. The 268–283/286 corpus rounds are a **pass/fail count per file**, not frame accuracy. See `docs/players/LAXITY.md`.
 | **SF2-exported SID** (incl. SidFactory_II/Laxity) | Driver 11 | **100%** | ⭐⭐⭐⭐⭐ Guaranteed |
 | **Martin Galway** (Stage A default) | Driver 11 transpile | notes/timing exact; timbre approximated | ⭐⭐⭐ Editable |
 | **NewPlayer 20.G4** | NP20 Driver | **70–90%** | ⭐⭐⭐ Best effort |

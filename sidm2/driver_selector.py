@@ -68,6 +68,23 @@ class DriverSelector:
                 'SidFactory/Laxity',      # Older SF2 version, same situation
             ],
             'driver_file': 'sf2driver_laxity_00.prg',
+            # PROVENANCE OF '99.93%', because it is this repo's flagship number and
+            # for a long time nothing said where it came from. It is a TARGET, not a
+            # measurement, and the dataclass field it feeds is correctly named
+            # `expected_accuracy` -- the docs are what made it read as measured.
+            #   * CHANGELOG.md:10450 (2025-12-28) records the only measurement ever
+            #     taken: 99.98% FRAME accuracy, explicitly "exceeds 99.93% target"
+            #     and "exceeding the original 99.93% target".
+            #   * n = 2. Stinsens_Last_Night_of_89.sid and Broware.sid, by round-trip
+            #     SID -> SF2 -> SID frame comparison; register writes 100% (507/507).
+            #   * The script that produced it, test_laxity_accuracy.py, is NO LONGER
+            #     IN THE TREE, so the measurement is not reproducible as it stands.
+            #   * CHANGELOG.md:10586 asserts "99.93% frame accuracy" with no method,
+            #     which is the earliest form and is where the reading-as-measured
+            #     began.
+            # The separate corpus rounds (268-283 of 286 PASS) are real, independent
+            # of this string, and are a PASS/FAIL count per file -- not frame accuracy.
+            # Do not merge the two numbers; they measure different things.
             'accuracy': '99.93%',
             'description': 'Laxity NewPlayer v21 — custom driver with pointer patching',
         },

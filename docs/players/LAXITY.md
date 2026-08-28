@@ -4,6 +4,18 @@
 **Registry key:** `laxity`
 **Driver:** `sf2driver_laxity_00.prg`
 **Accuracy:** **99.93–100%** (production — the flagship supported player); canonical
+
+> **What the 99.93% is, established 2026-08-28.** It is a **TARGET**, not a measurement.
+> The only measurement on record is **99.98% frame accuracy over n=2 files**
+> (`Stinsens_Last_Night_of_89.sid`, `Broware.sid`), taken 2025-12-28 by round-trip
+> SID→SF2→SID comparison, with register writes 100% (507/507) — `CHANGELOG.md:10450`,
+> which says in as many words that it *exceeds the 99.93% target*. The script that
+> produced it, `test_laxity_accuracy.py`, is **no longer in the tree**, so as it stands
+> the figure is not reproducible. The earliest form (`CHANGELOG.md:10586`) asserts
+> "99.93% frame accuracy" with no method attached, and that is where it began reading
+> as measured. The corpus rounds (**268–283 of 286 PASS**) are real and independent,
+> but they are a **pass/fail count per file**, not frame accuracy — do not merge the two.
+> Re-deriving a reproducible frame-accuracy figure over a named corpus is open work.
 figures in `docs/reference/ACCURACY_MATRIX.md`
 **Corpus:** `SID/Laxity/` (286 files) + `SID/` root (17 mixed files)
 
