@@ -34,16 +34,22 @@ class TestLaxityParser(unittest.TestCase):
         # Create minimal valid Laxity data with sequence pointers
         self.data = bytearray(0x2000)
 
-        # Set up sequence pointer table at $199F (offset $099F from $1000)
-        # Voice 0: sequence at $1B00
-        self.data[0x099F] = 0x00
-        self.data[0x09A0] = 0x1B
-        # Voice 1: sequence at $1B20
-        self.data[0x09A1] = 0x20
-        self.data[0x09A2] = 0x1B
-        # Voice 2: sequence at $1B40
-        self.data[0x09A3] = 0x40
-        self.data[0x09A4] = 0x1B
+        # ch_seq_ptr is a SPLIT lo/hi pair at load+$0A1C / load+$0A1F, NOT a
+        # contiguous word table at load+$099F. This fixture used to write the
+        # $099F layout and had been failing ever since laxity_parser.py moved
+        # off that constant ("Old value 0x099F was wrong for Stinsen"): the
+        # parser read $0A1C, found zeros, and returned no sequences. The
+        # assertions below were therefore red at HEAD long before the
+        # out-of-image refusal landed -- confirmed by stashing that change and
+        # re-running, which gives the identical pair of failures.
+        #
+        # lo bytes at $0A1C = [voice0, voice1, voice2]; hi bytes at $0A1F.
+        # All three targets are inside the loaded image ($1000-$2FFF), so they
+        # also exercise the ACCEPT side of the refusal rather than only its
+        # reject side.
+        for voice, addr in enumerate((0x1B00, 0x1B20, 0x1B40)):
+            self.data[0x0A1C + voice] = addr & 0xFF
+            self.data[0x0A1F + voice] = (addr >> 8) & 0xFF
 
         # Add simple sequences (note $24, end marker $7F)
         self.data[0x0B00] = 0x24  # Note
