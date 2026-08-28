@@ -19,7 +19,12 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from sidm2.laxity_parser import LaxityParser, LaxityData
+from sidm2.laxity_parser import (
+    LaxityParser,
+    LaxityData,
+    LAXITY_SEQ_PTRS_LO_OFFSET as _REAL_LO_OFFSET,
+    LAXITY_SEQ_PTRS_HI_OFFSET as _REAL_HI_OFFSET,
+)
 from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
 from sidm2.laxity_converter import LaxityConverter
 from sidm2.models import PSIDHeader
@@ -43,6 +48,39 @@ class TestLaxityParser(unittest.TestCase):
         # out-of-image refusal landed -- confirmed by stashing that change and
         # re-running, which gives the identical pair of failures.
         #
+        # DECISION (rot-proofing, see task laxity-test-fixtures-hardcode-the-
+        # pointer-constants): KEEP THE LITERALS below (0x0A1C/0x0A1F), rather
+        # than importing LAXITY_SEQ_PTRS_LO_OFFSET/_HI_OFFSET the way
+        # pyscript/test_laxity_parser.py does. This fixture deliberately
+        # constructs its own byte layout to exercise LaxityParser as an
+        # independent black box -- importing the offsets would make the
+        # fixture derive its write location from the exact same constant the
+        # parser reads from, so the two could never disagree no matter how
+        # wrong either one was; a bug that flips the constant's *value* while
+        # leaving its *name* intact would sail through undetected.
+        #
+        # To avoid rotting the same way the $099F constant did, the literals
+        # are pinned to the module's real constants by an explicit assertion
+        # immediately below (see assertEqual(0x0A1C, _REAL_LO_OFFSET, ...)).
+        # If sidm2.laxity_parser ever moves LAXITY_SEQ_PTRS_LO_OFFSET or
+        # _HI_OFFSET again, THIS assertion fails first, by name, instead of
+        # the sequence-count assertions failing silently with an opaque
+        # "expected 3, got 0" that nobody reads as a signal.
+        self.assertEqual(
+            0x0A1C, _REAL_LO_OFFSET,
+            "Fixture literal for LAXITY_SEQ_PTRS_LO_OFFSET (0x0A1C) has "
+            "diverged from sidm2.laxity_parser.LAXITY_SEQ_PTRS_LO_OFFSET "
+            f"(now {_REAL_LO_OFFSET:#06x}). Update the literal in "
+            "scripts/test_laxity_driver.py's TestLaxityParser.setUp to match "
+            "-- this is the same rot that hit the old 0x099F constant.")
+        self.assertEqual(
+            0x0A1F, _REAL_HI_OFFSET,
+            "Fixture literal for LAXITY_SEQ_PTRS_HI_OFFSET (0x0A1F) has "
+            "diverged from sidm2.laxity_parser.LAXITY_SEQ_PTRS_HI_OFFSET "
+            f"(now {_REAL_HI_OFFSET:#06x}). Update the literal in "
+            "scripts/test_laxity_driver.py's TestLaxityParser.setUp to match "
+            "-- this is the same rot that hit the old 0x099F constant.")
+
         # lo bytes at $0A1C = [voice0, voice1, voice2]; hi bytes at $0A1F.
         # All three targets are inside the loaded image ($1000-$2FFF), so they
         # also exercise the ACCEPT side of the refusal rather than only its
