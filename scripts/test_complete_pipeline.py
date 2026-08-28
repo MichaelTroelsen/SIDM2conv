@@ -64,8 +64,35 @@ class TestPipelineValidation(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up test fixtures."""
+        """Set up test fixtures.
+
+        SKIP when the pipeline output is absent, rather than assert on it.
+        This class and its siblings read a BUILD ARTIFACT that no test here
+        creates: output/SIDSF2player_Complete_Pipeline is produced by
+        pyscript/complete_pipeline_with_validation.py (it names the path at
+        line 2145 and mkdirs the per-file Original/ and New/ subdirs at
+        2199-2200). Run that first and these tests become meaningful.
+
+        WHY A SKIP AND NOT A GUARD. Nine assertions in this file are already
+        wrapped in `if self.output_base.exists():`, so with the artifact
+        absent they pass while checking nothing -- and a vacuous pass is
+        invisible, whereas a skip shows up in pytest's own counts. Only
+        test_output_base_directory_exists asserted unconditionally, which is
+        why it was this file's single red test; it was the honest one. The
+        skip keeps that honesty and extends it to the siblings.
+
+        NOTE output/ is gitignored (.gitignore:41), so the artifact is never
+        present in a fresh clone and never will be -- the skip is the normal
+        path, not the exceptional one. The absolute/relative distinction is a
+        red herring: the directory does not exist relative to the repo root
+        either, so anchoring the path on __file__ would not have helped.
+        """
         cls.output_base = Path('output/SIDSF2player_Complete_Pipeline')
+        if not cls.output_base.exists():
+            raise unittest.SkipTest(
+                f"{cls.output_base} not present -- generate it with "
+                "`py -3 pyscript/complete_pipeline_with_validation.py` "
+                "to run these tests against real pipeline output")
 
     def test_validation_with_complete_output(self):
         """Test validation on a complete pipeline output."""
@@ -149,8 +176,35 @@ class TestOutputFileIntegrity(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up test fixtures."""
+        """Set up test fixtures.
+
+        SKIP when the pipeline output is absent, rather than assert on it.
+        This class and its siblings read a BUILD ARTIFACT that no test here
+        creates: output/SIDSF2player_Complete_Pipeline is produced by
+        pyscript/complete_pipeline_with_validation.py (it names the path at
+        line 2145 and mkdirs the per-file Original/ and New/ subdirs at
+        2199-2200). Run that first and these tests become meaningful.
+
+        WHY A SKIP AND NOT A GUARD. Nine assertions in this file are already
+        wrapped in `if self.output_base.exists():`, so with the artifact
+        absent they pass while checking nothing -- and a vacuous pass is
+        invisible, whereas a skip shows up in pytest's own counts. Only
+        test_output_base_directory_exists asserted unconditionally, which is
+        why it was this file's single red test; it was the honest one. The
+        skip keeps that honesty and extends it to the siblings.
+
+        NOTE output/ is gitignored (.gitignore:41), so the artifact is never
+        present in a fresh clone and never will be -- the skip is the normal
+        path, not the exceptional one. The absolute/relative distinction is a
+        red herring: the directory does not exist relative to the repo root
+        either, so anchoring the path on __file__ would not have helped.
+        """
         cls.output_base = Path('output/SIDSF2player_Complete_Pipeline')
+        if not cls.output_base.exists():
+            raise unittest.SkipTest(
+                f"{cls.output_base} not present -- generate it with "
+                "`py -3 pyscript/complete_pipeline_with_validation.py` "
+                "to run these tests against real pipeline output")
 
     def test_sf2_file_exists_and_size(self):
         """Test that SF2 files are generated and have reasonable size."""
@@ -267,8 +321,35 @@ class TestPipelineOutputStructure(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up test fixtures."""
+        """Set up test fixtures.
+
+        SKIP when the pipeline output is absent, rather than assert on it.
+        This class and its siblings read a BUILD ARTIFACT that no test here
+        creates: output/SIDSF2player_Complete_Pipeline is produced by
+        pyscript/complete_pipeline_with_validation.py (it names the path at
+        line 2145 and mkdirs the per-file Original/ and New/ subdirs at
+        2199-2200). Run that first and these tests become meaningful.
+
+        WHY A SKIP AND NOT A GUARD. Nine assertions in this file are already
+        wrapped in `if self.output_base.exists():`, so with the artifact
+        absent they pass while checking nothing -- and a vacuous pass is
+        invisible, whereas a skip shows up in pytest's own counts. Only
+        test_output_base_directory_exists asserted unconditionally, which is
+        why it was this file's single red test; it was the honest one. The
+        skip keeps that honesty and extends it to the siblings.
+
+        NOTE output/ is gitignored (.gitignore:41), so the artifact is never
+        present in a fresh clone and never will be -- the skip is the normal
+        path, not the exceptional one. The absolute/relative distinction is a
+        red herring: the directory does not exist relative to the repo root
+        either, so anchoring the path on __file__ would not have helped.
+        """
         cls.output_base = Path('output/SIDSF2player_Complete_Pipeline')
+        if not cls.output_base.exists():
+            raise unittest.SkipTest(
+                f"{cls.output_base} not present -- generate it with "
+                "`py -3 pyscript/complete_pipeline_with_validation.py` "
+                "to run these tests against real pipeline output")
 
     def test_output_base_directory_exists(self):
         """Test that output base directory exists."""
