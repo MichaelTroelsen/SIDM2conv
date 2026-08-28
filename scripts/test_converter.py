@@ -1155,10 +1155,15 @@ class TestAllSIDFiles(unittest.TestCase):
     # out of the filter speed table. A count-only check cannot tell a correct
     # decode from a manufactured one -- read a green here as "something was
     # returned", never as "the locate is right".
+    # SHRANK 12 -> 1 on 2026-08-28, which is the ratchet doing its job: the
+    # locate landed (locate_seq_ptr_table in sidm2/laxity_parser.py finds
+    # ch_seq_ptr by code signature instead of a constant), these files started
+    # yielding sequences, this assertion FAILED, and the set had to come down.
+    # Files yielding sequences over SID/: 5 of 17 -> 16 of 17.
+    # Only Ocean_Reloaded still resolves to nothing: no candidate survives the
+    # validity filter, so the locate refuses rather than guessing.
     SEQUENCE_LOCATE_UNSUPPORTED = frozenset({
-        "Angular.sid", "Balance.sid", "Beast.sid", "Cascade.sid",
-        "Chaser.sid", "Colorama.sid", "Cycles.sid", "Delicate.sid",
-        "Dreams.sid", "Dreamy.sid", "Ocean_Reloaded.sid", "Omniphunk.sid",
+        "Ocean_Reloaded.sid",
     })
 
     @classmethod

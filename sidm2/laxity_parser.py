@@ -23,6 +23,97 @@ LAXITY_INSTR_TABLE_OFFSET = 0x0A6B # Instrument table offset (8 × 8 bytes)
 LAXITY_CMD_TABLE_OFFSET = 0x0ADB   # Command table offset
 
 
+# How far apart the two `LDA abs,X` reads may sit for the pair to count.
+_LOCATE_WINDOW = 24
+# A sequence longer than this is not a sequence.
+_MAX_SEQ_SCAN = 256
+
+
+def locate_seq_ptr_table(data: bytes, load_address: int):
+    """Find ch_seq_ptr by CODE SIGNATURE. Returns (lo_base, hi_base) or None.
+
+    THE CONSTANTS ABOVE ARE WRONG FOR MOST FILES AND ALWAYS WERE. $0A1C serves
+    Stinsen and Unboxed; $099F serves Angular and Omniphunk; neither serves the
+    other 13 files in SID/. Seven cycles were spent asking which constant was
+    right. The question was wrong: the LAYOUT is uniform -- split lo/hi, stride
+    1, gap 3 -- and only the OFFSET moves, because the player is assembled per
+    song. So locate it, exactly as HardTrack's vib_depth had to be after the
+    last such constant turned out wrong on 15 files.
+
+    THE SIGNATURE. The player reads the table as two `LDA abs,X` ($BD) whose
+    absolute operands are exactly 3 apart -- one per voice, lo then hi. That
+    shape appears in 17 of 17 files (Angular at $1171/$1177, Stinsen at
+    $107E/$1083), but so do ~20 neighbours, because the player keeps several
+    parallel 3-byte per-voice tables side by side.
+
+    THE DISCRIMINATOR, and two that failed first, recorded so they are not
+    retried. (a) "a sequence start is preceded by $FF": scores the correct
+    answer 2/3 on Angular but 0/3 on STINSEN'S, so it rejects a correct result.
+    (b) "the table INIT writes": eliminates Stinsen's correct answer outright --
+    $1A1C has LDA sites and no STA. What works is looking FORWARD at the data:
+    keep only candidates whose three pointers are in-image, distinct, and each
+    terminate in $FF within _MAX_SEQ_SCAN, then take the one whose sequences are
+    LONGEST in total. That is not a fitted rule -- the losing candidate points a
+    few bytes INTO the same sequences, so it necessarily runs shorter to the
+    same terminator.
+
+    IT REFUSES RATHER THAN GUESSES. No surviving candidate, or a tie on the top
+    score, returns None and the caller falls back to the constants. On SID/ that
+    is 3 of 17 (Blue ties; Clarencio_extended and Ocean_Reloaded have no valid
+    candidate).
+
+    VERIFIED on the three files whose sequence addresses are independently
+    known: Angular $1907, Omniphunk $1907, Stinsen $1A1C -- 3 of 3. The other 11
+    are PLAUSIBLE, not verified: they satisfy the validity filter, but no ground
+    truth exists for them.
+    """
+    n = len(data)
+    hi_limit = load_address + n
+
+    cands = set()
+    for i in range(n - 3):
+        if data[i] != 0xBD:
+            continue
+        a1 = data[i + 1] | (data[i + 2] << 8)
+        for j in range(i + 3, min(i + 3 + _LOCATE_WINDOW, n - 3)):
+            if data[j] != 0xBD:
+                continue
+            a2 = data[j + 1] | (data[j + 2] << 8)
+            if a2 == a1 + 3 and load_address <= a1 and a1 + 6 <= hi_limit:
+                cands.add((a1, a2))
+
+    def seq_len(addr):
+        if not (load_address <= addr < hi_limit):
+            return None
+        off = addr - load_address
+        for k in range(off, min(off + _MAX_SEQ_SCAN, n)):
+            if data[k] == 0xFF:
+                return k - off + 1
+        return None
+
+    scored = []
+    for lo, hi in cands:
+        off = lo - load_address
+        ptrs = [data[off + v] | (data[off + 3 + v] << 8) for v in range(3)]
+        if len(set(ptrs)) != 3:
+            continue
+        lens = [seq_len(a) for a in ptrs]
+        if any(l is None or l < 4 for l in lens):
+            continue
+        scored.append((sum(lens), lo, hi))
+
+    if not scored:
+        logger.debug("locate_seq_ptr_table: no candidate survived the validity filter")
+        return None
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    if len(scored) > 1 and scored[0][0] == scored[1][0]:
+        logger.debug(
+            "locate_seq_ptr_table: tie on top score between $%04X and $%04X -- refusing",
+            scored[0][1], scored[1][1])
+        return None
+    return scored[0][1], scored[0][2]
+
+
 @dataclass
 class LaxityData:
     """Extracted data from Laxity player"""
@@ -96,8 +187,17 @@ class LaxityParser:
         #   lo bytes at load+$0A1C: [ch0_lo, ch1_lo, ch2_lo]
         #   hi bytes at load+$0A1F: [ch0_hi, ch1_hi, ch2_hi]
         # (Confirmed via Regenerator 2000 symbol table for Stinsen NP21 v21)
-        lo_base = self.load_address + LAXITY_SEQ_PTRS_LO_OFFSET
-        hi_base = self.load_address + LAXITY_SEQ_PTRS_HI_OFFSET
+        # Locate by code signature; fall back to the constants when it refuses.
+        located = locate_seq_ptr_table(self.data, self.load_address)
+        if located is not None:
+            lo_base, hi_base = located
+            logger.debug(f"ch_seq_ptr LOCATED at ${lo_base:04X}/${hi_base:04X}")
+        else:
+            lo_base = self.load_address + LAXITY_SEQ_PTRS_LO_OFFSET
+            hi_base = self.load_address + LAXITY_SEQ_PTRS_HI_OFFSET
+            logger.debug(
+                f"ch_seq_ptr locate refused; falling back to the constants "
+                f"${lo_base:04X}/${hi_base:04X}")
 
         if hi_base + 2 >= self.load_address + len(self.data):
             logger.warning(f"ch_seq_ptr table at ${lo_base:04X} is outside loaded data range")

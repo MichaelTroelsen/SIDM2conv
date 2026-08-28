@@ -32,6 +32,7 @@ from sidm2.laxity_parser import (                                  # noqa: E402
     LaxityParser,
     LAXITY_SEQ_PTRS_LO_OFFSET,
     LAXITY_SEQ_PTRS_HI_OFFSET,
+    locate_seq_ptr_table,
 )
 from sidm2.sid_parser import SIDParser                             # noqa: E402
 
@@ -78,16 +79,50 @@ def test_angulars_ch_seq_ptr_really_is_below_the_load_address():
 
 
 @pytest.mark.skipif(not ANGULAR.exists(), reason="SID/Angular.sid not present")
-def test_a_pointer_below_the_load_address_is_refused_not_extracted_from():
-    """The regression this file exists for: three out-of-image pointers must
-    yield NO sequences, rather than three overlapping windows of player code."""
+def test_angular_locates_its_real_sequence_table():
+    """WAS test_a_pointer_below_the_load_address_is_refused_not_extracted_from,
+    and it asserted Angular yields NOTHING.
+
+    That premise died with the constant. It was true only because the parser
+    read ch_seq_ptr at a hardcoded offset that is wrong for Angular, producing
+    three below-load pointers ($0334/$0341/$0336) which the out-of-image gate
+    then refused. locate_seq_ptr_table now finds Angular's real table at $1907
+    by code signature, so the honest assertion is the positive one: these are
+    the addresses, independently confirmed by decoding them to three clean NP21
+    bodies ('87 01 01 ... FF', 73/59/45 bytes).
+
+    The REFUSAL is still pinned, by the two synthetic tests below and by
+    test_a_file_whose_locate_refuses_yields_nothing -- it just cannot be pinned
+    on a file the locate now handles correctly.
+    """
     data, load = _angular()
+    assert locate_seq_ptr_table(data, load) == (0x1907, 0x190A)
     result = LaxityParser(data, load).parse()
-    assert result.sequences == [], (
-        "expected no sequences from out-of-image pointers, got %d"
-        % len(result.sequences)
-    )
-    assert all(ol == [] for ol in result.orderlists), result.orderlists
+    # the three bodies decoded from $1AF2 / $1B00 / $1B0E
+    assert [len(s) for s in result.sequences] == [73, 59, 45]
+    assert result.sequences[0][:8] == bytes([0x87, 1, 1, 1, 1, 1, 1, 8])
+    # $7F is END in the SEQUENCE grammar (CLAUDE.md); the $FF the locator's
+    # scorer scans for is the raw table terminator. Two different markers --
+    # the scorer only needs a consistent stop, not the grammar's one.
+    assert result.sequences[0][-1] == 0x7F
+    assert result.orderlists == [[0], [1], [2]]
+
+
+def test_a_file_whose_locate_refuses_yields_nothing():
+    """The refusal, pinned on a REAL file rather than a synthetic one.
+
+    Ocean_Reloaded is the single file in SID/ where no candidate survives the
+    validity filter, so locate_seq_ptr_table returns None, the parser falls back
+    to the constants, and those point out of image. Refusing beats guessing.
+    If this file ever starts decoding, that is a result -- update the test.
+    """
+    path = ROOT / "SID" / "Ocean_Reloaded.sid"
+    if not path.exists():
+        pytest.skip("SID/Ocean_Reloaded.sid not present")
+    p = SIDParser(str(path))
+    header = p.parse_header()
+    data, load = p.get_c64_data(header)
+    assert LaxityParser(data, load).parse().sequences == []
 
 
 def test_an_address_inside_the_loaded_image_is_still_accepted():
