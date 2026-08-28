@@ -147,3 +147,113 @@ def test_laxity_orderlist_comes_from_the_block_word_too():
         checked += 1
     assert checked, 'no Laxity files were checked'
 
+
+
+# --- the Laxity payload base -------------------------------------------------
+# These pin the fix for "the two-stage decode produces wave_ptr errors on an SF2
+# payload". The suspect was the PSIDHeader's init_address; it is not, and that is
+# measured rather than argued -- SF2Parser already carries the real one in
+# driver_common.init_address and feeding it changes nothing. The cause is that
+# sidm2.laxity_parser's table constants are offsets from the PLAYER BASE while
+# the code added them to the FILE's load address. The two coincide at $1000 for a
+# raw SID, which is why it only showed on an SF2 wrapper.
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _parsed_sf2(name):
+    """Parse an SF2 by basename. Named _parsed_sf2, not _sf2: this module
+    already has a _sf2() that returns a PATH, and shadowing it broke four
+    passing tests when these were first appended."""
+    from sf2_viewer_core import SF2Parser
+    p = SF2Parser(os.path.join(_ROOT, "SF2", name))
+    p.parse()
+    return p
+
+
+def test_laxity_payload_rebases_on_the_player_not_the_file_load_address():
+    p = _parsed_sf2("Angular.sf2")
+    assert p.is_laxity_driver
+    assert p.load_address == 0x0D7E, hex(p.load_address)
+    data, base = p.laxity_payload()
+    assert base == 0x1000, hex(base)
+    # the payload really starts at the base, not merely claims to
+    assert len(data) == len(p.data[2:]) - (0x1000 - 0x0D7E)
+
+
+def test_the_instrument_table_constant_lands_in_code_off_the_file_load_address():
+    """The concrete reason the anchor matters, kept as bytes rather than prose.
+
+    load+$0A6B = $17E9 on this file and the bytes there are 8D 18 D4 -- STA
+    $D418, i.e. player code. At the player base the same constant reaches the
+    real table, whose first bytes match the raw SID's byte for byte.
+    """
+    from sidm2.laxity_parser import LAXITY_INSTR_TABLE_OFFSET as INS
+    p = _parsed_sf2("Angular.sf2")
+    raw = p.data[2:]
+    wrong = raw[(p.load_address + INS) - p.load_address:][:3]
+    data, base = p.laxity_payload()
+    right = data[INS:INS + 3]
+    assert bytes(wrong) != bytes(right)
+    assert bytes(right) == bytes([0x03, 0xF8, 0x80]), bytes(right).hex()
+
+
+def test_every_laxity_sf2_on_disk_can_be_rebased():
+    """The base is a CHECKED constant, not an assumed one.
+
+    All 47 Laxity SF2s load at $0D7E; if one ever does not, laxity_payload()
+    must refuse rather than slice at a negative offset. This is the test that
+    turns "$1000 looked right on the file I tried" into an invariant.
+    """
+    import glob
+    seen = 0
+    for f in sorted(glob.glob(os.path.join(_ROOT, "SF2", "*.sf2"))):
+        try:
+            from sf2_viewer_core import SF2Parser
+            p = SF2Parser(f)
+            p.parse()
+        except Exception:
+            continue
+        if not p.is_laxity_driver:
+            continue
+        seen += 1
+        assert p.load_address <= 0x1000, (os.path.basename(f), hex(p.load_address))
+        assert p.laxity_payload() is not None, os.path.basename(f)
+    assert seen >= 40, seen
+
+
+def test_laxity_payload_refuses_when_the_load_is_above_the_player_base():
+    """Refusing beats slicing at a negative offset."""
+    p = _parsed_sf2("Angular.sf2")
+    p.load_address = 0x2000
+    assert p.laxity_payload() is None
+
+
+def test_laxity_sf2_decodes_through_both_stages_not_the_packed_heuristic():
+    """Angular's SF2 must decode to the same shape as its raw SID.
+
+    Before: {0:64, 1:667, 2:24, 3:7, 4:30} from the packed-sequence heuristic --
+    sequence 1 over-reading to 667 entries against a declared length of 75, which
+    the A/B listening page had to refuse outright.
+    After: 197/174/139, which is exactly what SID/Angular.sid yields.
+
+    Counts, not note names. The decoded NOTES do not match the SF2II ground truth
+    (D-1/D#-1/F#-1 against the editor's C-4/A-3/A-4) and it is not yet known
+    whether that is the container-vs-payload sequence numbering mismatch or a real
+    decode error -- see sf2-sequence-numbering-differs-from-laxity-payload-indices.
+    Pinning the names here would pin a claim nobody has established.
+    """
+    p = _parsed_sf2("Angular.sf2")
+    assert p.is_laxity_driver
+    counts = [len(v) for _, v in sorted(p.sequences.items())]
+    assert counts == [197, 174, 139], counts
+
+
+def test_the_two_stage_reader_declines_rather_than_returning_empty():
+    """laxity_payload() returning None must mean 'decline', so the dispatch falls
+    through to the older readers instead of publishing an empty result."""
+    p = _parsed_sf2("Angular.sf2")
+    p.load_address = 0x2000          # above the player base -> cannot re-base
+    p.sequences = {}
+    assert p._parse_laxity_two_stage() is False
+    assert p.sequences == {}

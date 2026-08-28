@@ -24,6 +24,16 @@ except ImportError:
     LAXITY_PARSER_AVAILABLE = False
     logger.warning("LaxityParser not available - Laxity files will use generic parser")
 
+# Stage TWO. laxity_parser alone yields raw sequence bytes; the analyzer runs the
+# parser AND the sequence translator, which is what turns them into SF2 codes.
+try:
+    from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
+    from sidm2.models import PSIDHeader
+    LAXITY_ANALYZER_AVAILABLE = True
+except ImportError:
+    LAXITY_ANALYZER_AVAILABLE = False
+    logger.warning("LaxityPlayerAnalyzer not available - Laxity files decode one stage only")
+
 
 class BlockType(Enum):
     """SF2 Block Type IDs"""
@@ -1356,6 +1366,105 @@ class SF2Parser:
 
         logger.info(f"Parsed {len(self.sequences)} packed sequences from offset 0x{seq_offset:04X}")
 
+    # The Laxity NP21 player is assembled for $1000 and the SF2 container
+    # prepends its own driver, so an SF2-wrapped payload declares an EARLIER
+    # load address than the player it contains.
+    LAXITY_PLAYER_BASE = 0x1000
+
+    def laxity_payload(self):
+        """(data, load_address) re-based on the Laxity PLAYER, or None.
+
+        WHY THIS EXISTS, because the symptom points somewhere else entirely.
+        Running the two-stage decode (LaxityPlayerAnalyzer) on an SF2 payload
+        produced 'Instrument 0: wave_ptr 48 exceeds wave table size 13' and six
+        more like it. The obvious suspect was the PSIDHeader's init_address --
+        and it is not: SF2Parser already carries the real one in
+        driver_common.init_address ($0F90 for Angular), and feeding it gives
+        byte-identical output to a synthesized init. Measured, not assumed.
+
+        THE ACTUAL CAUSE is that sidm2.laxity_parser's table constants
+        (LAXITY_INSTR_TABLE_OFFSET $0A6B, the wave table, and until 73780fa the
+        sequence pointers) are offsets from the PLAYER BASE, while the code adds
+        them to the FILE's load address. For a raw SID the two coincide at
+        $1000, which is why this never showed until an SF2 wrapper was parsed.
+        For SF2/Angular.sf2 (load $0D7E) load+$0A6B = $17E9, which lands in 6502
+        code -- the bytes there are 8D 18 D4, i.e. STA $D418 -- while the real
+        instrument table sits at the absolute $1A6B and is byte-identical to the
+        raw SID's.
+
+        The payload is NOT relocated: locate_seq_ptr_table returns the same
+        absolute address for a file and its SF2 wrapper. Only the declared load
+        moves.
+
+        THE BASE IS CHECKED, NOT ASSUMED. All 47 Laxity SF2s on disk load at
+        $0D7E and their located sequence tables span $17B3-$1A1C, i.e.
+        base+$07B3..base+$0A1C for base $1000 -- consistent, but a constant is
+        what this whole area keeps getting wrong, so this refuses instead of
+        guessing when the payload cannot contain the base.
+        """
+        base = self.LAXITY_PLAYER_BASE
+        if self.load_address > base:
+            logger.debug(
+                "laxity_payload: load $%04X is above the player base $%04X -- "
+                "cannot re-base", self.load_address, base)
+            return None
+        data = self.data[2:]
+        off = base - self.load_address
+        if off >= len(data):
+            logger.debug("laxity_payload: payload ends before the player base")
+            return None
+        return data[off:], base
+
+    def _parse_laxity_two_stage(self):
+        """Decode a Laxity payload through BOTH stages. True if it produced any.
+
+        THE VIEWER RAN ONE STAGE AND IT SHOWED. _parse_packed_sequences_laxity_sf2
+        won the dispatch and returned five sequences of 64/667/24/7/30 entries for
+        Angular -- sequence 1 over-reading to 667 against a declared length of 75,
+        which the A/B listening page had to refuse outright. The obvious repair,
+        reordering the dispatch so _parse_laxity_sequences runs first, does NOT
+        work and was measured rather than assumed: that method returns RAW
+        SEQUENCE BYTES in the note field (note=1 six times, then note=8 six times,
+        mirroring the body '87 01 01 01 01 01 01 08 08...', with instrument=128 and
+        command=128 on every entry). It is stage one as well, so reordering swaps
+        one wrong answer for another.
+
+        Stage two is sidm2.laxity_analyzer, which runs the parser AND the
+        sequence translator and yields real SF2 codes -- note 126 is GATE_ON, not
+        a data byte. It needs the payload anchored on the PLAYER base rather than
+        the file's load address; laxity_payload() does that and refuses when it
+        cannot, so a None here means "decline", not "empty".
+        """
+        if not LAXITY_ANALYZER_AVAILABLE:
+            logger.debug("LaxityPlayerAnalyzer unavailable; skipping two-stage decode")
+            return False
+        payload = self.laxity_payload()
+        if payload is None:
+            return False
+        data, base = payload
+        try:
+            header = PSIDHeader(
+                magic='PSID', version=2, data_offset=0x7C, load_address=base,
+                init_address=base, play_address=base + 3, songs=1, start_song=1,
+                speed=0, name='', author='', copyright='')
+            extracted = LaxityPlayerAnalyzer(data, base, header).extract_music_data()
+        except Exception as exc:                       # noqa: BLE001
+            logger.debug("two-stage decode raised %s; declining", type(exc).__name__)
+            return False
+        if not extracted.sequences:
+            return False
+        for idx, events in enumerate(extracted.sequences):
+            self.sequences[idx] = [
+                SequenceEntry(note=e.note, instrument=e.instrument,
+                              command=e.command, param1=0, param2=0, duration=0)
+                for e in events
+            ]
+        self.laxity_data = extracted
+        logger.info("Two-stage Laxity decode produced %d sequences (%s events)",
+                    len(self.sequences),
+                    ", ".join(str(len(s)) for s in self.sequences.values()))
+        return True
+
     def _parse_laxity_sequences(self):
         """Extract sequences using Laxity parser for Laxity driver SF2 files.
 
@@ -1476,6 +1585,13 @@ class SF2Parser:
         # First priority: Try Laxity driver SF2 parser (for Laxity NewPlayer in SF2 container)
         if self._detect_laxity_driver():
             self.is_laxity_driver = True
+
+            # BOTH stages first. The packed-sequence scan below is a heuristic
+            # and wins by returning True with plausible-looking garbage, so it
+            # must not be reached while a real decode is available.
+            if self._parse_laxity_two_stage():
+                logger.info(f"Parsed {len(self.sequences)} sequences via the two-stage Laxity decode")
+                return
 
             # Try new Laxity SF2 parser (handles offset table structure)
             if self._parse_packed_sequences_laxity_sf2():
