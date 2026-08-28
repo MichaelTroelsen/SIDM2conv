@@ -14,6 +14,13 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# bin/ holds mattgray_to_sf2.py, imported by several tests below (some via a
+# plain `from mattgray_to_sf2 import ...`, others via importlib.import_module).
+# This must happen at module import time, not inside a single test function --
+# pytest-randomly reorders tests, and a path insert stashed inside one test
+# only takes effect if that test happens to run before the others that need it.
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
 
 from sidm2.mattgray_parser import (  # noqa: E402
     INSTR_SIZE, NUM_NOTES, MattGrayError, MattGrayInstrument, MattGrayParser,
