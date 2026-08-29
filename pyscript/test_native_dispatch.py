@@ -485,3 +485,62 @@ def test_hardtrack_accepts_are_untouched_by_the_sdi_change():
     n = sum(1 for p in sorted(_glob.glob(os.path.join(_SHOGOON, "*.sid")))
             if ND.probe("hardtrack", p)[0])
     assert n == 33
+
+
+def test_sixteen_shogoon_sdi_claims_are_uncorroborated_and_that_is_pinned():
+    """The module is ADVISORY, and this is the measured size of it.
+
+    `_probe_sdi` accepts 20 SID/Shogoon files; the shipped runaway-walk check
+    rejects 4; the remaining 16 are accepted with nothing supporting them.
+    ELEVEN corroboration designs have been refuted against these two
+    populations -- six address-shaped, five decoded-result-shaped -- and the
+    module docstring lists them so none is retried.
+
+    This test exists so the number cannot drift silently. If a future change
+    corroborates some of the 16, this fails and the docstring gets updated with
+    the new count; if it starts refusing REAL files, the sibling
+    `test_the_runaway_check_costs_the_real_sdi_corpus_nothing` fails instead.
+    Both directions are covered, which is the point.
+    """
+    import glob as _glob
+    accepted, refused = [], []
+    for p in sorted(_glob.glob(os.path.join(_SHOGOON, "*.sid"))):
+        ok, _ = ND.probe("sdi", p)
+        (accepted if ok else refused).append(os.path.basename(p))
+    assert len(accepted) == 16, (len(accepted), accepted)
+    # the 4 the shape check catches are named, so a change of WHICH is visible
+    caught = {"Dickshake_end.sid", "Dickshake_main.sid",
+              "I_Always_Use_Always.sid", "Strange.sid"}
+    assert caught <= set(refused), sorted(caught - set(refused))
+
+
+def test_the_max_dur_threshold_is_overfit_and_must_not_be_shipped():
+    """The one near-miss, pinned as a near-miss rather than adopted.
+
+    `max_dur > 384` would put 3 of the 16 outside the genuine range at zero
+    cost on this corpus -- but 384 IS the genuine maximum, so the rule has no
+    headroom whatsoever and `dur_ticks` has no structural cap there that would
+    make it principled. This test records the arithmetic that makes it
+    tempting AND the margin that makes it unsafe, so the next reader does not
+    rediscover the first half and ship it.
+    """
+    import glob as _glob
+    from sidm2.sdi_parser import load_sid, SDIModule, is_sdi_play3
+
+    def max_dur(path):
+        d, la, h = load_sid(path)
+        if not is_sdi_play3(d, la, h):
+            return None
+        m = SDIModule(d, la)
+        durs = [e.dur_ticks for v in range(3) for e in m.decode_voice(v)
+                if e.kind in ("note", "tie", "glide")
+                and isinstance(e.dur_ticks, int)]
+        return max(durs) if durs else None
+
+    gen = [x for x in (max_dur(p) for p in
+                       sorted(_glob.glob(os.path.join(_GALLEFOSS, "*.sid")))) if x]
+    assert gen, "no genuine corpus to measure against"
+    # ZERO HEADROOM is the finding: the proposed bound equals the observed max.
+    assert max(gen) == 384, max(gen)
+    assert sum(1 for x in gen if x > 384) == 0
+    assert sum(1 for x in gen if x == 384) >= 1, "384 is not even attained -- re-measure"

@@ -27,6 +27,49 @@ that makes a dispatcher worse than no dispatcher. `dispatch()` therefore takes
 `first_match=False` by default and reports EVERY family that accepts the file,
 so a collision is visible rather than hidden. Callers that want a single answer
 opt into `first_match=True` and accept the ordering.
+
+ADVISORY, NOT AUTHORITATIVE -- AND HERE IS THE MEASURED SIZE OF THAT.
+On `SID/Shogoon`, a corpus SDI was never written for, `_probe_sdi` accepts 20
+files. `player-id` calls 17 of them DMC and 3 Music_Assembler, and NOT ONE has
+an SDI build in `out/sdi`. The shipped runaway-walk check (three voice counts
+within 2% of each other) rejects 4. **The other 16 are accepted with nothing
+supporting them, and that is the honest state of this module**: a probe
+accepting a file is evidence that the file did not trip that parser's refusals,
+never that the family is right. Treat a lone `sdi` verdict off its own corpus as
+a hypothesis; `dispatch()` reporting several families is the module working, not
+failing.
+
+ELEVEN CORROBORATION DESIGNS ARE REFUTED BY MEASUREMENT. Do not re-derive them:
+
+    address-shaped, all refuted 2026-08-27
+      1. promote-on-player-id            5. offset clustering (`init_block`)
+      2. demote-on-player-id             6. the same, steel-manned on `state`
+      3. decode-plausibility             (normalised against load, foreign takes
+      4. INIT reachability, py65          only {1799, 129}, both GENUINE values;
+         PC-trace                         "state outside the image" fires on
+                                          62/160 genuine and 0/20 foreign)
+
+    decoded-result-shaped, refuted 2026-08-29 -- measured over the same two
+    populations, and every one OVERLAPS COMPLETELY:
+      7. total note count      genuine 65-116400   the 16: 239-50190
+      8. pitch entropy         genuine 0.118-5.588 the 16: 0.474-5.739
+      9. distinct-pitch frac   genuine 0.0006-0.231  the 16 sit INSIDE it
+     10. duration concentration (top_dur share, n_dur)
+     11. instrument features  (n_instr, max_instr, top_instr): 0 of 16 outside
+
+WHY THE ADDRESS DESIGNS ALL FAILED THE SAME WAY: every one asked WHERE
+something is, and `locate()`'s own docstring says addresses are per-song by
+construction -- the editor assembles the player per song. 88 distinct offsets
+over 160 genuine files, so "foreign-only" is what near-unique values give by
+chance.
+
+THE ONE NEAR-MISS, AND WHY IT IS NOT SHIPPED. `max_dur` (largest `dur_ticks`)
+puts 3 of the 16 outside the genuine range -- but genuine's maximum is 384 and
+the rule would be "> 384", a threshold fitted to the observed high-water mark of
+160 files with ZERO headroom, and `dur_ticks` has no structural cap at 384 that
+would make it principled. Shipping it would buy 3 of 16 against the standing
+risk of rejecting the 161st genuine song. `n_dur` flags the same files, so it is
+one signal, not two.
 """
 from __future__ import annotations
 
