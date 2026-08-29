@@ -21,6 +21,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sidm2 import SIDParser, SF2Writer
 
+# ANCHOR BOTH CWD-RELATIVE READS ON __file__, NOT ON CWD.
+# LaxityConverter.DRIVER_PATH defaults to Path('./drivers/laxity/...') and
+# __init__ calls load_driver(), so merely CONSTRUCTING the converter raises
+# FileNotFoundError from any cwd but the repo root. The module-existence check
+# further down had the same shape. Same class as the SID_DIR fix in b56ec8a.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+from sidm2.laxity_converter import LaxityConverter as _LaxityConverter
+_LaxityConverter.DRIVER_PATH = (
+    _REPO_ROOT / 'drivers' / 'laxity' / 'sf2driver_laxity_00.prg')
+
 
 class LaxityPlayerDetectionTests(unittest.TestCase):
     """Verify Laxity player detection still works"""
@@ -193,7 +203,7 @@ class ModularityTests(unittest.TestCase):
         ]
 
         for module_path in laxity_modules:
-            module_file = Path(module_path)
+            module_file = _REPO_ROOT / module_path
             self.assertTrue(module_file.exists(),
                           f"Laxity module missing: {module_path}")
 

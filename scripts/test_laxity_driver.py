@@ -27,6 +27,16 @@ from sidm2.laxity_parser import (
 )
 from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
 from sidm2.laxity_converter import LaxityConverter
+
+# ANCHOR THE DRIVER ON __file__, NOT ON CWD. LaxityConverter.DRIVER_PATH defaults
+# to Path('./drivers/laxity/sf2driver_laxity_00.prg'), and __init__ calls
+# load_driver(), so simply CONSTRUCTING the converter raises FileNotFoundError
+# from any cwd but the repo root -- which took six tests here with it. The
+# per-test `converter.DRIVER_PATH = ...` overrides below were dead code: the
+# constructor had already raised. Same class as the SID_DIR fix in b56ec8a.
+LaxityConverter.DRIVER_PATH = (
+    Path(__file__).resolve().parent.parent / 'drivers' / 'laxity'
+    / 'sf2driver_laxity_00.prg')
 from sidm2.models import PSIDHeader
 
 
