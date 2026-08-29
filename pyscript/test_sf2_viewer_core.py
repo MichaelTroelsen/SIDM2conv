@@ -245,8 +245,78 @@ def test_laxity_sf2_decodes_through_both_stages_not_the_packed_heuristic():
     """
     p = _parsed_sf2("Angular.sf2")
     assert p.is_laxity_driver
+    # THESE COUNTS ARE THE ORDERLISTS, NOT SEQUENCES, and they are pinned here as
+    # CURRENT BEHAVIOUR rather than as correct. ch_seq_ptr points at orderlists
+    # (docs/players/LAXITY.md), so these three bodies are orderlist bytes decoded
+    # with the sequence grammar, over-running their $FF terminator because the
+    # extractor stops on $7F. Angular really has 14 sequences, and
+    # _parse_laxity_real_sequences() decodes them -- it is not routed by default
+    # because that changes self.sequences from per-voice to per-file and breaks
+    # abpage's row_schedule. Update this when the dispatch flips.
     counts = [len(v) for _, v in sorted(p.sequences.items())]
     assert counts == [197, 174, 139], counts
+
+
+def _angular_real_sequences():
+    """Angular through the real sequence table, bypassing the default dispatch."""
+    p = _parsed_sf2("Angular.sf2")
+    p.sequences = {}
+    assert p._parse_laxity_real_sequences() is True
+    return p
+
+
+def test_angular_ground_truth_matches_the_sf2ii_editor_capture():
+    """The SF2II capture, checkable at last -- five cycles could not reach it.
+
+    Ground truth (SID Factory II, Ctrl+P + F1): T3 reads
+    'A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4'. That is sequence 07 rows 7..14, exact and
+    with NO transpose, which pins the note naming at the same time:
+    octave = value // 12, class = value % 12, 0 = C-0.
+
+    A PREVIOUS CYCLE REJECTED THIS TABLE AND WAS WRONG. It compared entries
+    0/1/2 against T1/T2/T3, but the orderlists name 01/02/05 and the rows shown
+    live in 07 -- so it was reading the right table at the wrong indices.
+    """
+    names = "C C# D D# E F F# G G# A A# B".split()
+
+    def nm(v):
+        return "+++" if not v else "%s-%d" % (names[v % 12], v // 12)
+
+    p = _angular_real_sequences()
+    rows = [nm(e.note) for e in p.sequences[7]]
+    assert rows[7:15] == ["A-4", "G-4", "B-4", "G-4", "D-4", "C-5", "B-4", "G-4"], rows[:16]
+    # the T1/T2 line's 'C-4 --- A-3' is rows 1..3 of the same sequence
+    assert rows[1:4] == ["C-4", "+++", "A-3"], rows[:6]
+
+
+def test_angular_orderlists_are_read_as_orderlists():
+    """Three per-voice orderlists: a transpose byte, then sequence NUMBERS.
+
+    The editor names T1/T2/T3 as sequences 01/02/05 and these are where that
+    comes from -- the first entry of each voice's orderlist.
+    """
+    p = _angular_real_sequences()
+    assert [ol[0] for ol in p.laxity_orderlists] == [0x87, 0x93, 0x87]
+    assert [ol[1] for ol in p.laxity_orderlists] == [0x01, 0x02, 0x05]
+    assert p.laxity_orderlists[2][1:] == [5, 6, 3, 4, 3, 7, 10, 10, 11, 12, 11, 13]
+
+
+def test_sequence_table_locate_is_unique_or_refuses():
+    """The locate is an exhaustive scan, so a TIE must refuse rather than pick.
+
+    The shape is self-verifying -- bodies start at table + 2N, so entry 0 must
+    equal that -- and across all 47 Laxity SF2s on disk it yields exactly one
+    candidate 22 times, none 25 times, and two candidates NEVER. This pins both
+    halves: Angular resolves uniquely, and a buffer with no such structure
+    returns None instead of guessing.
+    """
+    p = _parsed_sf2("Angular.sf2")
+    data, base = p.laxity_payload()
+    tbl, count, ptrs = p.laxity_locate_seq_table(data, base)
+    assert (tbl, count) == (0x1B1C, 14)
+    assert ptrs[0] == tbl + 2 * count          # the constraint that makes it unique
+    assert ptrs == sorted(ptrs)
+    assert p.laxity_locate_seq_table(bytes(4096), 0x1000) is None
 
 
 def test_the_two_stage_reader_declines_rather_than_returning_empty():

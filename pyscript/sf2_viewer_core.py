@@ -34,6 +34,17 @@ except ImportError:
     LAXITY_ANALYZER_AVAILABLE = False
     logger.warning("LaxityPlayerAnalyzer not available - Laxity files decode one stage only")
 
+# The REAL sequence table. Both stages above walk ch_seq_ptr, which points at
+# ORDERLISTS rather than sequences (docs/players/LAXITY.md); this pair is what
+# decodes the sequences those orderlists name.
+try:
+    from sidm2.laxity_parser import locate_seq_ptr_table as _locate_ch_seq_ptr
+    from sidm2.sequence_translator import LaxitySequenceParser as _LaxitySeqParser
+    LAXITY_SEQTABLE_AVAILABLE = True
+except ImportError:
+    LAXITY_SEQTABLE_AVAILABLE = False
+    logger.warning("Laxity sequence-table decode unavailable - orderlists only")
+
 
 class BlockType(Enum):
     """SF2 Block Type IDs"""
@@ -436,6 +447,10 @@ class SF2Parser:
         self.memory = bytearray(65536)
         self.is_laxity_driver = False
         self.laxity_data: Optional[LaxityData] = None
+        # Set only when the sequence table is located; None means the file fell
+        # through to a reader that decodes orderlists as sequences.
+        self.laxity_seq_table = None
+        self.laxity_orderlists: List[List[int]] = []
 
         self.parse()
 
@@ -1415,6 +1430,162 @@ class SF2Parser:
             return None
         return data[off:], base
 
+    @staticmethod
+    def laxity_locate_seq_table(data, base, min_n=4, max_n=64):
+        """(table_addr, N, ptrs) for the split lo[N]/hi[N] sequence table, or None.
+
+        WHY A SEARCH AND NOT A CONSTANT, and why not adjacency either. The table
+        sits immediately below the orderlists on Angular ($1B1C, N=14) but NOT on
+        Stinsen, whose three orderlists are $100 apart -- so "just past the last
+        orderlist" is an Angular-shaped guess, and this area has been wrong twice
+        already by generalising from one file (73780fa, and the instrument/wave
+        constants after it).
+
+        THE SHAPE IS SELF-VERIFYING, which is what makes an exhaustive scan safe:
+        the bodies start immediately after the table, so entry 0 MUST equal
+        table + 2N. Combined with "every entry inside the image" and "entries
+        strictly ascending", that constraint is strong enough to be UNIQUE --
+        measured over all 47 Laxity SF2s on disk: 22 files yield exactly ONE
+        candidate, 25 yield none, and NOT ONE yields two. So a tie has never been
+        observed, and if one ever is, this refuses rather than picking.
+
+        Refusing matters more than locating here. The 25 that yield nothing keep
+        the older readers' behaviour; a wrong table would silently renumber every
+        sequence in the editor view.
+        """
+        n = len(data)
+        lim = base + n
+        hits = []
+        for off in range(0, n - 2 * min_n):
+            # bodies begin at table + 2N, so lo[0] pins N modulo 128
+            delta = (data[off] - (base + off)) & 0xFF
+            if delta & 1:
+                continue
+            for cand in range(delta >> 1, max_n + 1, 128):
+                if cand < min_n or off + 2 * cand >= n:
+                    break
+                tbl = base + off
+                if data[off + cand] != ((tbl + 2 * cand) >> 8) & 0xFF:
+                    continue
+                ptrs = [data[off + i] | (data[off + cand + i] << 8) for i in range(cand)]
+                if ptrs[0] != tbl + 2 * cand:
+                    continue
+                if not all(base <= p < lim for p in ptrs):
+                    continue
+                if not all(ptrs[i] < ptrs[i + 1] for i in range(cand - 1)):
+                    continue
+                hits.append((tbl, cand, ptrs))
+        if len(hits) != 1:
+            logger.debug("laxity_locate_seq_table: %d candidates -- refusing", len(hits))
+            return None
+        return hits[0]
+
+    def _parse_laxity_real_sequences(self):
+        """Decode the sequences the orderlists actually name. True if it produced any.
+
+        THIS IS THE STAGE BOTH OTHERS SKIP. ch_seq_ptr -- what
+        locate_seq_ptr_table finds and what every reader below walks -- points at
+        ORDERLISTS, not sequences: on Angular its three values are $1AF2/$1B00/
+        $1B0E, exactly 14 bytes apart, each a transpose byte then twelve sequence
+        NUMBERS then $FF. The older readers decode those bytes with the SEQUENCE
+        grammar and run past the $FF (they terminate on $7F), which is where
+        Angular's 197/174/139 "events" come from. Those counts are not a row count
+        of anything. Full derivation: docs/players/LAXITY.md.
+
+        A PREVIOUS CYCLE REJECTED THIS TABLE AND THE REJECTION WAS A FALSE
+        NEGATIVE, recorded here so it is not re-derived a third time: it decoded
+        table entries 0/1/2 and compared them against the editor's T1/T2/T3. But
+        the orderlists name sequences 01/02/05, and the ground-truth rows live in
+        sequence 07 -- entries 0/1/2 were never the right comparison. Against the
+        right indices the editor's T3 line 'A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4' is
+        sequence 07 rows 7..14, exact and with no transpose.
+        """
+        if not (LAXITY_SEQTABLE_AVAILABLE and LAXITY_PARSER_AVAILABLE):
+            return False
+        payload = self.laxity_payload()
+        if payload is None:
+            return False
+        data, base = payload
+        located = self.laxity_locate_seq_table(data, base)
+        if located is None:
+            return False
+        tbl, count, ptrs = located
+        try:
+            command_table = LaxityParser(data, base).parse().command_table
+            parser = _LaxitySeqParser(command_table)
+        except Exception as exc:                       # noqa: BLE001
+            logger.debug("sequence-table decode raised %s; declining", type(exc).__name__)
+            return False
+
+        end_of_image = base + len(data)
+        decoded = {}
+        for idx, start in enumerate(ptrs):
+            if idx + 1 < count:
+                stop = ptrs[idx + 1]
+            else:
+                # The last body has no successor to bound it, and parse_sequence
+                # does NOT stop on its own -- feeding it two extra bytes yields an
+                # extra event. Cut at the grammar's own END marker instead.
+                stop = start
+                while stop < end_of_image and data[stop - base] != 0x7F:
+                    stop += 1
+                stop = min(stop + 1, end_of_image)
+            try:
+                events = parser.parse_sequence(bytes(data[start - base:stop - base]))
+            except Exception:                          # noqa: BLE001
+                continue
+            if events:
+                decoded[idx] = events
+        if not decoded:
+            return False
+
+        # NORMALISE None. LaxitySequenceParser leaves instrument/command unset on
+        # events that carry neither, and consumers compare them numerically --
+        # pyscript/abpage.py's row_schedule does `instrument >= 0xA0` and raises
+        # TypeError on None. The two-stage reader never hit this because the
+        # orderlist bodies it decoded always set both; real sequence bodies do not.
+        def _entry(e):
+            return SequenceEntry(
+                note=e.note or 0,
+                instrument=0 if e.instrument is None else e.instrument,
+                command=0 if e.command is None else e.command,
+                param1=0, param2=0, duration=0)
+
+        for idx, events in decoded.items():
+            self.sequences[idx] = [_entry(e) for e in events]
+        self.laxity_seq_table = (tbl, count, ptrs)
+        self.laxity_orderlists = self._laxity_read_orderlists(data, base)
+        logger.info("Laxity sequence table at $%04X: %d sequences decoded (%d entries)",
+                    tbl, len(decoded), count)
+        return True
+
+    @staticmethod
+    def _laxity_read_orderlists(data, base):
+        """The three per-voice orderlists ch_seq_ptr points at, or [] if unreadable."""
+        try:
+            got = _locate_ch_seq_ptr(data, base)
+        except Exception:                              # noqa: BLE001
+            return []
+        if not got:
+            return []
+        lo_base, hi_base = got
+        lim = base + len(data)
+        out = []
+        for voice in range(3):
+            try:
+                addr = data[lo_base - base + voice] | (data[hi_base - base + voice] << 8)
+            except IndexError:
+                return []
+            if not base <= addr < lim:
+                return []
+            span = []
+            pos = addr
+            while pos < lim and data[pos - base] != 0xFF and len(span) < 256:
+                span.append(data[pos - base])
+                pos += 1
+            out.append(span)
+        return out
+
     def _parse_laxity_two_stage(self):
         """Decode a Laxity payload through BOTH stages. True if it produced any.
 
@@ -1585,6 +1756,17 @@ class SF2Parser:
         # First priority: Try Laxity driver SF2 parser (for Laxity NewPlayer in SF2 container)
         if self._detect_laxity_driver():
             self.is_laxity_driver = True
+
+            # _parse_laxity_real_sequences() IS DELIBERATELY NOT ROUTED HERE YET,
+            # and the reason is a contract change rather than a doubt about the
+            # decode. Everything below walks ch_seq_ptr, which points at
+            # ORDERLISTS, so self.sequences has always held THREE entries that
+            # consumers read as one-per-voice. The real table yields the FILE's
+            # sequences -- 14 for Angular -- which is the correct answer and a
+            # different shape. Routing it breaks pyscript/abpage.py's row_schedule
+            # (measured: 5 tests, "at least two voices must decode"), which needs
+            # to walk the orderlists to rebuild per-voice streams.
+            # The flip belongs to a task that may also write abpage.py.
 
             # BOTH stages first. The packed-sequence scan below is a heuristic
             # and wins by returning True with plausible-looking garbage, so it
