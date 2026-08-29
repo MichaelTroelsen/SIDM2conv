@@ -12,6 +12,35 @@ Audio cannot play in headless, so playback is simulated: `currentTime` is
 redefined on both media elements and the page's own rAF loop is driven by
 Chrome's virtual clock. Everything else -- layout, offsetTop, the CSS, the
 script as shipped -- is the real thing.
+
+THIS IS THE ACCEPTED SUBSTITUTE FOR THE MANUAL BROWSER CHECK, AND HERE IS
+EXACTLY WHAT IT CANNOT SEE. `docs/plans/ABPAGE_PORT_PLAN.md` step 5 requires
+three observations in a real browser, via the `claude-in-chrome` MCP. That MCP
+is not connected on this machine (nor is Playwright), so this probe stands in
+for it -- but it is NOT equivalent, and the gap is not small:
+
+  (a) "audio plays and switches"     NOT COVERED. The probe STUBS `currentTime`,
+      `duration`, `paused` and `play()` on both media elements, so there is no
+      decoding to observe. It cannot distinguish a page that plays correctly
+      from one whose audio never starts.
+  (b) "the envelope canvas drew"     NOT COVERED. Nothing here reads any
+      <canvas>; no pixel is ever sampled. This is the observation the plan
+      calls out as needing http rather than file://, and it is exactly the one
+      a DOM dump cannot answer.
+  (c) "blind mode randomizes and
+      tallies"                       NOT COVERED. The probe never touches the
+      blind-mode controls, and randomisation would need repeated trials to
+      check at all.
+
+WHAT IT DOES COVER, measured rather than claimed: the PATTERN-SCROLL path, in a
+real engine with real CSS and real layout -- per-voice highlighted row index,
+the applied transform, row counts, box heights, the status line, the rAF tick
+count, and any uncaught JS error. That is one subsystem of the page, and it is
+the subsystem where a stub DOM had already been wrong twice.
+
+So a green run here means "the scroll computes correctly against real layout".
+It does NOT mean the page renders, plays, or scores. Do not let a passing probe
+close step 5; step 5 needs a human or the MCP.
 """
 from __future__ import annotations
 
