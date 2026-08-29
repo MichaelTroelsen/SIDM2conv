@@ -946,3 +946,70 @@ def test_a_logger_still_emits_after_row_schedule_has_run(caplog):
     with caplog.at_level(logging.INFO, logger="abpage_regression_probe"):
         logging.getLogger("abpage_regression_probe").info("still audible")
     assert "still audible" in caplog.text
+
+
+# --- the tail: what the scroll does PAST the end of the schedule ----------
+# The task that prompted these ("the pattern view keeps scrolling past the end
+# of the row schedule") had a premise that MEASUREMENT REFUTES: it does not.
+# Seeking well past the last row pins the highlight on that row. It is correct
+# by construction rather than by luck -- three independent clamps -- so all
+# three are pinned here, because removing any one of them silently restores the
+# behaviour the task was worried about.
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node not on PATH")
+def test_seeking_past_the_end_of_the_schedule_pins_the_last_row(tmp_path):
+    """REAL EXECUTION, not a source assertion.
+
+    The harness seeks to frame 300 (its fixed 6.0s). Give it a schedule whose
+    last row starts at frame 100 and the seek is comfortably past the tail --
+    which is how this gets tested without the harness needing a seek argument
+    it does not have.
+
+    Five rows, so the last index is 4. Anything other than 4 -- especially a
+    larger number, or -1 -- is the runaway this pins against.
+    """
+    rows = [[0, 25, 50, 75, 100], [], [0, 25, 50, 75, 100]]
+    out = _run_scroll(tmp_path, rows=rows)
+    assert "error" not in out, out
+    assert out["after_seek"]["trk0"] == 4, out["after_seek"]
+    assert out["after_seek"]["trk2"] == 4, out["after_seek"]
+
+
+def test_the_three_clamps_that_make_the_tail_safe_are_all_present():
+    """Pinned on the emitted script, and the reason is honest: the node harness
+    reports the highlighted ROW INDEX only, never the transform, so two of the
+    three clamps are not observable through it. Asserting on the source is
+    weaker than executing it and is used only where execution cannot reach.
+
+      1. rowAt() binary-searches for the last frame <= f and returns `best`,
+         which cannot exceed frames.length - 1.
+      2. nextDistinct() returns -1 when no later frame exists, and the caller
+         guards on `j >= 0`, so the tail interpolates against nothing.
+      3. frac is clamped to 1, so even a span that did resolve could not
+         extrapolate beyond the next row.
+    """
+    s = A.SCRIPT
+    assert "var lo = 0, hi = frames.length - 1, best = 0;" in s   # (1)
+    assert "return best;" in s
+    assert "      return -1;" in s                                # (2)
+    assert "var j = nextDistinct(frames, i);" in s
+    assert "if (j >= 0) {" in s
+    assert "Math.min(1, Math.max(0, (f - frames[i]) / span))" in s  # (3)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node not on PATH")
+def test_that_tail_test_would_have_CAUGHT_a_runaway(tmp_path):
+    """Mutation check, on the repo's own idiom: break the clamp, see it fail.
+
+    Without this the test above could pass because the schedule happens to end
+    where the seek lands, rather than because anything clamps. Mutating rowAt
+    to walk one past the last row makes the highlight land on a row that does
+    not exist, and `after_seek` reports -1 (no .cur element) rather than 4.
+    """
+    mutant = A.SCRIPT.replace(
+        "if (frames[mid] <= f) { best = mid; lo = mid + 1; } else hi = mid - 1;",
+        "if (frames[mid] <= f) { best = mid + 1; lo = mid + 1; } else hi = mid - 1;")
+    assert mutant != A.SCRIPT, "rowAt moved; update this mutation"
+    rows = [[0, 25, 50, 75, 100], [], [0, 25, 50, 75, 100]]
+    out = _run_scroll(tmp_path, rows=rows, script=mutant)
+    assert out["after_seek"]["trk0"] != 4, out["after_seek"]
