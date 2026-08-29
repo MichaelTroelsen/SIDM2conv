@@ -58,3 +58,101 @@ batch-convert-laxity.bat                                     # whole corpus
 - Native Laxity NP21 → Driver 11 is **1–8%** — always use the Laxity driver for native files.
 
 **Constants:** `INIT=$1000`, `PLAY=$10A1`, `INSTRUMENTS=$1A6B`, `WAVE=$1ACB`. Full reference: `docs/ARCHITECTURE.md`, `memory/laxity-np21.md`.
+
+---
+
+## Sequence numbering: the editor's 01/02/05 vs the analyzer's 0/1/2
+
+Measured on `SF2/Angular.sf2` (2026-08-29, HEAD `fa19503`), against the payload
+re-based on the player base by `SF2Parser.laxity_payload()` (a40a859).
+
+### `ch_seq_ptr` points at ORDERLISTS, not sequences
+
+This is the root fact and it invalidates several older readings. The three
+values `locate_seq_ptr_table` recovers on Angular are `$1AF2 / $1B00 / $1B0E` —
+**exactly 14 bytes apart**, because each is one voice's orderlist:
+
+```
+$1AF2  87 01 01 01 01 01 01 08 08 08 08 08 08 FF     voice 0
+$1B00  93 02 02 02 02 02 02 09 09 09 09 09 09 FF     voice 1
+$1B0E  87 05 06 03 04 03 07 0A 0A 0B 0C 0B 0D FF     voice 2
+```
+
+Leading byte = transpose, then twelve **sequence numbers**, `$FF` = end.
+`sidm2/laxity_parser.py:_extract_sequences_and_orderlists` treats each of these
+as a sequence body and decodes it with the *sequence* grammar. It terminates on
+`$7F`, not `$FF`, so it runs straight through the orderlist end: 73 bytes from
+`$1AF2` spans all three orderlists **and** the pointer table below them. Its
+comment — "the orderlist for Laxity is typically just one sequence per voice" —
+is describing this artifact, not the format.
+
+**So the 197/174/139 "event" counts are not a row count of anything.** Do not
+compare them to editor rows.
+
+### The real sequence table
+
+A split lo[14]/hi[14] pointer table at `$1B1C`, immediately below the
+orderlists. Its 14 entries partition `$1B38–$1EC2` **exactly, 907 bytes, zero
+left over** — which is the check that says you have found the right table:
+
+```
+seq  0 $1B38   3 bytes   80 00 7F        <- the null sequence; no orderlist uses it
+seq  1 $1B3B  84         seq  8 $1D46  84
+seq  2 $1B8F  86         seq  9 $1D9A  86
+seq  3 $1BE5  75         seq 10 $1DF0  54
+seq  4 $1C30  60         seq 11 $1E26  50
+seq  5 $1C6C  81         seq 12 $1E58  51
+seq  6 $1CBD  81         seq 13 $1E8B  56
+seq  7 $1D0E  56
+```
+
+The orderlists use `01`–`0D` and never `00`. The offset of this table from the
+player base varies per build, so **locate it, never index to a constant** — the
+same rule 73780fa established for `ch_seq_ptr`.
+
+### The mapping
+
+| Scheme | What it is | Angular |
+|---|---|---|
+| Editor `01 / 02 / 05` | the **payload's** sequence numbers — the first entry of each voice's orderlist | `87 **01**`, `93 **02**`, `87 **05**` |
+| Analyzer `0 / 1 / 2` | `sorted(unique ch_seq_ptr addresses)` positions, i.e. **voice order** | voice 0/1/2 |
+
+They are not two numberings of the same objects: one indexes sequences, the
+other indexes voices. Analyzer index *i* = voice *i* = orderlist entry `[0]` of
+that voice.
+
+### Ground truth, now checkable — and one line matches exactly
+
+Decoding sequence `07` with `LaxitySequenceParser` gives, as rows:
+
+```
+row  0   1   2   3   4   5      6   7   8   9  10  11  12  13  14
+    E-4 C-4 +++ A-3 E-4 F#-10  G-4 A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4
+                                     ^-------- rows 7..14 --------^
+SF2II capture, T3:                   A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4
+```
+
+Eight consecutive rows, **exact, no transpose**. That simultaneously validates
+the sequence table above and the note naming: `octave = value // 12`,
+`pitch class = value % 12`, `0 = C-0` (so `45 = A-3`, `48 = C-4`, `57 = A-4`).
+
+The capture's T1/T2 line `+++ +++ C-4 --- A-3 +++ +++ +++` also resolves inside
+sequence `07`, at rows 1–3 (`C-4 +++ A-3`).
+
+**This REFUTES the "decoded notes sit about three octaves below the editor"
+reading.** The octaves were wrong because the decoder was reading an
+*orderlist* — sequence numbers `01 01 01 08` decoded as note bytes. Against the
+real sequences the octaves are correct.
+
+### What is still open
+
+- **The capture's T1/T2/T3 labels do not map onto voices 0/1/2.** Voice 0's
+  orderlist plays only `01` and `08`, voice 1 only `02` and `09`; neither ever
+  plays `07`, yet all three ground-truth lines resolve inside `07` (which voice
+  2 reaches at orderlist position 5). The capture is therefore a **scrolled**
+  view: `01/02/05` is the orderlist's first row, and the note rows shown belong
+  to a different song position. Any future ground-truth capture must record the
+  orderlist position, not just the track labels.
+- **`F#-10` appears in the decode** (seq 3, 4, 7, 11–13) — a note value above
+  `$5F`, so a command byte being read as a note. A real stage-2 gap, unrelated
+  to the numbering.
