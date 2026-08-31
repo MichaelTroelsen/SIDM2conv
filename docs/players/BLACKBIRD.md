@@ -5175,3 +5175,53 @@ Expectation going in was a pass -- the tie encoding is already used throughout
 these builds and E6 introduces no new value class. That expectation is exactly
 the reasoning that preceded the E3f episode, which is why it was measured rather
 than asserted.
+
+## Blackbird writes no `.span`, and that is deliberate (settled 2026-08-29)
+
+Measured at HEAD `9f63aa0`: `out/blackbird` holds **20 `.sf2` and zero
+`.span`, zero `.prov`**, and `bin/build_blackbird_native_song.py` never calls
+`_write_span` — its only mention of the extension is the import comment at
+line 76.
+
+### Why a span would be meaningless here
+
+`_write_span` (`bin/build_mon_native_song.py:2402`) exists for one reason,
+stated in its own docstring: *"Every scorer that compares a part against the
+original needs to know where the part ENDS: past it our build LOOPS while the
+original plays on."* It bounds a comparison against a **siddump of the
+original**.
+
+Blackbird has no such comparison to bound. **siddump cannot drive an LFT rip at
+all** — comparing against that silence already produced three confident wrong
+readings (see the `$D418` passband section above). The builder never siddumps;
+it drives `BlackbirdSim` (`build_blackbird_native_song.py:787`, `:1023`,
+`:1278`), and the corpus sweep gets its window from `EXPECTED_PARTS` in
+`pyscript/blackbird_sweep.py`, which pins part counts precisely because *"a
+changed part count shifts the measurement window"*. Nothing anywhere globs a
+Blackbird span.
+
+So the absence is not an oversight in the emitter. A sidecar recording where a
+siddump comparison should stop has nothing to describe when there is no siddump.
+
+### The prune fork: correct today, and one commit from being silently wrong
+
+`prune_stale_parts` in the Blackbird builder is a verbatim fork of the MoN
+original and globs **`.sf2` only**. The MoN version globs `.sf2`, `.sf2.span`
+and `.sf2.prov` — the Blackbird fork **missed that fix**, which is exactly what
+its own import comment says happened.
+
+That omission is currently harmless — pruning spans that are never written is a
+no-op — so **the fork is not a bug today**. It becomes one the moment anything
+teaches this builder to emit a span or a prov, because the prune would then
+leave orphaned sidecars beyond `partNN`, which is the phantom-file inventory
+`prune_stale_parts` exists to prevent (`out/dmc` accumulated 352 such spans).
+
+The coupling is pinned by `pyscript/test_build_blackbird_native_song.py`: if a
+span or prov ever appears, that test fails and names the prune fork as the
+thing to update. Adding the globs pre-emptively was rejected — dead code that
+nothing exercises is how the fork drifted from its original in the first place.
+
+**Correction to the task that prompted this:** it was filed as "Blackbird prune
+has the same span-glob bug" with an option to delete "the span-glob half of its
+prune fork as dead code". There is no span-glob half to delete. The fork never
+had one; it is missing the glob, not carrying a dead one.
