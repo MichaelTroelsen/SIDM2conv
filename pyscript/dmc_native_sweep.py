@@ -341,6 +341,22 @@ def main(argv=None):
         from concurrent.futures import ThreadPoolExecutor, as_completed
         print(f"  -j{a.jobs}: MON_BUILD_LOCK=1 (shared driver state serialised)",
               flush=True)
+        # Same defect, same fix as the SDI sweep: builders spawned by
+        # subprocess.run survive a hard kill of this process and keep writing into
+        # out/dmc, which is how a "killed" run voids the run that replaces it.
+        # Imported rather than duplicated so the two sweeps cannot drift; the
+        # right long-term home is a shared pyscript/process_group.py (see
+        # sweep-kill-safety-wants-a-shared-module).
+        try:
+            from sdi_native_sweep import bind_children_to_this_process
+            _kill_safe = bind_children_to_this_process()
+        except Exception:                                      # noqa: BLE001
+            _kill_safe = False
+        print("  kill-safety: %s" % ("builders die with this process (job object)"
+                                     if _kill_safe else
+                                     "NOT ESTABLISHED -- a hard kill will leave "
+                                     "builders running; kill the TREE (taskkill /T)"),
+              flush=True)
         with ThreadPoolExecutor(max_workers=a.jobs) as ex:
             futs = {ex.submit(measure, n, a.seconds, a.build): n for n in corpus}
             # Progress only -- completion order, NOT the result table. The
