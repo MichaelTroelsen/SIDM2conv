@@ -45,100 +45,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_DIR = os.path.join(ROOT, "SID", "Gallefoss_Glenn")
 BUILDER = os.path.join(ROOT, "bin", "build_sdi_native_song.py")
 
-# Held for the life of the process: closing this handle is what kills the builders.
-_JOB_HANDLE = [None]
-
-
-def bind_children_to_this_process():
-    """Make every builder this sweep spawns die when the sweep dies.
-
-    THE DEFECT, reproduced from the process list rather than taken on trust: this
-    sweep runs a ThreadPoolExecutor whose workers each `subprocess.run([sys.executable,
-    BUILDER, ...])`. Those builders are ordinary grandchildren with NO lifetime tie to
-    the parent, so killing the sweep -- `Stop-Process`, taskkill without /T, a closed
-    terminal -- leaves every in-flight builder running to completion. Measured: parent
-    killed, 3 of 3 children survived with ParentProcessId still pointing at the dead
-    parent, and each went on to write its artifact. That is how a "killed" corpus run
-    keeps writing into out/<player>/ and voids the run that replaces it.
-
-    A PID FILE AND AN EXIT TRAP DO NOT FIX THIS, which is why the task says both were
-    already tried: both need the parent to still be alive to run their cleanup, and a
-    hard kill is precisely the case where it is not.
-
-    THE FIX IS THE OS, not a handler. A Windows Job Object with
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE holds the invariant in the kernel: descendants
-    inherit the job, and when the last handle to it closes -- which happens when this
-    process dies, however it dies -- Windows terminates every process still in it.
-
-    Returns True if the guarantee is in force, False if it could not be established.
-    NEVER RAISES: a sweep that refuses to start because it could not install a safety
-    net is worse than one that runs without it, so the failure is reported to the
-    caller and printed, not thrown. On non-Windows this returns False -- the POSIX
-    equivalent (a process group plus killpg, or prctl PDEATHSIG) is a separate job and
-    this repo's sweeps run on Windows.
-    """
-    if os.name != "nt":
-        return False
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        class _BASIC(ctypes.Structure):
-            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
-                        ("PerJobUserTimeLimit", ctypes.c_int64),
-                        ("LimitFlags", wintypes.DWORD),
-                        ("MinimumWorkingSetSize", ctypes.c_size_t),
-                        ("MaximumWorkingSetSize", ctypes.c_size_t),
-                        ("ActiveProcessLimit", wintypes.DWORD),
-                        ("Affinity", ctypes.POINTER(ctypes.c_ulong)),
-                        ("PriorityClass", wintypes.DWORD),
-                        ("SchedulingClass", wintypes.DWORD)]
-
-        class _IO(ctypes.Structure):
-            _fields_ = [("ReadOperationCount", ctypes.c_uint64),
-                        ("WriteOperationCount", ctypes.c_uint64),
-                        ("OtherOperationCount", ctypes.c_uint64),
-                        ("ReadTransferCount", ctypes.c_uint64),
-                        ("WriteTransferCount", ctypes.c_uint64),
-                        ("OtherTransferCount", ctypes.c_uint64)]
-
-        class _EXT(ctypes.Structure):
-            _fields_ = [("BasicLimitInformation", _BASIC),
-                        ("IoInfo", _IO),
-                        ("ProcessMemoryLimit", ctypes.c_size_t),
-                        ("JobMemoryLimit", ctypes.c_size_t),
-                        ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
-
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-        JobObjectExtendedLimitInformation = 9
-
-        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        # EVERY handle restype MUST be declared. ctypes defaults to c_int, which on
-        # 64-bit TRUNCATES GetCurrentProcess()'s -1 pseudo-handle and makes
-        # AssignProcessToJobObject fail with ERROR_INVALID_HANDLE (6). Measured: that
-        # is exactly what this function did on its first version, and it failed
-        # SILENTLY -- returning False, printing "NOT ESTABLISHED", installing nothing.
-        # A safety net whose failure mode is a polite message is the shape worth
-        # naming here.
-        k32.CreateJobObjectW.restype = wintypes.HANDLE
-        k32.GetCurrentProcess.restype = wintypes.HANDLE
-        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
-        job = k32.CreateJobObjectW(None, None)
-        if not job:
-            return False
-        info = _EXT()
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        if not k32.SetInformationJobObject(job, JobObjectExtendedLimitInformation,
-                                           ctypes.byref(info), ctypes.sizeof(info)):
-            return False
-        if not k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()):
-            # Already in a job that forbids nesting (pre-Win8, or some CI runners).
-            return False
-        _JOB_HANDLE[0] = job        # keep it open; closing it is the kill trigger
-        return True
-    except Exception:                                          # noqa: BLE001
-        return False
+# Kill-safety lives in pyscript/process_group.py so both sweeps can reach it
+# without importing each other; see that module for the measurement behind it.
+from process_group import bind_children_to_this_process  # noqa: E402
 
 # The launch-failure classifier lives in the shared harness -- this sweep is
 # where the failure was FOUND, not where it belongs. See
@@ -153,7 +62,6 @@ _PARTS = re.compile(r"packed into (\d+) adaptive part")
 _ONSETS = re.compile(r"emulated onsets vs trace: (\d+)/(\d+)")
 _REFUSED = re.compile(r"REFUSING to build: ([^\n]+)")
 _VWRAP = re.compile(r"V wrapper: module init=")
-
 
 def corpus_files(limit=None, names=None):
     """The sweep corpus, DERIVED from the tracked SID directory.

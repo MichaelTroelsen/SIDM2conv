@@ -41,9 +41,11 @@ sys.path.insert(0, _HERE)
 sys.path.insert(0, _ROOT)
 
 import sdi_native_sweep as S                      # noqa: E402
+import process_group as P                          # noqa: E402
 
 DMC = os.path.join(_HERE, "dmc_native_sweep.py")
 SDI = os.path.join(_HERE, "sdi_native_sweep.py")
+PG = os.path.join(_HERE, "process_group.py")
 
 
 @pytest.mark.skipif(os.name != "nt", reason="job objects are Windows-only")
@@ -52,7 +54,7 @@ def test_the_job_object_actually_installs():
     on this very machine and printed a polite message instead of protecting
     anything, so a test that accepted either value would have passed the bug."""
     assert S.bind_children_to_this_process() is True
-    assert S._JOB_HANDLE[0], "the handle must be retained -- closing it kills the job"
+    assert P._JOB_HANDLE[0], "the handle must be retained -- closing it kills the job"
 
 
 @pytest.mark.skipif(os.name != "nt", reason="job objects are Windows-only")
@@ -60,9 +62,9 @@ def test_it_is_idempotent_so_both_sweeps_may_call_it():
     """dmc_native_sweep imports it from here, so it can be called twice in one
     process. A second call must not fail or drop the first handle."""
     assert S.bind_children_to_this_process() is True
-    first = S._JOB_HANDLE[0]
+    first = P._JOB_HANDLE[0]
     assert S.bind_children_to_this_process() is True
-    assert S._JOB_HANDLE[0], "the handle was lost on the second call"
+    assert P._JOB_HANDLE[0], "the handle was lost on the second call"
     assert first, "the first call left no handle"
 
 
@@ -74,9 +76,10 @@ def test_every_handle_restype_is_declared():
     with ERROR_INVALID_HANDLE (6) and the function returns False -- installing
     nothing, quietly. All three declarations must stay.
     """
-    src = open(SDI, encoding="utf-8").read()
+    src = open(PG, encoding="utf-8").read()
     body = src[src.index("def bind_children_to_this_process("):]
-    body = body[:body.index("\ndef ", 1)]
+    nxt = body.find(chr(10) + 'def ', 1)   # a following def, if there is one
+    body = body if nxt < 0 else body[:nxt]   # the helper is the LAST def now
     assert "k32.GetCurrentProcess.restype = wintypes.HANDLE" in body
     assert "k32.CreateJobObjectW.restype = wintypes.HANDLE" in body
     assert "k32.AssignProcessToJobObject.argtypes" in body
@@ -85,7 +88,7 @@ def test_every_handle_restype_is_declared():
 def test_the_kill_on_job_close_flag_is_the_one_being_set():
     """0x2000 is JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. Any other flag makes the
     job a bookkeeping device that kills nothing."""
-    src = open(SDI, encoding="utf-8").read()
+    src = open(PG, encoding="utf-8").read()
     assert re.search(r"JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE\s*=\s*0x2000", src)
     assert "LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE" in src
 
@@ -97,9 +100,10 @@ def test_it_never_raises_even_when_the_os_refuses():
     False, not blow up. Checked by calling it on a non-Windows code path shape --
     the `except Exception: return False` is the guarantee.
     """
-    src = open(SDI, encoding="utf-8").read()
+    src = open(PG, encoding="utf-8").read()
     body = src[src.index("def bind_children_to_this_process("):]
-    body = body[:body.index("\ndef ", 1)]
+    nxt = body.find(chr(10) + 'def ', 1)   # a following def, if there is one
+    body = body if nxt < 0 else body[:nxt]   # the helper is the LAST def now
     assert "except Exception:" in body and "return False" in body
     assert body.count("return False") >= 4, (
         "each failure point must return False rather than falling through to True")
@@ -120,8 +124,12 @@ def test_both_sweeps_request_the_guarantee_and_print_which_one_holds():
 def test_dmc_imports_it_rather_than_duplicating_it():
     """Two copies would drift, and this pair has already drifted once elsewhere
     in this repo (the Blackbird prune fork). One implementation, imported."""
-    src = open(DMC, encoding="utf-8").read()
-    assert "from sdi_native_sweep import bind_children_to_this_process" in src
-    assert "CreateJobObjectW" not in src, (
-        "dmc_native_sweep now has its own copy of the job-object code -- import it "
-        "instead, or move both to a shared module")
+    for path, name in ((DMC, "dmc"), (SDI, "sdi")):
+        src = open(path, encoding="utf-8").read()
+        assert "from process_group import bind_children_to_this_process" in src, (
+            "%s sweep no longer imports the shared helper" % name)
+        assert "CreateJobObjectW" not in src, (
+            "%s_native_sweep now has its own copy of the job-object code -- import "
+            "it from process_group instead" % name)
+    # and the shared module is where the implementation actually lives
+    assert "CreateJobObjectW" in open(PG, encoding="utf-8").read()

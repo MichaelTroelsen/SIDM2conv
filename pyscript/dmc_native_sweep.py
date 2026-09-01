@@ -344,11 +344,12 @@ def main(argv=None):
         # Same defect, same fix as the SDI sweep: builders spawned by
         # subprocess.run survive a hard kill of this process and keep writing into
         # out/dmc, which is how a "killed" run voids the run that replaces it.
-        # Imported rather than duplicated so the two sweeps cannot drift; the
-        # right long-term home is a shared pyscript/process_group.py (see
-        # sweep-kill-safety-wants-a-shared-module).
+        # Imported rather than duplicated so the two sweeps cannot drift. It now
+        # lives in pyscript/process_group.py -- reaching it no longer means
+        # importing the whole SDI corpus sweep. See that module for the measured
+        # 3-survivors/0-survivors evidence and why an exit trap cannot do this.
         try:
-            from sdi_native_sweep import bind_children_to_this_process
+            from process_group import bind_children_to_this_process
             _kill_safe = bind_children_to_this_process()
         except Exception:                                      # noqa: BLE001
             _kill_safe = False
