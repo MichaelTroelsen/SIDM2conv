@@ -1659,8 +1659,39 @@ def _track_orderlists(p) -> list:
     return list(p.orderlist_unpacked or [])
 
 
-def row_schedule(sf2_path: Path, max_rows: int = 512) -> dict | None:
+def row_schedule(sf2_path: Path, max_rows: int = 2048) -> dict | None:
     """Per-track rows with the frame each one starts on, read from the SF2.
+
+    max_rows DEFAULT WAS 512, WHICH TRUNCATED TWO OF ANGULAR'S THREE VOICES
+    (abpage-row-schedule-truncates-two-voices-at-512-rows). Angular's own
+    orderlists walk to 564/744/481 rows per voice -- voice 1 alone needed 744,
+    232 past the old cap -- so tracks reported [512, 512, 481] with
+    truncated == [0, 1] even though the page honestly said so. Raised rather
+    than left in place or turned into a caller-set parameter, because the
+    measured cost of doing the WHOLE walk is trivial: serialising
+    row_schedule's own tracks into window.__abRows (the exact `rows_json`
+    expression this module already uses to build the page) is 9,651 bytes at
+    the old 512 cap and 11,639 bytes for Angular's full 1,789-row walk -- a
+    1,988-byte (20.6%) increase, on a page whose CSS/script/HTML already run
+    to tens of KB. A genuinely runaway decode (SF2/_test_commando.sf2, 11k+
+    entries) is still caught upstream by the seqlen/overread guard above, not by
+    this cap (see test_the_guard_STILL_refuses_a_genuinely_unbounded_body).
+
+    2048 IS NOT COMFORTABLE HEADROOM, and saying so is the point of this
+    paragraph. It was first justified as ">2.7x over Angular's longest voice
+    (744)" -- true, and measured against ONE FILE. Swept over all 411 readable
+    .sf2 in SF2/ and out/, the corpus does not agree: Chain_Reaction 1664,
+    Unboxed_Ending_8580 1408, Cybernoid_II 1216, Cycles 1049. FOUR files are
+    still truncated at 2048, and out/hawkeye_subtune_0.sf2 sits at EXACTLY 2048
+    on voice 0 -- i.e. it is clipped by this constant, the same defect this
+    change fixed for Angular, one threshold higher. The largest payload in that
+    whole sweep is 22,732 bytes (Sanxion.sf2), so cost is NOT what argues for a
+    ceiling here. Raising it again is cheap and is filed as
+    abpage-row-schedule-cap-still-truncates-four-files-at-2048; it was left at
+    2048 rather than raised blind because the three OTHER truncated files report
+    tracks [0, 0, 0] with truncated [0, 1, 2] -- zero rows emitted yet flagged
+    truncated, which is a different bug and would not be fixed by a bigger
+    number (abpage-row-schedule-flags-empty-tracks-as-truncated).
 
     THE SCHEDULE COMES FROM THE FILE, NEVER FROM THE AUDIO. It would be easy
     to fit rows to the onsets our render actually produced and get a picture
@@ -1715,6 +1746,29 @@ def row_schedule(sf2_path: Path, max_rows: int = 512) -> dict | None:
     seqs = p.sequences or {}
     fmts = getattr(p, "sequence_formats", {}) or {}
     seqlen = int(getattr(mdi, "default_sequence_length", 0) or 0)
+    # WAS THIS DECODE BOUNDED BY THE FILE'S OWN POINTER TABLE? That decides
+    # whether the length guard below means anything at all.
+    #
+    # default_sequence_length is a DEFAULT, NOT A MAXIMUM -- SF2_FORMAT_SPEC.md,
+    # "Contiguous Sequence Stacking": "Sequences in each track can have different
+    # lengths - they stack like Tetris blocks." It is the length a NEW sequence
+    # gets in the editor. So `len(rows) > seqlen` is not an over-read; it is
+    # ordinary music, and refusing on it DROPPED WHOLE VOICES:
+    #     Cycles.sf2   dsl 13 -> tracks [78, 0, 0]      105 refusals
+    #     Unboxed.sf2  dsl 38 -> tracks [0, 512, 512]    22 refusals
+    #     Angular.sf2  dsl 75 -> tracks [512, 512, 481]   0 -- the LUCKY case,
+    #         its dsl merely happens to exceed its longest sequence, which is the
+    #         only reason the guard ever looked correct.
+    #
+    # When laxity_seq_table is set, every body was cut at the NEXT POINTER
+    # (sf2_viewer_core's `stop = ptrs[idx+1]`), so its length is structural and
+    # needs no second opinion. When it is NOT set -- 25 of 47 Laxity SF2s, whose
+    # table refuses to locate -- the fallback readers scan to the grammar's own
+    # $7F with nothing bounding them, and that genuinely runs away:
+    # _test_commando.sf2 yields bodies of 11,335 and 13,361 entries. The guard is
+    # the only thing standing between that and the page, so it stays for exactly
+    # that case. Pinned by test_the_length_guard_applies_only_to_UNBOUNDED_decodes.
+    pointer_bounded = bool(getattr(p, "laxity_seq_table", None))
     tracks, degenerate, truncated, overread, fallback = [], [], [], [], []
     for tno, entries in enumerate(_track_orderlists(p)[:3]):
         rows, frame, cut = [], 0, False
@@ -1739,7 +1793,7 @@ def row_schedule(sf2_path: Path, max_rows: int = 512) -> dict | None:
             # earlier all-ties case it DOES advance time, so the zero-advance
             # guard below never sees it. Refuse on the file's own number rather
             # than on a note-plausibility heuristic.
-            if seqlen and len(rowsrc) > seqlen:
+            if seqlen and not pointer_bounded and len(rowsrc) > seqlen:
                 # This track's own sequence is unreadable -- Angular's sequence
                 # 1 begins `note=$CB cmd=$FF` and then runs to zeros, i.e. the
                 # parser located something that is not a sequence at all. But an

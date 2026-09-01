@@ -582,9 +582,13 @@ def test_row_schedule_against_a_known_sf2():
     assert s["default_sequence_length"] == 75
     # 14 sequences: the FILE's, not three per-voice orderlists read as sequences
     assert s["sequences"] == 14
-    # voices 0 and 1 are truncated at max_rows; voice 2 is the whole walk
-    assert [len(t) for t in s["tracks"]] == [512, 512, 481]
-    assert s["truncated"] == [0, 1]
+    # All three voices render complete at the default max_rows=2048
+    # (abpage-row-schedule-truncates-two-voices-at-512-rows). Under the OLD
+    # 512-row default this was [512, 512, 481] with truncated == [0, 1] --
+    # voices 0 and 1 cut off two-thirds through the song. Angular's own walk
+    # tops out at 744 rows (voice 1), comfortably inside the new cap.
+    assert [len(t) for t in s["tracks"]] == [564, 744, 481]
+    assert s["truncated"] == []
     assert s["overread"] == [] and s["degenerate"] == []
 
     # the voice-2 orderlist, recovered from the walked rows
@@ -601,6 +605,19 @@ def test_row_schedule_against_a_known_sf2():
     assert [r["n"] for r in t2[start + 7:start + 15]] == [
         "A-4", "G-4", "B-4", "G-4", "D-4", "C-5", "B-4",
         "G-4"], "voice 3 must still match what the editor shows"
+
+
+@pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
+def test_row_schedule_still_truncates_when_a_caller_passes_a_smaller_cap():
+    """The cut/truncated machinery is still live -- raising the DEFAULT to
+    2048 (abpage-row-schedule-truncates-two-voices-at-512-rows) does not
+    delete the cap itself. Nothing in production currently passes max_rows
+    explicitly, so without this test the `cut = True` branch in row_schedule
+    would go unexercised by the suite entirely."""
+    s = A.row_schedule(REAL_SF2, max_rows=100)
+    assert s is not None
+    assert [len(t) for t in s["tracks"]] == [100, 100, 100]
+    assert s["truncated"] == [0, 1, 2]
 
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
@@ -664,7 +681,9 @@ def test_an_OVER_READ_sequence_is_REFUSED():
     # the guard itself: seqlen bounds the row source
     seqlen = s["default_sequence_length"]
     assert seqlen == 75
-    assert max(len(t) for t in s["tracks"]) <= 512      # max_rows, not seqlen
+    import inspect
+    max_rows_default = inspect.signature(A.row_schedule).parameters["max_rows"].default
+    assert max(len(t) for t in s["tracks"]) <= max_rows_default  # max_rows, not seqlen
 
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
@@ -1081,3 +1100,60 @@ def test_that_tail_test_would_have_CAUGHT_a_runaway(tmp_path):
     rows = [[0, 25, 50, 75, 100], [], [0, 25, 50, 75, 100]]
     out = _run_scroll(tmp_path, rows=rows, script=mutant)
     assert out["after_seek"]["trk0"] != 4, out["after_seek"]
+
+
+_SF2DIR = Path(__file__).resolve().parent.parent / "SF2"
+CYCLES_SF2 = _SF2DIR / "Cycles.sf2"
+COMMANDO_SF2 = _SF2DIR / "_test_commando.sf2"
+
+
+@pytest.mark.skipif(not CYCLES_SF2.exists(), reason="SF2/Cycles.sf2 not present")
+def test_the_length_guard_applies_only_to_UNBOUNDED_decodes():
+    """A pointer-bounded sequence longer than dsl is MUSIC, not an over-read.
+
+    default_sequence_length is a DEFAULT, not a maximum -- SF2_FORMAT_SPEC.md's
+    "Contiguous Sequence Stacking" says sequences legitimately differ in length.
+    Refusing on `len > dsl` therefore dropped whole voices. Measured before the
+    fix:
+        Cycles.sf2   dsl 13 -> tracks [78, 0, 0]     105 refusals
+        Unboxed.sf2  dsl 38 -> tracks [0, 512, 512]   22 refusals
+    and corpus-wide 132 of 141 voices rendered, with 2 files only partly drawn.
+    After: 135 of 141, 0 partial.
+
+    ANGULAR NEVER CAUGHT THIS because its dsl (75) happens to exceed its longest
+    sequence (64) -- the coincidence that made the guard look correct for as long
+    as one file was the fixture.
+    """
+    s = A.row_schedule(CYCLES_SF2)
+    assert s is not None
+    assert s["default_sequence_length"] == 13, s["default_sequence_length"]
+    assert all(len(t) > 0 for t in s["tracks"]), (
+        "Cycles must draw all three voices; %s means the length guard is refusing "
+        "pointer-bounded music again" % [len(t) for t in s["tracks"]])
+    assert s["overread"] == [], s["overread"][:3]
+
+
+@pytest.mark.skipif(not COMMANDO_SF2.exists(), reason="SF2/_test_commando.sf2 not present")
+def test_the_guard_STILL_refuses_a_genuinely_unbounded_body():
+    """The other half, and the reason the guard was not simply deleted.
+
+    _test_commando.sf2's sequence table does NOT locate, so the fallback readers
+    scan to the grammar's own $7F with nothing bounding them and yield bodies of
+    11,335 and 13,361 entries against a declared length of 77. Those must not
+    reach the page. If this file ever starts rendering, either its table began to
+    locate (check that first) or the guard was lost.
+    """
+    s = A.row_schedule(COMMANDO_SF2)
+    assert s is not None
+    assert s["overread"], "the runaway bodies are no longer being refused"
+    assert all(len(t) == 0 for t in s["tracks"]), [len(t) for t in s["tracks"]]
+
+
+@pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
+def test_the_gate_is_the_pointer_table_not_a_length():
+    """Pins WHICH condition switches the guard, so a future edit cannot quietly
+    swap it back to a threshold. laxity_seq_table is set exactly when every body
+    was cut at the next pointer."""
+    src = (Path(__file__).resolve().parent / "abpage.py").read_text(encoding="utf-8")
+    assert 'pointer_bounded = bool(getattr(p, "laxity_seq_table", None))' in src
+    assert "if seqlen and not pointer_bounded and len(rowsrc) > seqlen:" in src
