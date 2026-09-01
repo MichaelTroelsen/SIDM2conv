@@ -389,6 +389,39 @@ def inject_sequences(output: bytearray, data, driver_info, load_address: int) ->
         # Format: [instrument?] [command?] [DURATION] [note]
         # For now, use default duration of 0x80 (duration=0, no tie)
         # TODO: Add proper duration tracking to SequenceEvent structure
+        #
+        # THE TODO UNDERSTATES THIS, and the loop below shows how: a source
+        # duration byte arriving as `event.note` in [0x80,0x9F] is `continue`d,
+        # i.e. DROPPED, and then a fresh DEFAULT_DURATION is written for the
+        # note after it. So every note in an injected sequence comes out at
+        # duration 0 whatever the source said. It cannot be fixed here --
+        # models.SequenceEvent carries only (instrument, command, note), so
+        # there is nowhere for a duration to arrive from.
+        #
+        # THE LOSS STARTS ONE LAYER EARLIER, and this is the part that decides
+        # how the fix has to be shaped. The on-disk SF2 sequence stream is
+        # VARIABLE-LENGTH and self-describing -- pyscript/sf2_viewer_core.py's
+        # unpack_sequence(), documented from SID Factory II's own editor source,
+        # dispatches on byte range: $C0+ command, $A0-$BF instrument, $80-$9F
+        # duration (bits 0-3 ticks, bit 4 tie), $00-$7E note, $7F end. The shape
+        # this function writes matches that exactly, so the format is right.
+        # But sf2_player_parser.py:364-368 -- the only producer of the
+        # `data.sequences` that reach here -- reads FIXED 3-byte (instr, cmd,
+        # note) groups and never looks at a duration byte. So a source duration
+        # is already gone before this function is called, and giving
+        # SequenceEvent a duration field would hand it a value nothing supplies.
+        # The real fix is upstream: decode the packed stream the way
+        # unpack_sequence does. See sequence-event-carries-no-duration.
+        #
+        # THIS IS NOT DEAD CODE. Reachable in production:
+        #   conversion_pipeline.py:567/1082/1385  SF2Writer(...)
+        #     -> sf2_writer.py:271  inject_music_data_into_template
+        #       -> line ~977       if data.sequences and driver_info.sequence_start
+        # sf2_player_parser.py (448/520/586) POPULATES `sequences`, so the
+        # SF2-exported -> Driver 11 path reaches this. laxity_analyzer.py:596
+        # passes `sequences=[]`, so the native Laxity path does NOT -- which is
+        # why the 99.93-100% figure is unaffected by this.
+        # Pinned by pyscript/test_driver11_section_injectors.py.
         DEFAULT_DURATION = 0x80
 
         for event in seq:
