@@ -207,6 +207,94 @@ windowed−strict gap is the pitch-carrier signal; report both, always
 ([PATTERNS.md](PATTERNS.md) D4). E and V select their timing model per file
 by strict agreement (D5).
 
+## `Barbers_Adagio_64` cannot be siddumped -- and it is NOT untraceable (2026-09-01, task `barbers-adagio-64-siddump-rc1`)
+
+The 728-file `$D418` blindness sweep hit exactly one error, and this is it:
+`SID/Gallefoss_Glenn/Barbers_Adagio_64.sid`, `RuntimeError, siddump failed
+(rc=1)`. Unmeasured is not measured-zero, so the cause is written down here
+rather than left as a footnote.
+
+**THE CAUSE IS A BUSY-WAIT ON `$D012`, and siddump has no VIC.** The file is
+an RSID declaring `play=$0000`, so siddump takes its interrupt-vector fallback
+(`siddump_complete.py:664`) -- `$01 & 7 == 5`, so it reads `$FFFE/$FFFF` and
+recovers `$2708`. That much works. What it recovers is not a per-frame play
+routine but one link of a **4x multispeed raster-split chain**:
+
+```
+$2700  A2 00      LDX #$00
+$2702  8E FF 26   STX $26FF        ; split counter := 0
+$2705  4C 00 10   JMP $1000        ; <- the REAL init
+$2708  48 98 48 8A 48              ; PHA/TYA/PHA/TXA/PHA
+$270D  AD FF 26   LDA $26FF
+$2710  C9 04      CMP #$04
+$2712  D0 0B      BNE $271F        ; not the 4th split yet
+$2714  A9 00      LDA #$00
+$2716  8D FF 26   STA $26FF
+$2719  68 A8 68 AA 68 40           ; restore + RTI  (frame done)
+$271F  AE FF 26   LDX $26FF
+$2722  BD 51 27   LDA $2751,X      ; raster-line table: $08 $56 $A4 $F2
+$2725  CD 12 D0   CMP $D012
+$2728  B0 F8      BCS $2722        ; <<-- SPINS until the raster passes
+$272A  EE 19 D0   INC $D019
+$272D  AE FF 26   LDX $26FF
+$2730  BD 55 27   LDA $2755,X
+$2733  8D 37 27   STA $2737        ; self-modifies the operand below
+$2736  20 03 10   JSR $1003        ; <- the REAL play, called 4x per frame
+$2739  EE FF 26   INC $26FF
+$273C  4C 0D 27   JMP $270D
+$2740  A9 35 85 01                 ; INIT (header): $01 := $35
+$2744  A9 27 A2 08 8D FF FF 8E FE FF   ; $FFFE/$FFFF := $2708
+$274E  4C 00 27   JMP $2700
+```
+
+`$D012` is a constant in siddump's CPU, so `BCS $2722` at `$2728` never falls
+through and the `MAX_INSTR` guard fires. The tool is reporting honestly; it
+simply cannot drive a raster-timed player.
+
+**TWO PLAUSIBLE CAUSES WERE MEASURED AND BOTH ARE REFUTED.** Neither was
+assumed away:
+
+- *"`play=$0000` is untraceable."* No. `SID/Gallefoss_Glenn/` holds **22** RSID
+  files with `play=$0000` and **21 of 22 trace fine** under `siddump -t5`
+  (rc=0, 240 rows each). Barbers is the sole failure. The vector fallback works.
+- *"referencing `$D012` is the tell."* No. **11 of those 21 working files also
+  read `$D012`** near their recovered play address and trace fine. Reading it
+  is harmless; **branching back on it** is not. The discriminator is the loop at
+  `$2728`, not the register.
+
+**AND THE FILE IS NOT BROKEN -- zig64 traces it, at either entry point.** Its
+`$1000` is an ordinary 3-byte jump table (`$1000: JMP $261A` init,
+`$1003: JMP $17A6` play), which is the usual Gallefoss shape:
+
+```
+$ sidm2-sid-trace.exe barbers.prg 200 2740 2708 0    rc=0   3515 CSV rows
+$ sidm2-sid-trace.exe barbers.prg 200 1000 1003 0    rc=0   1376 CSV rows
+```
+
+zig64 is cycle-accurate, so its `$D012` advances and the wait terminates. The
+2.6x row difference is the 4x multispeed: the wrapper calls `$1003` four times
+per frame, so tracing at `$2740/$2708` measures the tune as it actually sounds
+while `$1000/$1003` measures one call per frame.
+
+**SO THE ANSWER IS THE THIRD OPTION: it needs different init/play arguments,
+and siddump has no way to accept them.** `siddump_complete.py` exposes `-a`
+(subtune) and nothing for init or play, so there is no invocation of it that
+traces this file. The gap is the CLI, not the rip. Scoring Barbers needs either
+an init/play override on siddump or the zig64 path, and until one is wired its
+`$D418` behaviour stays **unmeasured** -- deliberately, and visibly.
+
+*Do not "fix" this by widening a sweep's exception handling.* The sweep
+reporting one hard error out of 728 is the system working.
+
+> **DO NOT CONFLATE THIS 21/22 WITH THE ONE IN CLAUDE.md.** CLAUDE.md's
+> RSID-escape-hatch note says the VICE wrapper "traces **21 of SIDM2's 22**".
+> That is a different tool over a different population and the numbers coincide
+> by accident. The 21/22 above is **siddump** over the **22 RSID `play=$0000`
+> files in `SID/Gallefoss_Glenn/` alone**; tree-wide there are **101** such
+> files across 13 directories (Hubbard 18, Tel 16, Gray 10, Laxity 7, Galway 5,
+> ...), so 22 is not the tree-wide count either. I checked this expecting the
+> two populations to be the same set and they are not.
+
 ## Open items
 
 - **E conduct program**: decoded (the ghost 4th channel writes a global
