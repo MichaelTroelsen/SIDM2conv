@@ -825,3 +825,99 @@ def test_flags_are_part_of_the_identity_not_decoration(tmp_path):
     census, _ = FC.provenance_census([a, b])
 
     assert len(census) == 2
+
+
+# ---------------------------------------------------------------------------
+# bundle diversity — the empty-trace discriminator
+#
+# The control is a REAL artifact on disk, out/dmc/EMPTYTRACE_CONTROL_part01.sf2,
+# built by running the DMC builder with the trace stubbed to a constant. It is
+# not a fixture these tests construct, because the thing under test is whether
+# a BUILDER's output collapses, and a hand-written .sf2 would only prove the
+# parser reads what the test wrote. Tests skip if either file is absent so a
+# fresh clone without out/ still runs green.
+# ---------------------------------------------------------------------------
+
+
+def _artifact(*parts):
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(here, *parts)
+
+
+def _skip_missing(path):
+    if not os.path.exists(path):
+        pytest.skip("artifact not present in this tree: %s" % path)
+    return path
+
+
+def test_bundle_diversity_separates_a_certified_build_from_a_dead_trace():
+    """THE MEASURE'S REASON TO EXIST, on the two files it was calibrated against.
+
+    Balloon is certified 100/100/100 in CLAUDE.md. The control was built from a
+    trace of the right length carrying no information. If these two ever stop
+    separating, the screen is worthless and should be deleted rather than
+    trusted.
+    """
+    from sidm2.fidelity_common import bundle_diversity
+    good = bundle_diversity(_skip_missing(_artifact("out", "dmc", "Balloon_part01.sf2")))
+    dead = bundle_diversity(_skip_missing(
+        _artifact("out", "dmc", "EMPTYTRACE_CONTROL_part01.sf2")))
+    assert good is not None and dead is not None
+    assert dead["bundles"] < good["bundles"], (
+        "the dead-trace control (%d) must carry fewer bundles than a certified "
+        "build (%d)" % (dead["bundles"], good["bundles"]))
+    # Not merely "fewer" -- the measured gap is 2 vs 24, and the corpus floor
+    # across 63 one-part artifacts is 10. A screen that only just separates
+    # them would flag healthy builds.
+    assert dead["bundles"] <= 5 < 10 <= good["bundles"]
+
+
+def test_the_NOTES_TO_BUNDLES_RATIO_is_refuted_and_must_not_be_used():
+    """THE PRESCRIBED MEASURE WAS WRONG, pinned so nobody re-derives it.
+
+    The task asked to "flag any whose notes outnumber its bundles implausibly".
+    Measured, that ranks the certified build as WORSE than the dead-trace
+    control, because the ratio is dominated by song length and a dead trace
+    does not change song length. This test asserts the refutation, so a future
+    change that reintroduces the ratio has to argue with a number.
+    """
+    from sidm2.fidelity_common import bundle_diversity
+    good = bundle_diversity(_skip_missing(_artifact("out", "dmc", "Balloon_part01.sf2")))
+    dead = bundle_diversity(_skip_missing(
+        _artifact("out", "dmc", "EMPTYTRACE_CONTROL_part01.sf2")))
+    r_good = good["notes"] / good["bundles"]
+    r_dead = dead["notes"] / dead["bundles"]
+    assert r_good > r_dead, (
+        "the ratio no longer misranks (good %.1f, dead %.1f) -- re-measure "
+        "before trusting it; it was 280.5 vs 212.0 when this was written"
+        % (r_good, r_dead))
+
+
+def test_an_unparseable_artifact_is_UNMEASURED_not_collapsed():
+    """None is not False, and it is not True either.
+
+    SF2Parser reports a missing file by PRINTING and returning, not by raising,
+    so an absent path arrives with zero tables. The first version of
+    bundle_diversity scored that as bundles=0 and `bundle_collapse` returned
+    True -- flagging a file that was never read as the worst artifact in the
+    corpus. That is the exact unmeasured/measured-zero conflation the audit
+    this feeds exists to prevent, committed inside the tool built to prevent it.
+    """
+    from sidm2.fidelity_common import bundle_diversity, bundle_collapse
+    missing = _artifact("out", "dmc", "__no_such_artifact__.sf2")
+    assert not os.path.exists(missing)
+    assert bundle_diversity(missing) is None
+    assert bundle_collapse(missing) is None
+
+
+def test_the_floor_sits_below_every_real_build_it_was_measured_against():
+    """BUNDLE_FLOOR is a measured floor, not a tuned one.
+
+    63 shipped one-part artifacts across six corpora: min 10, median 33, max 70.
+    The floor is 5 -- below the real minimum, so it catches a collapse without
+    ranking healthy builds. If someone raises it to "catch more", this fails.
+    """
+    from sidm2.fidelity_common import BUNDLE_FLOOR
+    assert BUNDLE_FLOOR < 10, (
+        "BUNDLE_FLOOR (%d) has been raised to or above the measured corpus "
+        "minimum of 10 -- it would now flag real builds" % BUNDLE_FLOOR)

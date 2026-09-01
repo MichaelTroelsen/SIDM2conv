@@ -858,6 +858,118 @@ def build_provenance(build_path):
     return None
 
 
+# ---------------------------------------------------------------------------
+# bundle diversity — did this artifact get a REAL trace, or an empty one?
+# ---------------------------------------------------------------------------
+
+# The lowest bundle count measured across 63 shipped one-part artifacts in
+# out/{dmc,fc,hardtrack_native,mon,sdi,soundmonitor}: min 10, median 33, max 70.
+# The synthetic degenerate-trace control scored 2, and NOTHING real scored <= 5.
+# This is a MEASURED floor, not a chosen threshold, and it is deliberately set
+# below the real minimum rather than at it — the job is to catch a collapse, not
+# to rank healthy builds.
+BUNDLE_FLOOR = 5
+
+_PROGRAM_TABLES = ("Wave", "Pulse", "Filter")
+
+
+def bundle_diversity(build_path):
+    """Distinct (FM, pulse, filter) program rows an artifact actually carries.
+
+    Returns {'notes', 'bundles', 'per_table'} or None if the file will not
+    parse. `bundles` is the count of DISTINCT non-zero rows summed over the
+    artifact's wave/pulse/filter program tables — the per-note timbre data the
+    native builders derive FROM THE TRACE. Notes and orderlists come from the
+    module decode instead, so they survive a dead trace; the program tables do
+    not, and that asymmetry is the whole reason this works.
+
+    WHY THIS EXISTS. dd67bee let a FAILED siddump return '' silently. An empty
+    trace is not inert: `fits()` sees counts under every cap and packs a whole
+    song into ONE part, emitting a wrong artifact with rc=0 that then scores
+    clean. `run_siddump` now raises and build_native_song refuses an empty
+    trace outright, so the class is closed GOING FORWARD — but artifacts built
+    before those guards are still on disk, and only their CONTENT can settle
+    them.
+
+    THE NOTES:BUNDLES RATIO IS REFUTED — DO NOT USE IT. The task that asked for
+    this measure prescribed "flag any whose notes outnumber its bundles
+    implausibly". Measured, that ranks the control as HEALTHIER than a
+    certified build: Balloon (100/100/100) has 6732 notes over 24 bundles for a
+    ratio of 280.5, and the degenerate-trace control has 424 notes over 2
+    bundles for 212.0. The ratio is dominated by song length, which is exactly
+    what a dead trace does not change. Use the ABSOLUTE bundle count.
+
+    WHAT IT DOES NOT DO: it is a screen, not a verdict. A build whose trace was
+    partially empty, or empty for one voice, can still clear the floor. A count
+    above BUNDLE_FLOOR means "not the collapse this looks for", never "correct".
+    """
+    import sys
+    import os
+    _here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "pyscript")
+    if _here not in sys.path:
+        sys.path.append(_here)
+    try:
+        from sf2_viewer_core import SF2Parser
+    except ImportError:
+        return None
+    try:
+        p = SF2Parser(build_path)
+        p.parse()
+    except Exception:                                          # noqa: BLE001
+        return None
+
+    seqs = p.sequences or {}
+    if isinstance(seqs, dict):
+        seqs = list(seqs.values())
+    notes = 0
+    for s in seqs:
+        for e in s:
+            n = getattr(e, "note", None)
+            # $7F ends a sequence and $FF is an empty row; neither is a note.
+            if n is not None and n < 0x7E:
+                notes += 1
+
+    picked = {}
+    for d in (p.table_descriptors or []):
+        key = (getattr(d, "name", None), getattr(d, "id", None))
+        # The descriptor list repeats every table twice; keep the first.
+        if key[0] in _PROGRAM_TABLES and key not in picked:
+            picked[key] = d
+    per_table = {}
+    for (name, tid), d in sorted(picked.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        try:
+            rows = p.get_table_data(d) or []
+        except Exception:                                      # noqa: BLE001
+            continue
+        nz = [tuple(r) for r in rows if any(r)]
+        per_table["%s%s" % (name, tid)] = (len(nz), len(set(nz)))
+    if not per_table:
+        # NO program table was read at all. That is UNMEASURABLE, not a
+        # collapse, and the difference is the whole point of this measure --
+        # SF2Parser reports a missing or malformed file by printing and
+        # returning, not by raising, so an absent path otherwise arrives here
+        # as bundles=0 and scores as the worst possible artifact. The first
+        # version of this function did exactly that on a nonexistent path.
+        return None
+    bundles = sum(v[1] for v in per_table.values())
+    return {"notes": notes, "bundles": bundles, "per_table": per_table}
+
+
+def bundle_collapse(build_path, floor=BUNDLE_FLOOR):
+    """True if this artifact's program tables collapsed; None if unmeasurable.
+
+    None is NOT False. An artifact that will not parse is UNSCREENED, and the
+    audit this feeds exists precisely because unmeasured and measured-clean
+    were being conflated.
+    """
+    m = bundle_diversity(build_path)
+    if m is None:
+        return None
+    return m["bundles"] <= floor
+
+
+
 def provenance_census(build_paths):
     """Group artifacts by their (commit, tree, flags) stamp.
 
