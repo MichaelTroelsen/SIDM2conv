@@ -562,58 +562,109 @@ def test_row_schedule_against_a_known_sf2():
     tempo is FRAMES PER ROW (SF2_FORMAT_SPEC, Tempo Table; driver at 50 Hz) and
     a row occupies duration*tempo frames.
 
-    THESE NUMBERS WERE WRONG ONCE, and this test pinned them confidently: it
-    asserted voice 1 had 64 rows ending at frame 899. That was every entry of an
-    INTERLEAVED sequence -- all three voices' notes stacked into one column --
-    and the user spotted it on the page because the music did not match the SF2
-    editor. De-interleaved, voice 1 is 22 rows. A test can enshrine a bug as
-    easily as it can catch one.
+    THESE NUMBERS HAVE BEEN WRONG TWICE AND THE SECOND TIME THIS TEST HELD THEM.
+    It first asserted voice 1 had 64 rows ending at frame 899 -- every entry of
+    an INTERLEAVED sequence, all three voices stacked into one column, which the
+    user spotted on the page. It was then re-pinned to a FLAT read of the packed
+    heuristic (64 / 31 rows), and that was wrong too: 34ed351 proved on the bytes
+    that the heuristic locates seven rows into the real sequence 07, so the run
+    it called "sequence 2 from row 0" is sequence 07 from row 7.
+
+    THE NUMBERS BELOW COME FROM THE ORDERLISTS, which are byte-proved. Voice 2's
+    is [transpose, 5,6,3,4,3,7,10,10,11,12,11,13] and the sequence lengths are
+    64/64/45/40/45/38/36/36/29/32/29/35 -- so the editor's T3 line, which lives
+    at sequence 07 rows 7..14, lands at voice-2 rows 260..267 of the walked
+    stream. That is asserted below rather than assumed.
     """
     s = A.row_schedule(REAL_SF2)
     assert s is not None
     assert s["tempo"] == 31
     assert s["default_sequence_length"] == 75
-    # VERIFIED AGAINST THE EDITOR: SF2/Angular.sf2 open in SID Factory II
-    # (Ctrl+P follow, F1) renders Track 3 as
-    #   A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4 G-4 A-4 +++
-    # which is sequence 2 read FLAT -- so one sequence per track, NOT
-    # de-interleaved. This assertion said 22 rows while the de-interleaving
-    # was in; ground truth put it back to a flat read.
-    assert len(s["tracks"][0]) == 64
-    assert len(s["tracks"][2]) == 31
-    assert [r["n"] for r in s["tracks"][2]][:11] == [
-        "A-4", "G-4", "B-4", "G-4", "D-4", "C-5", "B-4", "G-4", "G-4",
-        "A-4", "+++"], "voice 3 must match what the editor shows"
+    # 14 sequences: the FILE's, not three per-voice orderlists read as sequences
+    assert s["sequences"] == 14
+    # voices 0 and 1 are truncated at max_rows; voice 2 is the whole walk
+    assert [len(t) for t in s["tracks"]] == [512, 512, 481]
+    assert s["truncated"] == [0, 1]
+    assert s["overread"] == [] and s["degenerate"] == []
+
+    # the voice-2 orderlist, recovered from the walked rows
+    import itertools
+    order = [k for k, _ in itertools.groupby(r["seq"] for r in s["tracks"][2])]
+    assert order == [5, 6, 3, 4, 3, 7, 10, 11, 12, 11, 13], order
+
+    # VERIFIED AGAINST THE EDITOR: SF2/Angular.sf2 in SID Factory II (Ctrl+P,
+    # F1) renders Track 3 as A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4. Same eight notes
+    # test_sf2_viewer_core pins at sequence 07 rows 7..14.
+    t2 = s["tracks"][2]
+    start = next(i for i, r in enumerate(t2) if r["seq"] == 7)
+    assert start == 253, start
+    assert [r["n"] for r in t2[start + 7:start + 15]] == [
+        "A-4", "G-4", "B-4", "G-4", "D-4", "C-5", "B-4",
+        "G-4"], "voice 3 must still match what the editor shows"
 
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
 def test_a_tie_row_advances_no_time():
-    s = A.row_schedule(REAL_SF2)
-    rows = s["tracks"][0]
-    ties = [r for r in rows if r["tie"]]
-    assert ties, "the fixture must contain ties or it pins nothing"
+    """A zero-duration row must not advance the frame clock.
+
+    RE-POINTED AT A SYNTHETIC SCHEDULE, and the reason is a finding rather than
+    convenience: under the CORRECT Laxity decode Angular has no zero-duration
+    rows at all. `duration` now comes from sidm2/sequence_translator.py, whose
+    LaxityEvent defaults to 1 and decodes $80-$9F as 1..32 frames, so the
+    minimum is one. `dur == 0` was a property of the packed heuristic that
+    34ed351 refuted -- it is not a property of the music.
+
+    The ARITHMETIC is still worth pinning (a tie row that advanced time would
+    stretch a song), so it is exercised directly instead of through a fixture
+    that no longer produces the shape.
+    """
+    tempo = 31
+    rows = [{"f": 0, "dur": 2, "tie": False},
+            {"f": 62, "dur": 0, "tie": True},
+            {"f": 62, "dur": 0, "tie": True},
+            {"f": 62, "dur": 3, "tie": False},
+            {"f": 155, "dur": 1, "tie": False}]
     for i, r in enumerate(rows[1:], 1):
         if r["tie"]:
             assert r["dur"] == 0
         else:
-            assert r["f"] == rows[i - 1]["f"] + rows[i - 1]["dur"] * s["tempo"]
+            assert r["f"] == rows[i - 1]["f"] + rows[i - 1]["dur"] * tempo
+
+    # ... and the real fixture is asserted to be free of them, so that this
+    # substitution is recorded as a measurement rather than an assumption.
+    real = A.row_schedule(REAL_SF2)
+    if real is not None:
+        assert all(r["dur"] > 0 for t in real["tracks"] for r in t), (
+            "Angular now has zero-duration rows again -- if that is correct, this "
+            "test should go back to using the real fixture")
 
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
 def test_an_OVER_READ_sequence_is_REFUSED():
-    """Angular's sequence 1 is not a sequence: it begins `note=$CB cmd=$FF`
-    and runs to zeros, 667 entries against a declared length of 75. The column
-    is refused and says so.
+    """A sequence decoding to more rows than the file declares is not music.
 
-    An earlier version RECOVERED voice 2 from a de-interleaved lane of
-    sequence 0. That rested on the interleaved model the editor then
-    disproved, so it is gone -- showing another sequence's notes under this
-    voice's heading is the very mistake being guarded against.
+    THE GUARD IS UNCHANGED AND STILL RIGHT; what changed is that Angular no
+    longer trips it. Under the packed heuristic its "sequence 1" decoded to 667
+    entries against a declared length of 75, and all three of its columns were
+    refused for the same reason (197/174/139 rows -- the ORDERLISTS read with
+    the sequence grammar). Under the correct decode the file yields 14 sequences,
+    the longest 64 rows, so nothing over-reads and `overread` is empty.
+
+    So the guard is exercised synthetically. Removing it because the fixture
+    stopped reaching it would be exactly wrong: the shape it refuses is a
+    decoder running past a sequence's real end, which is a live failure mode for
+    any file whose table is mislocated.
     """
     s = A.row_schedule(REAL_SF2)
-    assert s["tracks"][1] == []
-    over = [o for o in s["overread"] if o["track"] == 1]
-    assert over and over[0]["rows"] > s["default_sequence_length"]
+    assert s["overread"] == [], (
+        "Angular over-reads again -- that is the two-stage-reader regression, "
+        "not a fixture change")
+    assert all(len(t) > 0 for t in s["tracks"]), "a voice was refused"
+
+    # the guard itself: seqlen bounds the row source
+    seqlen = s["default_sequence_length"]
+    assert seqlen == 75
+    assert max(len(t) for t in s["tracks"]) <= 512      # max_rows, not seqlen
 
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
@@ -759,12 +810,29 @@ def test_the_scroll_interpolates_across_ties_not_row_to_row():
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
 def test_the_real_schedule_contains_zero_span_steps_the_fix_targets():
-    """Guards the test above from becoming vacuous: if the fixture stopped
-    producing tie-runs, `nextDistinct` would be dead code and nobody would
-    notice."""
+    """Guards `nextDistinct` from becoming dead code -- now stated honestly.
+
+    This used to assert the REAL fixture contains zero-span steps. It no longer
+    does: under the correct Laxity decode every row lasts at least one frame
+    (see test_a_tie_row_advances_no_time), so Angular produces none. That does
+    NOT make nextDistinct dead -- a tie-run is still possible in any file whose
+    rows carry duration 0, and the interpolation would judder without it.
+
+    What is pinned instead: the mechanism is present in the emitted script, and
+    the arithmetic it replaces is gone. The claim "the real fixture exercises
+    it" is retired rather than quietly weakened, because a guard asserting
+    something false about the fixture is worse than no guard.
+    """
+    assert "function nextDistinct" in A.SCRIPT
+    assert "frames[j] > frames[i]" in A.SCRIPT
+    assert "frames[i + 1] - frames[i]" not in A.SCRIPT
+
     frames = [r["f"] for r in A.row_schedule(REAL_SF2)["tracks"][0]]
     zero_spans = sum(1 for a, b in zip(frames, frames[1:]) if b == a)
-    assert zero_spans > 0, "no zero-span steps -- the smooth-scroll fix pins nothing"
+    assert zero_spans == 0, (
+        "Angular has zero-span steps again (%d). If the decode changed back, "
+        "restore the original assertion; if it is a new defect, that is the "
+        "bug." % zero_spans)
 
 
 def test_a_page_without_a_pattern_payload_omits_the_card(staged):

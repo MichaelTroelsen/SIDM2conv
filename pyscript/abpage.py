@@ -1606,6 +1606,59 @@ def voicewave_card(voice_map: dict) -> str:
         '</div>\n' % (strips, OURS_LABEL))
 
 
+def _laxity_real_sequences(p) -> bool:
+    """Opt a Laxity SF2 into the reader that decodes its REAL sequences.
+
+    WHY FROM THE CONSUMER SIDE. sf2_viewer_core still runs
+    `_parse_packed_sequences_laxity_sf2()` first, and it SUCCEEDS WITH GARBAGE,
+    so the correct reader below it never runs. Flipping that dispatch inside the
+    parser is a separate task (`laxity-dispatch-flip-needs-abpage-row-schedule`)
+    because it changes what `self.sequences` means for six importing modules;
+    asking for the right decode here changes it for this consumer only.
+
+    WHAT THE WRONG DECODE LOOKS LIKE, so this is not taken on faith: the
+    dispatched reader hands us three "sequences" of 197/174/139 rows on
+    SF2/Angular.sf2. Those are the three ORDERLISTS read with the SEQUENCE
+    grammar -- proved on the bytes in 34ed351 / docs/players/LAXITY.md. An
+    orderlist is `transpose, sequence numbers..., $FF` and is 14 bytes here, but
+    `_extract_sequence_at_address` terminates on $7F, so it runs past the $FF and
+    keeps eating the file. All three then exceed the file's own
+    default_sequence_length of 75 and every column is refused.
+
+    IDEMPOTENT ON PURPOSE: once the parser's own dispatch is flipped it will have
+    populated `laxity_orderlists` itself and this becomes a no-op, not a second
+    decode.
+    """
+    if getattr(p, "laxity_orderlists", None):
+        return True                          # the parser already did it
+    if not getattr(p, "is_laxity_driver", False):
+        return False
+    fn = getattr(p, "_parse_laxity_real_sequences", None)
+    if fn is None:
+        return False                         # older parser -- leave it alone
+    try:
+        return bool(fn())
+    except Exception:                                     # noqa: BLE001
+        return False
+
+
+def _track_orderlists(p) -> list:
+    """Per-voice orderlists as `[{"sequence": n}, ...]`, whichever reader ran.
+
+    A Laxity orderlist is a TRANSPOSE BYTE followed by sequence numbers, so entry
+    0 is dropped -- it is not a sequence index, and walking it as one is what put
+    another sequence's notes under a voice's heading before. The $FF terminator is
+    already stripped by the parser's reader.
+
+    Falls back to `orderlist_unpacked` for every non-Laxity file, which is the
+    only shape Driver 11 and the rest have ever had.
+    """
+    ols = getattr(p, "laxity_orderlists", None) or []
+    if ols:
+        return [[{"sequence": int(n)} for n in (ol or [])[1:]] for ol in ols]
+    return list(p.orderlist_unpacked or [])
+
+
 def row_schedule(sf2_path: Path, max_rows: int = 512) -> dict | None:
     """Per-track rows with the frame each one starts on, read from the SF2.
 
@@ -1658,11 +1711,12 @@ def row_schedule(sf2_path: Path, max_rows: int = 512) -> dict | None:
     tempo = int(getattr(mdi, "default_tempo", 0) or 0)
     if tempo <= 0:
         return None
+    _laxity_real_sequences(p)
     seqs = p.sequences or {}
     fmts = getattr(p, "sequence_formats", {}) or {}
     seqlen = int(getattr(mdi, "default_sequence_length", 0) or 0)
     tracks, degenerate, truncated, overread, fallback = [], [], [], [], []
-    for tno, entries in enumerate((p.orderlist_unpacked or [])[:3]):
+    for tno, entries in enumerate(_track_orderlists(p)[:3]):
         rows, frame, cut = [], 0, False
         for ent in entries or []:
             sidx = ent.get("sequence")
