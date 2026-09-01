@@ -1544,12 +1544,35 @@ class SF2Parser:
         # pyscript/abpage.py's row_schedule does `instrument >= 0xA0` and raises
         # TypeError on None. The two-stage reader never hit this because the
         # orderlist bodies it decoded always set both; real sequence bodies do not.
+        # DURATION COMES FROM THE DECODER, NOT FROM A CONSTANT. This used to pass
+        # duration=0 for every event, which made every column zero-advance: a
+        # consumer summing duration*tempo got 0 frames for the whole song, and
+        # pyscript/abpage.py's row_schedule correctly refused all three voices as
+        # degenerate. Measured before this change: Counter({0: 607}) over all 14
+        # of Angular's sequences.
+        #
+        # The value is NOT invented here and NOT fitted -- LaxityEvent.duration is
+        # decoded by sidm2/sequence_translator.py:233 from the $80-$9F byte, and
+        # its dataclass default is 1 (one frame), so an event carrying no duration
+        # byte yields one row rather than zero. Passing it through uses the
+        # grammar's own answer; hardcoding 0 discarded it.
+        #
+        # ONE DISCREPANCY LEFT OPEN RATHER THAN SILENTLY PICKED, because both
+        # readings live in this repo and they disagree about the same byte range:
+        #   sequence_translator.py:233   (byte & 0x1F) + 1   -> 1..32 frames, no tie
+        #   this file's unpack_sequence  value & 0x0F        -> 0..15, bit 4 = tie
+        # and CLAUDE.md's Laxity constants call $80 GATE_OFF, not a duration at
+        # all. Three readings, and choosing between them is not this change: what
+        # ships here is "use the decoder's value instead of a constant", which is
+        # an improvement under any of them. See
+        # laxity-duration-byte-has-three-conflicting-readings.
         def _entry(e):
             return SequenceEntry(
                 note=e.note or 0,
                 instrument=0 if e.instrument is None else e.instrument,
                 command=0 if e.command is None else e.command,
-                param1=0, param2=0, duration=0)
+                param1=0, param2=0,
+                duration=int(getattr(e, "duration", 1) or 0))
 
         for idx, events in decoded.items():
             self.sequences[idx] = [_entry(e) for e in events]

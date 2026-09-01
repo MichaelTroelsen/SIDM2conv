@@ -327,3 +327,45 @@ def test_the_two_stage_reader_declines_rather_than_returning_empty():
     p.sequences = {}
     assert p._parse_laxity_two_stage() is False
     assert p.sequences == {}
+
+
+def test_real_sequences_carry_the_decoded_duration_not_a_constant():
+    """The precondition abpage's row_schedule was blocked on.
+
+    _entry() used to pass duration=0 for every event, so every column summed to
+    zero frames and row_schedule refused all three voices as DEGENERATE. Measured
+    before the fix: Counter({0: 607}) across all 14 of Angular's sequences.
+
+    This asserts the value is DECODED, not defaulted: a spread of distinct
+    durations, and specifically some greater than 1, because a uniform 1 is what
+    a fitted "one row per event" constant would also produce. The decode itself
+    lives in sidm2/sequence_translator.py:233 -- outside this module, which is
+    what makes it ground truth rather than a number chosen here.
+    """
+    p = _angular_real_sequences()
+    durs = [e.duration for s in p.sequences.values() for e in s]
+    assert durs, "no events decoded at all -- the test is vacuous"
+    assert len(set(durs)) > 1, (
+        "every duration is %r -- _entry() is passing a constant again, and every "
+        "consumer summing duration*tempo will read the song as zero-length"
+        % sorted(set(durs)))
+    assert max(durs) > 1, "no event lasts more than one frame; that is a flat constant"
+    assert min(durs) >= 0 and all(isinstance(d, int) for d in durs)
+
+
+def test_the_duration_fix_did_not_move_the_editor_ground_truth():
+    """Durations and pitches are independent, and this pins that they stayed so.
+
+    The risk in touching _entry() is shifting the note stream by a row while
+    making the durations look right. Sequence 07 rows 7..14 are the SF2II
+    capture (Ctrl+P, F1) and must be byte-identical to what
+    test_angular_ground_truth_matches_the_sf2ii_editor_capture already asserts.
+    """
+    names = "C C# D D# E F F# G G# A A# B".split()
+
+    def nm(v):
+        return "+++" if not v else "%s-%d" % (names[v % 12], v // 12)
+
+    p = _angular_real_sequences()
+    rows = [nm(e.note) for e in p.sequences[7]]
+    assert rows[7:15] == ["A-4", "G-4", "B-4", "G-4", "D-4", "C-5", "B-4", "G-4"], rows[:16]
