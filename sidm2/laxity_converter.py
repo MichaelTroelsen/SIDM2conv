@@ -13,7 +13,8 @@ class LaxityConverter:
     """Convert Laxity SID files to SF2 using custom driver."""
 
     # Driver memory layout
-    DRIVER_PATH = Path('./drivers/laxity/sf2driver_laxity_00.prg')
+    # Anchored on __file__, not cwd: sidm2/laxity_converter.py -> repo_root/drivers/laxity/...
+    DRIVER_PATH = Path(__file__).resolve().parent.parent / 'drivers' / 'laxity' / 'sf2driver_laxity_00.prg'
 
     # Music data addresses (where tables are injected)
     SEQUENCE_ADDR = 0x1900
