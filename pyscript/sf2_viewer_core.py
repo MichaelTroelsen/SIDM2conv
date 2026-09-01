@@ -17,6 +17,40 @@ logger = logging.getLogger(__name__)
 # Add sidm2 to path for Laxity parser import
 sys.path.insert(0, str(Path(__file__).parent.parent / 'sidm2'))
 sys.path.insert(0, str(Path(__file__).parent / 'sidm2'))
+# ...AND THE REPO ROOT, because the two lines above are not enough and their
+# absence silently downgraded this module's decode for the entire CLI.
+#
+# Those two add the sidm2 DIRECTORY, which satisfies `import laxity_parser`
+# (bare). But the seq-table imports below are PACKAGE imports --
+# `from sidm2.laxity_parser import ...` -- and those need the directory
+# CONTAINING sidm2, i.e. the repo root. Run under pytest or from an
+# interpreter whose cwd is the root, '' or the cwd is already on sys.path and
+# everything works. Run as a script (`python pyscript/abpage.py`), sys.path[0]
+# is pyscript/ and the root is absent, so LAXITY_SEQTABLE_AVAILABLE came out
+# False, _parse_laxity_real_sequences returned at its first line, and
+# _parse_music_data fell through to the packed heuristic.
+#
+# MEASURED, same file and same function, only sys.path differing:
+#     with the root    row_schedule(SF2/Angular.sf2) -> [512,512,481], 14 seqs
+#     without it                                     -> [64, 0, 31],    5 seqs
+# The second is the decode 34ed351 refuted on the bytes. So every page the A/B
+# tool built was using it while 3044 tests passed, because pytest puts rootdir
+# on sys.path and no in-process test can observe the difference. Pinned by
+# test_the_seqtable_imports_survive_a_bare_script_invocation, which shells out.
+# APPENDED rather than inserted at 0, as a DEFENSIVE choice: this directory is
+# itself named `sidm2`, so prepending it would let a bare `import X` resolve to
+# a repo-root sibling ahead of the intended module. Appending satisfies the
+# package import below without changing precedence for anything already
+# resolvable, which is strictly the smaller change.
+#
+# A CLAIM THIS COMMENT USED TO MAKE AND SHOULD NOT: I first wrote that
+# prepending BROKE 6 logging tests in test_stage7_emissions.py. That was a bad
+# attribution. Those 6 are a PRE-EXISTING order-dependent flake -- the failing
+# SUBSET changed between two runs (PATTERNS.md F12's own tell), and the full
+# suite is 3046/0 with `-p no:randomly` and this insert in place. Switching to
+# append did not change the failure count. The flake is real and separate; see
+# test-stage7-emissions-order-dependent-logging-flake.
+sys.path.append(str(Path(__file__).parent.parent))
 try:
     from laxity_parser import LaxityParser, LaxityData
     LAXITY_PARSER_AVAILABLE = True
@@ -1780,18 +1814,38 @@ class SF2Parser:
         if self._detect_laxity_driver():
             self.is_laxity_driver = True
 
-            # _parse_laxity_real_sequences() IS DELIBERATELY NOT ROUTED HERE YET,
-            # and the reason is a contract change rather than a doubt about the
-            # decode. Everything below walks ch_seq_ptr, which points at
-            # ORDERLISTS, so self.sequences has always held THREE entries that
-            # consumers read as one-per-voice. The real table yields the FILE's
-            # sequences -- 14 for Angular -- which is the correct answer and a
-            # different shape. Routing it breaks pyscript/abpage.py's row_schedule
-            # (measured: 5 tests, "at least two voices must decode"), which needs
-            # to walk the orderlists to rebuild per-voice streams.
-            # The flip belongs to a task that may also write abpage.py.
+            # THE REAL SEQUENCE TABLE FIRST. Everything below walks ch_seq_ptr,
+            # which points at ORDERLISTS rather than sequences (proved on the
+            # bytes in 34ed351, derivation in docs/players/LAXITY.md), so those
+            # readers decode 14-byte orderlists with the SEQUENCE grammar, run
+            # past the $FF terminator, and yield Angular's 197/174/139 "events" --
+            # a row count of nothing.
+            #
+            # THIS CHANGES THE CONTRACT OF self.sequences and that was the reason
+            # it stayed unrouted: it used to hold THREE entries consumers read as
+            # one-per-voice, and now holds the FILE's sequences (14 for Angular),
+            # with the per-voice streams recoverable from self.laxity_orderlists.
+            # The consumer that actually walked it one-per-voice was
+            # pyscript/abpage.py's row_schedule, and it now walks the orderlists
+            # instead (0d28d81), which is what made this flip safe.
+            #
+            # THE OTHER CONSUMERS WERE CHECKED, not assumed. abpage_chips.py and
+            # passband_check.py never touch .sequences at all (they import this
+            # module for other things). sf2_html_exporter only ever takes len()
+            # and an isinstance-dict guard. sf2_viewer_gui:1117 and
+            # sf2_to_text_exporter:136/283/287/335 index it BY SEQUENCE NUMBER --
+            # `set(sequences.keys())`, `if sequence_idx not in sequences` -- so
+            # the flip should HELP them rather than hurt: under the old contract
+            # the keys were 0/1/2 while an orderlist names 01/02/05, so a lookup
+            # of 5 missed. Under the new one the file's own indices exist. That is
+            # a prediction from the code, not a measurement; nothing here renders
+            # a GUI or an export to confirm it.
+            if self._parse_laxity_real_sequences():
+                logger.info("Parsed %d sequences from the real Laxity sequence table",
+                            len(self.sequences))
+                return
 
-            # BOTH stages first. The packed-sequence scan below is a heuristic
+            # BOTH stages next. The packed-sequence scan below is a heuristic
             # and wins by returning True with plausible-looking garbage, so it
             # must not be reached while a real decode is available.
             if self._parse_laxity_two_stage():

@@ -230,31 +230,41 @@ def test_laxity_payload_refuses_when_the_load_is_above_the_player_base():
 
 
 def test_laxity_sf2_decodes_through_both_stages_not_the_packed_heuristic():
-    """Angular's SF2 must decode to the same shape as its raw SID.
+    """Angular's SF2 must decode through the REAL sequence table, not a heuristic.
 
-    Before: {0:64, 1:667, 2:24, 3:7, 4:30} from the packed-sequence heuristic --
-    sequence 1 over-reading to 667 entries against a declared length of 75, which
-    the A/B listening page had to refuse outright.
-    After: 197/174/139, which is exactly what SID/Angular.sid yields.
+    THREE DECODES HAVE OCCUPIED THIS DISPATCH and the history is the point, because
+    each looked plausible:
+      1. the packed-sequence heuristic -- {0:64, 1:667, 2:24, 3:7, 4:30}, with
+         sequence 1 over-reading to 667 entries against a declared length of 75,
+         which the A/B listening page had to refuse outright;
+      2. the two-stage decode -- 197/174/139, pinned here as CURRENT BEHAVIOUR
+         rather than as correct, because ch_seq_ptr points at ORDERLISTS
+         (docs/players/LAXITY.md) and those three bodies are 14-byte orderlists
+         run through the sequence grammar, over-shooting their $FF because the
+         extractor stops on $7F;
+      3. the real sequence table -- 14 sequences, which is what the file has.
 
-    Counts, not note names. The decoded NOTES do not match the SF2II ground truth
-    (D-1/D#-1/F#-1 against the editor's C-4/A-3/A-4) and it is not yet known
-    whether that is the container-vs-payload sequence numbering mismatch or a real
-    decode error -- see sf2-sequence-numbering-differs-from-laxity-payload-indices.
-    Pinning the names here would pin a claim nobody has established.
+    The previous version of this test said "Update this when the dispatch flips."
+    It has flipped, and these are the file's own sequence lengths.
     """
     p = _parsed_sf2("Angular.sf2")
     assert p.is_laxity_driver
-    # THESE COUNTS ARE THE ORDERLISTS, NOT SEQUENCES, and they are pinned here as
-    # CURRENT BEHAVIOUR rather than as correct. ch_seq_ptr points at orderlists
-    # (docs/players/LAXITY.md), so these three bodies are orderlist bytes decoded
-    # with the sequence grammar, over-running their $FF terminator because the
-    # extractor stops on $7F. Angular really has 14 sequences, and
-    # _parse_laxity_real_sequences() decodes them -- it is not routed by default
-    # because that changes self.sequences from per-voice to per-file and breaks
-    # abpage's row_schedule. Update this when the dispatch flips.
     counts = [len(v) for _, v in sorted(p.sequences.items())]
-    assert counts == [197, 174, 139], counts
+    assert counts == [2, 48, 63, 45, 40, 64, 64, 38, 48, 63, 36, 29, 32, 35], counts
+
+    # NOT the two earlier decodes -- named so a silent revert is loud
+    assert counts != [197, 174, 139], "reverted to the two-stage orderlist decode"
+    assert 667 not in counts, "reverted to the packed heuristic's over-read"
+
+    # the orderlists are exposed AS orderlists, which is what makes the per-voice
+    # streams recoverable now that self.sequences is per-FILE
+    assert [ol[0] for ol in p.laxity_orderlists] == [0x87, 0x93, 0x87]
+    assert [ol[1] for ol in p.laxity_orderlists] == [0x01, 0x02, 0x05]
+
+    # every sequence is within the file's declared length, so nothing over-reads
+    dsl = p.music_data_info.default_sequence_length
+    assert dsl == 75
+    assert max(counts) <= dsl, counts
 
 
 def _angular_real_sequences():
@@ -369,3 +379,127 @@ def test_the_duration_fix_did_not_move_the_editor_ground_truth():
     p = _angular_real_sequences()
     rows = [nm(e.note) for e in p.sequences[7]]
     assert rows[7:15] == ["A-4", "G-4", "B-4", "G-4", "D-4", "C-5", "B-4", "G-4"], rows[:16]
+
+
+def test_default_sequence_length_is_a_DEFAULT_not_a_maximum():
+    """The prescribed fix for the over-read is REFUTED, and this pins why.
+
+    sf2-viewer-core-sequence-overread asked to "fix it at the parser using the
+    file's own default_sequence_length as the bound". That would truncate real
+    music. docs/reference/SF2_FORMAT_SPEC.md, "Contiguous Sequence Stacking":
+    "Sequences in each track can have different lengths - they stack like Tetris
+    blocks." So the field is the length a NEW sequence gets, not a cap.
+
+    Measured across SF2/: on files whose sequence table LOCATES, the bodies are
+    already bounded structurally by the next pointer, and their lengths straddle
+    dsl in both directions --
+
+        Cycles.sf2               dsl 13, lengths 2..65   (located)
+        Unboxed_Ending_8580.sf2  dsl 38, lengths 2..65   (located)
+        Angular.sf2              dsl 75, lengths 2..64   (located)
+
+    ANGULAR IS THE LUCKY CASE and that is the trap: its dsl happens to exceed its
+    longest sequence, which is the only reason `len > dsl` ever looked like a
+    valid guard. On Cycles the same test flags 4 correctly-decoded sequences.
+    """
+    p = _parsed_sf2("Angular.sf2")
+    dsl = p.music_data_info.default_sequence_length
+    assert dsl == 75
+    assert max(len(v) for v in p.sequences.values()) <= dsl, (
+        "Angular is expected to sit UNDER its dsl -- that coincidence is what the "
+        "rest of this test exists to stop anyone generalising from")
+
+    # the sequences are bounded by the TABLE, not by a length: consecutive
+    # pointers are what stops each body, which is why a length cap is the wrong
+    # instrument even where it would happen to work
+    addr, count, ptrs = p.laxity_seq_table
+    assert count == len(ptrs) == 14
+    assert all(ptrs[i + 1] > ptrs[i] for i in range(len(ptrs) - 1)), ptrs
+
+
+def test_a_located_file_may_legitimately_exceed_its_default_sequence_length():
+    """The counter-example to the length guard, on a real file.
+
+    If this file ever stops exceeding dsl, the evidence for the test above is
+    gone and the refutation needs re-checking rather than assuming.
+    """
+    import os
+    path = os.path.join(_ROOT, "SF2", "Cycles.sf2") if "_ROOT" in globals() else None
+    p = _parsed_sf2("Cycles.sf2")
+    dsl = p.music_data_info.default_sequence_length
+    assert dsl == 13, dsl
+    over = [k for k, v in p.sequences.items() if len(v) > dsl]
+    assert p.laxity_seq_table, "Cycles must LOCATE, or it is not evidence about located files"
+    assert len(over) >= 4, (
+        "Cycles no longer exceeds its dsl (%d over) -- re-check the claim that "
+        "default_sequence_length is not a maximum" % len(over))
+
+
+def test_the_seqtable_imports_survive_a_bare_script_invocation():
+    """THE ONLY TEST THAT CAN CATCH THIS, and it has to shell out.
+
+    sf2_viewer_core's seq-table imports are PACKAGE imports
+    (`from sidm2.laxity_parser import ...`), so they need the repo ROOT on
+    sys.path -- not the sidm2 directory, which is what the two older
+    sys.path.insert lines add. Under pytest, rootdir is already on sys.path, so
+    an in-process assertion CANNOT distinguish the working case from the broken
+    one. That is exactly how the defect shipped: 3044 tests green while every
+    page the CLI built used the refuted packed-heuristic decode.
+
+    Measured before the fix, same file and same function, only sys.path differing:
+        with the root  -> row_schedule(SF2/Angular.sf2) = [512,512,481], 14 seqs
+        without it     -> [64, 0, 31], 5 seqs   (the decode 34ed351 refuted)
+
+    So this test builds a script whose sys.path has cwd and '' REMOVED, runs it
+    in a subprocess, and asserts the flag is True there.
+    """
+    import subprocess
+    import tempfile
+    import textwrap
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = textwrap.dedent("""
+        import sys, os
+        sys.path.insert(0, os.path.join(%r, 'pyscript'))
+        for p in list(sys.path):
+            if p in ('', os.getcwd()):
+                sys.path.remove(p)
+        import sf2_viewer_core as V
+        print('SEQTABLE=%%s' %% V.LAXITY_SEQTABLE_AVAILABLE)
+    """ % str(root))
+    with tempfile.TemporaryDirectory() as td:
+        script = os.path.join(td, "probe_seqtable.py")
+        with open(script, "w", encoding="utf-8") as fh:
+            fh.write(src)
+        # cwd is the tempdir, NOT the repo root, so nothing puts the root on
+        # sys.path except the module's own insert.
+        r = subprocess.run([sys.executable, script], capture_output=True,
+                           text=True, cwd=td)
+    assert "SEQTABLE=True" in r.stdout, (
+        "the seq-table imports failed in a bare script context, so the real "
+        "Laxity reader is inert wherever the tool actually runs.\n"
+        "stdout=%r stderr=%r" % (r.stdout[-400:], r.stderr[-400:]))
+
+
+def test_the_repo_root_is_on_sys_path_from_this_module():
+    """Pins the mechanism, so the insert cannot be 'tidied' away as redundant.
+
+    It looks redundant -- two sibling inserts already mention sidm2 -- and that
+    is precisely why it needs a test: removing it breaks only the script path,
+    which no other test exercises.
+    """
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "sf2_viewer_core.py"), encoding="utf-8").read()
+    assert "sys.path.append(str(Path(__file__).parent.parent))" in src, (
+        "the repo-root sys.path entry is gone; the package imports below it "
+        "will fail in any bare-script context")
+    # APPEND, NOT insert(0) -- a defensive pin. This directory is itself named
+    # `sidm2`, so prepending the repo root would let a bare `import X` resolve to
+    # a repo-root sibling ahead of the intended module. NOTE: an earlier version
+    # of this comment blamed prepending for 6 red tests in
+    # test_stage7_emissions.py. That was wrong -- those are a pre-existing
+    # order-dependent flake (the failing subset changed between runs; the suite
+    # is 3046/0 under -p no:randomly either way).
+    assert "sys.path.insert(0, str(Path(__file__).parent.parent))" not in src, (
+        "the repo-root entry was changed back to insert(0), which shadows "
+        "sibling modules -- see test_stage7_emissions.py")
