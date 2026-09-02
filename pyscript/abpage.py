@@ -1659,10 +1659,38 @@ def _track_orderlists(p) -> list:
     return list(p.orderlist_unpacked or [])
 
 
-def row_schedule(sf2_path: Path, max_rows: int = 2048) -> dict | None:
+def row_schedule(sf2_path: Path, max_rows: int | None = None) -> dict | None:
     """Per-track rows with the frame each one starts on, read from the SF2.
 
-    max_rows DEFAULT WAS 512, WHICH TRUNCATED TWO OF ANGULAR'S THREE VOICES
+    max_rows DEFAULT IS NOW None -- NO CAP -- after two rounds of raising a
+    constant only to have the corpus outgrow it
+    (abpage-row-schedule-cap-still-truncates-four-files-at-2048). The prior
+    round raised 512 -> 2048 and was STILL wrong: swept over all 411 readable
+    .sf2 in SF2/ and out/ (`(ROOT/"SF2").glob("*.sf2")` + `(ROOT/"out").glob(
+    "*.sf2")`, TOP-LEVEL ONLY -- an rglob over the same roots picks up 8,753
+    files from nested build/pipeline output dirs and is NOT the corpus this
+    module or its tests mean), out/hawkeye_subtune_0.sf2 sat at EXACTLY 2048
+    on voice 0 -- clipped by the constant, same defect one threshold higher.
+    Re-run with max_rows=100000 (i.e. effectively uncapped) over the same 411
+    files: NOT ONE track hits that ceiling, hawkeye's true voice-0 length is
+    2495 rows, and the corpus-wide largest __abRows payload (this module's
+    own `rows_json` shape -- frame numbers only, not full row dicts) is
+    UNCHANGED at 22,732 bytes (Sanxion.sf2) -- identical to the figure at the
+    2048 cap, because Sanxion was already under 2048 per track and hawkeye's
+    extra 447 rows of frame integers don't move the corpus max. Cost was
+    never the argument for a ceiling; a ceiling only ever produced a new
+    threshold to outgrow. So the cap is now OPT-IN: pass an explicit
+    max_rows (tests do, to exercise `cut = True` below) and you get one;
+    production's one caller does not, and gets the whole walk. A genuinely
+    runaway decode is still caught upstream by the seqlen/pointer/over-read
+    guard a few lines down -- that guard doesn't measure row COUNT at all,
+    it refuses a sequence body that over-ran its own table, so it is
+    unaffected by max_rows being None (see
+    test_the_guard_STILL_refuses_a_genuinely_unbounded_body, which pins
+    SF2/_test_commando.sf2's 11k+/13k+-entry bodies still refused).
+
+    Earlier history, for the record -- max_rows DEFAULT WAS 512, WHICH
+    TRUNCATED TWO OF ANGULAR'S THREE VOICES
     (abpage-row-schedule-truncates-two-voices-at-512-rows). Angular's own
     orderlists walk to 564/744/481 rows per voice -- voice 1 alone needed 744,
     232 past the old cap -- so tracks reported [512, 512, 481] with
@@ -1806,7 +1834,7 @@ def row_schedule(sf2_path: Path, max_rows: int = 2048) -> dict | None:
                 overread.append((tno, sidx, len(rowsrc)))
                 rowsrc = []
             for e in rowsrc:
-                if len(rows) >= max_rows:
+                if max_rows is not None and len(rows) >= max_rows:
                     cut = True
                     break
                 note = int(getattr(e, "note", 0) or 0)

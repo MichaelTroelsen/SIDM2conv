@@ -683,7 +683,12 @@ def test_an_OVER_READ_sequence_is_REFUSED():
     assert seqlen == 75
     import inspect
     max_rows_default = inspect.signature(A.row_schedule).parameters["max_rows"].default
-    assert max(len(t) for t in s["tracks"]) <= max_rows_default  # max_rows, not seqlen
+    # max_rows_default is None (no cap by default,
+    # abpage-row-schedule-cap-still-truncates-four-files-at-2048) -- there is
+    # no ceiling to check Angular's tracks against, and that IS the point:
+    # nothing here is refusing rows because of seqlen either.
+    if max_rows_default is not None:
+        assert max(len(t) for t in s["tracks"]) <= max_rows_default
 
 
 @pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
@@ -1157,3 +1162,55 @@ def test_the_gate_is_the_pointer_table_not_a_length():
     src = (Path(__file__).resolve().parent / "abpage.py").read_text(encoding="utf-8")
     assert 'pointer_bounded = bool(getattr(p, "laxity_seq_table", None))' in src
     assert "if seqlen and not pointer_bounded and len(rowsrc) > seqlen:" in src
+
+
+_OUTDIR = Path(__file__).resolve().parent.parent / "out"
+HAWKEYE_SF2 = _OUTDIR / "hawkeye_subtune_0.sf2"
+
+
+@pytest.mark.skipif(not HAWKEYE_SF2.exists(), reason="out/hawkeye_subtune_0.sf2 not present")
+def test_row_schedule_default_no_longer_truncates_hawkeye_at_2048():
+    """abpage-row-schedule-cap-still-truncates-four-files-at-2048.
+
+    Swept over all 411 readable .sf2 in SF2/ and out/ (top-level `glob`, not
+    `rglob` -- an rglob over the same two roots picks up 8,753 files from
+    nested build/pipeline dirs, which is not the corpus this bug or its fix
+    were measured against), out/hawkeye_subtune_0.sf2 sat at EXACTLY 2048 on
+    voice 0 under the then-default max_rows=2048 -- clipped by the constant,
+    not by the seqlen/pointer/over-read guard. Its TRUE voice-0 length,
+    measured with the cap effectively disabled (max_rows=100000), is 2495
+    rows. The default is now None (no cap), so calling row_schedule with NO
+    max_rows argument -- exactly what production's one caller
+    (`sched = row_schedule(conv)`) does -- must render all 2495 rows and
+    report the voice as NOT truncated.
+    """
+    s = A.row_schedule(HAWKEYE_SF2)          # no max_rows -- the production call
+    assert s is not None
+    assert len(s["tracks"][0]) == 2495, len(s["tracks"][0])
+    assert s["truncated"] == [], s["truncated"]
+
+
+def test_row_schedule_default_is_uncapped():
+    """The default itself, pinned directly rather than inferred from one
+    fixture's row count -- so a future edit that re-introduces a numeric
+    default (even a bigger one) fails here first."""
+    import inspect
+    default = inspect.signature(A.row_schedule).parameters["max_rows"].default
+    assert default is None, (
+        "max_rows has a numeric default again -- that is exactly the "
+        "recurring defect abpage-row-schedule-cap-still-truncates-four-"
+        "files-at-2048 describes: a bigger constant is still a ceiling the "
+        "corpus will eventually outgrow")
+
+
+@pytest.mark.skipif(not COMMANDO_SF2.exists(), reason="SF2/_test_commando.sf2 not present")
+def test_the_guard_STILL_refuses_with_no_cap_at_all():
+    """The over-read guard must not depend on max_rows being set. With the
+    cap OFF (the new default), _test_commando.sf2's unbounded fallback
+    bodies (11k+/13k+ entries against a declared length of 77) must still be
+    refused -- by the seqlen/pointer_bounded check, not by hitting a row
+    ceiling that no longer exists."""
+    s = A.row_schedule(COMMANDO_SF2)          # no max_rows: nothing to hit
+    assert s is not None
+    assert s["overread"], "the runaway bodies are no longer being refused"
+    assert all(len(t) == 0 for t in s["tracks"]), [len(t) for t in s["tracks"]]
