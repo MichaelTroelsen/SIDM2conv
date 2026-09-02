@@ -16,6 +16,44 @@
 > as measured. The corpus rounds (**268–283 of 286 PASS**) are real and independent,
 > but they are a **pass/fail count per file**, not frame accuracy — do not merge the two.
 > Re-deriving a reproducible frame-accuracy figure over a named corpus is open work.
+> **DONE 2026-09-02 — and the script is tracked this time.**
+>
+> `pyscript/laxity_accuracy_sweep.py` re-measures the whole selector-defined
+> corpus by the same round trip the retired n=2 figure used
+> (SID → SF2 `--driver laxity` → SID′, then `scripts/validate_sid_accuracy.py`),
+> so the new number is comparable to the old claim rather than a different
+> quantity wearing its name. Run: `python pyscript/laxity_accuracy_sweep.py
+> --duration 30 --json out/laxity_sweep/sweep.json`.
+>
+> **RESULT (2026-09-02, 17 of 17 files, 0 errors, 0 unmeasurable):**
+>
+> | | frame accuracy | exact frame matches |
+> |---|---|---|
+> | min | **98.73%** (`Unboxed_Ending_8580`) | 90.7% |
+> | median | **100.00%** | 100.0% |
+> | max | **100.00%** | 100.0% |
+>
+> **16 of 17 files are at exactly 100.00% on BOTH columns** — not just the
+> lenient per-frame mean but exact frame-for-frame identity, 1500/1500. The sole
+> outlier is `Unboxed_Ending_8580` at 98.73% / 90.7%. So the 99.93% target is met
+> and exceeded by the corpus, and it is now a measurement with a method in the
+> tree.
+>
+> **THREE CONDITIONS ON QUOTING IT, none of them optional.**
+> 1. **The window is 30 seconds — 1500 frames — for every file.** Songs longer
+>    than 30s are measured over their opening only. The uniform `n=1500` is the
+>    WINDOW, not the song length, so it does NOT distinguish a short tune from a
+>    long one and must never be read as full-song coverage.
+> 2. **The population is the 17 `SID/*.sid` files the driver selector routes to
+>    the Laxity driver**, derived from the selector rather than hand-listed —
+>    a hand list is how the last measurement's population became unrecoverable.
+>    It is NOT the 286-file `SID/Laxity/` batch, which remains a pass/fail count.
+> 3. **Three of these files do not locate their sequence table** (`Blue`,
+>    `Clarencio_extended`, `Ocean_Reloaded` — the refusals recorded in
+>    `laxity-parser-reads-runtime-pointers-as-the-sequence-table`) and all three
+>    still score 100.00%. That is worth understanding rather than celebrating:
+>    frame accuracy survives a failed locate because the converter falls back to
+>    constants, so this metric does not exercise the locate at all.
 figures in `docs/reference/ACCURACY_MATRIX.md`
 **Corpus:** `SID/Laxity/` (286 files) + `SID/` root (17 mixed files)
 
