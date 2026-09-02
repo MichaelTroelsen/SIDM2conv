@@ -326,6 +326,21 @@ intros break) until the D15 emitter adaptation is done.
   does).
 - **PWM sweep** is static-ish ($800), not the real FC `[6]` envelope.
 - **Vibrato** and the `mctrl & $80` noise-attack are not emitted yet.
+- **`out/fc` is entirely outside the 7-corpus empty-trace screen (n=0).** The
+  audit (`sidm2.fidelity_common.bundle_diversity`, 2026-08-31) that swept
+  `out/{blackbird,dmc,fc,hardtrack_native,mon,sdi,soundmonitor}` for
+  one-part artifacts (a `_part01.sf2` with no matching `_part02.sf2` — a
+  possible sign of a dead/empty trace) found **zero** in `out/fc`, vs.
+  blackbird 13, dmc 10, hardtrack_native 1, mon 5, sdi 42, soundmonitor 6.
+  Confirmed by direct count, not a globbing artifact: `out/fc/` holds **19
+  `.sf2` files across 5 songs**, every song built as **3-5 parts**
+  (Carillo_part_2: 4, Demo_of_the_Year_88_Elite_1997: 3,
+  Is_There_a_Difference: 5, Triangle_2_years: 4, Triangle_Intro: 3), and
+  **all 5 `_part01.sf2` files have a matching `_part02.sf2`** — 0 of 5. So
+  "7 corpora audited" for that screen must **not** be read as "7 corpora
+  cleared" — FC's builds are all multi-part, so the one-part-artifact
+  screen structurally cannot fire here and says nothing about FC's build
+  health one way or the other.
 - **Other Fun_Fun rips** (15/20) load at `$A000`/`$7000`/`$9000` and use a
   **second player** (init `$C000`, play `$C475`) or Sound Monitor — not the `$1800`
   V1.0 player. `detect_player` gates them out cleanly. Architecture partly RE'd

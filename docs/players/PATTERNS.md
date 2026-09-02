@@ -673,6 +673,37 @@ and cited F2, which does not say it, and PATTERNS did not cover it at all.
 
 ---
 
+### F13. A same-length mutation check leaves stale pytest bytecode — in either direction
+**Symptom**: a mutation-testing check swaps bytes in a source file to confirm a
+test actually fails when it should, then restores the original — but the
+restore looks broken: the tests STILL fail (or STILL pass) after the byte-for-
+-byte restore. It cost three commands to diagnose. Python validates a `.pyc`
+against the source's mtime **and size**; a same-length swap changes neither in
+a way that invalidates pytest's assertion-rewrite cache, so the test module
+keeps running the stale bytecode from the mutated pass. Two measured
+instances, both in `pyscript/test_driver11_section_injectors.py`: `0x19AE` →
+`0x19AF` (an offset digit) and `0xC1` → `0xA1` (one byte in a test constant) —
+same byte count in, same byte count out, cache never invalidated.
+
+**The other direction, same session**: a mutation patch written with
+single-quoted Python (`'0x19AE'`) did not match double-quoted source
+(`"0x19AE"`), so the string replacement silently applied to nothing. The
+suite then passed on the (unmutated) file — looking exactly like a test that
+correctly rejects the mutation, when in fact the mutation never landed. A
+mutation check that silently does not apply is WORSE than none: it certifies
+the very test it failed to exercise.
+
+**Fix**: around any same-length mutation, delete
+`pyscript/__pycache__/test_<name>*.pyc` before re-running — or make the
+mutation change the file's length so the cache invalidates on its own. Before
+mutating, assert the anchor string is unique (and matches the source's actual
+quoting) so a mismatched patch fails loudly instead of applying to nothing.
+
+**Seen in**: `test_driver11_section_injectors.py` mutation check (2026-08-31
+session).
+
+---
+
 ## Adding an entry
 One screenful max: symptom → detection → exploit/fix → players seen in.
 If a technique is rediscovered in a new arc, add the sighting here *in the

@@ -803,6 +803,49 @@ fixed-order resolvers for comparison. *(Latent, unfixed: a base-independent mid-
 `+$40xx` single-frame jump — a fast arp that repeats the octave-plus leap — hits the same
 collision and no base choice avoids it; it would need a driver FM-encoding change.)*
 
+## The empty-trace screen covers ONE-PART builds only — and why that is not a hole (2026-09-02)
+
+`sidm2.fidelity_common.bundle_diversity` / `bundle_collapse` screen an artifact
+for the dd67bee defect (a failed siddump returned `''`, the builder saw counts
+under every cap, and packed a whole song into ONE part). The corpus audit ran it
+over **77 one-part artifacts across 7 corpora** and flagged exactly one file —
+a deliberately planted dead-trace control.
+
+**THE SCOPE, measured rather than estimated:**
+
+| | songs | screened | outside |
+|---|---|---|---|
+| out/{blackbird,dmc,fc,hardtrack_native,mon,sdi,soundmonitor} | 446 | **77 one-part** | **369 multi-part (83%)** |
+
+8,301 `.sf2` files sit under those corpora in total, of which 6,692 are parts of
+multi-part songs. So the audit looked at 17% of songs and about 1% of artifacts.
+
+**WHY THAT IS THE RIGHT SCOPE AND NOT A SAMPLING GAP.** A fully dead trace
+*structurally cannot produce a multi-part build*. `bin/build_dmc_native_song.py`
+grows a part while `fits(t0, t1)` holds, and `fits` is exactly "every count is
+under its cap" (`nb <= CAP_B and ni <= CAP_I and nw <= CAP_TBL and nf <= CAP_TBL
+and ns <= CAP_SEG`). With no trace data every count is tiny, so the window grows
+to `span` and the song lands in one part — which is the defect's signature, not
+a coincidence. **Multi-part output is itself evidence the trace carried enough
+content to overflow a cap.**
+
+**WHAT MULTI-PART BUILDS ARE THEREFORE *NOT* PROTECTED AGAINST:** a trace that
+was empty for only PART of the song, or for one voice. That is a different
+defect and is tracked as `bundle-screen-is-blind-to-a-partially-empty-trace`.
+
+**AND THE FLOOR DOES NOT TRANSFER — do not simply re-run the screen per part.**
+`BUNDLE_FLOOR = 5` was measured against whole songs, where the lowest real build
+carries 9 bundles. A PART legitimately carries fewer, because it covers less
+song. Sampled 60 of the 6,692 parts:
+
+    bundle count on a part:  min 6   median 34   max 81
+    parts at or below the floor of 5:  0
+
+Six against a floor of five is a **one-bundle margin**, versus four for whole
+songs. Re-using `BUNDLE_FLOOR` per part would sit next to its own false
+positives, so extending the screen needs a floor measured on parts — not the
+existing constant applied to a new population.
+
 ## Open issues / TODO
 
 - **Per-voice legato onset undercount — SOLVED by the full-song A/B (`DMC_LEGATO_AB`,
