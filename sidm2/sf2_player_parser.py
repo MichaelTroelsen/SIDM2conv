@@ -313,6 +313,48 @@ class SF2PlayerParser:
 
         sequence_offset = 0x0903 - load_addr + 2  # +2 for load address bytes
 
+        # REFUSE AN OUT-OF-RANGE OFFSET INSTEAD OF READING THE FILE TAIL.
+        #
+        # $0903 is BELOW the load address of every SF2 file measured, so this
+        # subtraction goes negative and Python then indexes from the END of the
+        # buffer without raising. Measured: 364 of 364 out/*.sf2 (load $0D7E ->
+        # -1145), 42 of the 46 marker-carrying SIDs in SID/, and SF2 II's own
+        # bin/music/Driver 11 Test - Arpeggio.sf2 (load $0D7E, same -1145).
+        #
+        # WHAT THAT PRODUCED, on a file whose real content is TWO sequences:
+        # 235 sequences and orderlists [623, 0, 11], with events like
+        # instrument=$01 command=$FF -- values neither field can legally hold.
+        # Confidently wrong, rc=0, no warning.
+        #
+        # Failing honestly is this repo's convention for exactly this shape --
+        # see fidelity_common.run_siddump, which raises rather than returning ''
+        # when siddump fails, and SDIModule.__init__. A caller that cannot get
+        # sequences must learn that from an exception, not from garbage.
+        #
+        # NOTE the refusal does NOT fix the parser: even at a correct offset it
+        # reads FIXED 3-byte (instrument, command, note) groups, and the on-disk
+        # Driver 11 stream is the PACKED variable-length grammar -- verified
+        # against the editor's own file, where a triple reading yields 0 of 7
+        # legal instrument bytes (pyscript/test_driver11_section_injectors.py).
+        # Locating the real region is a separate problem: the constant is wrong,
+        # not merely mis-applied.
+        if not (0 <= sequence_offset < len(sf2_data)):
+            raise InvalidInputError(
+                input_type="SF2 sequence region",
+                value=sequence_offset,
+                expected="an offset inside the %d-byte file" % len(sf2_data),
+                got="$0903 - $%04X + 2 = %d, which is outside it"
+                    % (load_addr, sequence_offset),
+                suggestions=[
+                    "Locate the sequence region rather than deriving it from "
+                    "the $0903 constant -- $0903 is below this file's load "
+                    "address, so the constant does not describe where its "
+                    "sequences are",
+                    "A negative index does not raise in Python: reading anyway "
+                    "returns the file TAIL, which is what this guard replaces",
+                ],
+            )
+
         sequences = []
         orderlists = [[], [], []]  # 3 voices
 
