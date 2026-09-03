@@ -20,6 +20,11 @@ Version: 1.0.0
 import unittest
 import logging
 import json
+
+try:                        # guarded so `python scripts/test_logging_system.py`
+    import pytest           # (the documented standalone usage) still runs
+except ImportError:         # without pytest installed
+    pytest = None
 import tempfile
 import os
 import sys
@@ -42,6 +47,43 @@ from sidm2.logging_config import (
     ColoredFormatter,
     StructuredFormatter
 )
+
+
+if pytest is not None:
+    @pytest.fixture(autouse=True)
+    def _restore_sidm2_logger_state():
+        """Undo what setup_logging() does to the GLOBAL `sidm2` logger.
+
+        setup_logging() sets `logger.propagate = False` (logging_config.py:311)
+        and never restores it. Every test in this file calls setup_logging --
+        about seventeen times across the classes below -- so the FIRST one to
+        run leaves the package logger detached from root for the rest of the
+        session.
+
+        That is not a local problem. pyscript/test_stage7_emissions.py captures
+        by attaching a handler to the ROOT logger, so once propagate is False it
+        sees '' forever and six of its tests fail with
+        "AssertionError: '...' not found in ''". Under `-p no:randomly` this
+        file happens to run after them and nothing shows; under
+        `--randomly-seed=1` it runs first and they all fail. A file-based watch
+        recorded the exact transition:
+
+            CHANGED after scripts/test_logging_system.py::TestLoggingSetup::
+            test_dynamic_verbosity_change : propagate True->False
+
+        The fix belongs here rather than in logging_config: propagate=False is
+        correct behaviour for a configured application logger, and graphify puts
+        789 nodes at depth 2 behind that module. What was wrong is that a TEST
+        applied it globally and left it.
+        """
+        logger = logging.getLogger('sidm2')
+        prop, handlers, level = logger.propagate, list(logger.handlers), logger.level
+        try:
+            yield
+        finally:
+            logger.handlers[:] = handlers
+            logger.propagate = prop
+            logger.level = level
 
 
 class TestLoggingSetup(unittest.TestCase):
@@ -410,6 +452,77 @@ def run_tests():
     result = runner.run(suite)
 
     return 0 if result.wasSuccessful() else 1
+
+
+class TestNonAsciiOnANarrowConsole(unittest.TestCase):
+    """A glyph the console cannot encode must not DELETE the log line.
+
+    Measured 2026-09-03 under PYTHONIOENCODING=cp1252 (the ordinary Windows
+    default): logging a U+2192 arrow raised
+    `UnicodeEncodeError: 'charmap' codec can't encode character '\\u2192'`
+    inside the handler. logging catches handler errors, so nothing crashed --
+    the MESSAGE WAS DISCARDED and a traceback went to stderr instead. That is
+    the bad shape: conversion_pipeline logs an arrow in "No registered
+    extractor for 'driver11' -> using Laxity table extraction", so on a cp1252
+    console the line naming the extractor is the one that disappears.
+
+    This drives a real cp1252 stream rather than setting an env var, so it
+    reproduces on any platform.
+    """
+
+    def _log_through_cp1252(self, message):
+        import io
+        buf = io.BytesIO()
+        stream = io.TextIOWrapper(buf, encoding='cp1252', newline='')
+        real_stdout = sys.stdout
+        sys.stdout = stream
+        try:
+            logger = setup_logging(verbosity=2)
+            logger.warning(message)
+            for h in logger.handlers:
+                h.flush()
+            stream.flush()
+        finally:
+            sys.stdout = real_stdout
+        return buf.getvalue().decode('cp1252')
+
+    def test_an_unencodable_glyph_does_not_lose_the_message(self):
+        out = self._log_through_cp1252('extractor → laxity')
+        # the surrounding words survive -- the line was emitted, not dropped
+        self.assertIn('extractor', out)
+        self.assertIn('laxity', out)
+
+    def test_the_glyph_is_escaped_not_collapsed_to_a_question_mark(self):
+        """backslashreplace, not replace: which character it was is recoverable."""
+        out = self._log_through_cp1252('extractor → laxity')
+        self.assertIn('\\u2192', out)
+
+    def test_plain_ascii_is_untouched(self):
+        out = self._log_through_cp1252('ordinary message')
+        self.assertIn('ordinary message', out)
+        self.assertNotIn('\\u', out)
+
+
+class TestZZPropagateIsRestoredBetweenTests(unittest.TestCase):
+    """THE REGRESSION GUARD for the autouse fixture at the top of this file.
+
+    Named ZZ so it sorts LAST in definition order: under `-p no:randomly` every
+    setup_logging() call above has already run by the time this executes, so
+    without the fixture `propagate` is False here and this fails deterministically
+    rather than by luck of the seed.
+
+    It asserts the ENTRY state, not the exit state, which is the property that
+    actually matters -- any test anywhere may attach a handler to the root logger
+    and expect `sidm2.*` records to reach it.
+    """
+
+    def test_the_package_logger_still_propagates_to_root(self):
+        self.assertTrue(
+            logging.getLogger('sidm2').propagate,
+            "sidm2.propagate is False on entry to this test, so a previous test "
+            "in this file leaked setup_logging()'s global state. Every "
+            "root-logger capture in the suite is blind from here on -- see "
+            "pyscript/test_stage7_emissions.py.")
 
 
 if __name__ == '__main__':

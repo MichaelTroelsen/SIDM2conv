@@ -268,8 +268,36 @@ def setup_logging(
     # Remove existing handlers
     logger.handlers.clear()
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Console handler.
+    #
+    # A NON-ASCII GLYPH IN A LOG MESSAGE SILENTLY LOSES THE LINE on a console
+    # whose encoding cannot represent it. Measured 2026-09-03 under
+    # PYTHONIOENCODING=cp1252, which is the ordinary Windows default:
+    #
+    #     UnicodeEncodeError: 'charmap' codec can't encode character '→'
+    #
+    # It does NOT crash -- logging catches handler errors -- so the program runs
+    # on, the MESSAGE IS DISCARDED, and a traceback is dumped to stderr in its
+    # place. That is worse than a crash: conversion_pipeline logs a U+2192 arrow
+    # ("No registered extractor for 'driver11' -> using Laxity table
+    # extraction"), so on a cp1252 console the one line that says which
+    # extractor ran is exactly the line that disappears.
+    #
+    # Fixed at the STREAM, not by removing glyphs from messages: any caller may
+    # log any character, and policing that at ~90 call sites is a rule nobody
+    # can keep. `errors='backslashreplace'` is chosen over 'replace' because it
+    # preserves which character it was (→) instead of collapsing every
+    # unrepresentable glyph to the same '?'.
+    _console_stream = sys.stdout
+    _reconfigure = getattr(_console_stream, 'reconfigure', None)
+    if _reconfigure is not None:
+        try:
+            _reconfigure(errors='backslashreplace')
+        except (ValueError, OSError):
+            # A stream that refuses reconfiguration (already-detached, or a
+            # test double) is not a reason to fail setup_logging.
+            pass
+    console_handler = logging.StreamHandler(_console_stream)
     console_handler.setLevel(level)
 
     if structured:
