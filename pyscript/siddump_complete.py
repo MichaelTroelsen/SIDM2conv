@@ -629,13 +629,26 @@ def run_siddump(filename: str, args):
 
     cpu.load_memory(c64_data, load_address)
 
-    # Print header info
-    print(f"Load address: ${load_address:04X} Init address: ${header.init_address:04X} Play address: ${header.play_address:04X}")
+    # --init / --play override the header. Default None -> header value, so an
+    # invocation without them behaves exactly as before.
+    init_address = getattr(args, 'init', None)
+    if init_address is None:
+        init_address = header.init_address
+    else:
+        print(f"Init address overridden: ${init_address:04X} "
+              f"(header says ${header.init_address:04X})")
+
+    # Print header info. The play address shown is the OVERRIDE when one was
+    # given -- the effective value is not otherwise known until after init has
+    # run (the vector fallback needs the CPU state), and printing $0000 here for
+    # a run that will actually use $1003 reads as a failure.
+    _shown_play = args.play if getattr(args, 'play', None) is not None else header.play_address
+    print(f"Load address: ${load_address:04X} Init address: ${init_address:04X} Play address: ${_shown_play:04X}")
     print(f"Calling initroutine with subtune {args.subtune}")
 
     # Run init routine
     cpu.mem[0x01] = 0x37  # I/O visible, BASIC ROM disabled
-    cpu.reset(header.init_address, args.subtune, 0, 0)
+    cpu.reset(init_address, args.subtune, 0, 0)
 
     instr_count = 0
     while instr_count < MAX_INSTR:
@@ -657,8 +670,16 @@ def run_siddump(filename: str, args):
     if instr_count >= MAX_INSTR:
         print(f"Warning: CPU executed a high number of instructions in init, breaking")
 
-    # Determine play address
-    play_address = header.play_address
+    # Determine play address. An explicit --play wins over BOTH the header and
+    # the interrupt-vector fallback -- the fallback is exactly what recovers the
+    # wrong entry point on a multispeed raster-split chain, so an override that
+    # only beat the header would not help the case this flag exists for.
+    play_address = getattr(args, 'play', None)
+    if play_address is not None:
+        print(f"Play address overridden: ${play_address:04X} "
+              f"(header says ${header.play_address:04X})")
+    else:
+        play_address = header.play_address
     if play_address == 0:
         print("Warning: SID has play address 0, reading from interrupt vector instead")
         if (cpu.mem[0x01] & 0x07) == 0x05:
@@ -888,6 +909,22 @@ Warning: CPU emulation may be inaccurate for some edge cases.
                        help='Show a register only if the playroutine actually WROTE it '
                             'this frame (write-hook precision), not merely value-changed. '
                             'Implies --bits')
+    # A PSID header is not always the right entry point. SID/Gallefoss_Glenn/
+    # Barbers_Adagio_64.sid declares play=$0000; the vector fallback below then
+    # recovers $2708, which is not a per-frame play routine but one link of a 4x
+    # multispeed raster-split chain that busy-waits on $D012 -- constant under
+    # this emulator, so it spins forever. zig64 traces the same file at rc=0 from
+    # $1000/$1003 (1376 rows). Nothing here could express that, because -a was
+    # the only entry-point flag. Both default to None and fall through to the
+    # header, so every existing invocation is byte-identical.
+    parser.add_argument('--init', type=lambda x: int(x, 0), default=None,
+                       metavar='ADDR',
+                       help='Override the init address (e.g. 0x1000). Default: the '
+                            'PSID header value')
+    parser.add_argument('--play', type=lambda x: int(x, 0), default=None,
+                       metavar='ADDR',
+                       help='Override the play address (e.g. 0x1003). Default: the '
+                            'PSID header value, or the interrupt vector when it is 0')
 
     args = parser.parse_args()
 
