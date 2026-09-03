@@ -1214,3 +1214,86 @@ def test_the_guard_STILL_refuses_with_no_cap_at_all():
     assert s is not None
     assert s["overread"], "the runaway bodies are no longer being refused"
     assert all(len(t) == 0 for t in s["tracks"]), [len(t) for t in s["tracks"]]
+
+
+# --- a track emptied as degenerate is NOT also truncated ----------------------
+
+# These live under out/, NOT SF2/ -- checked, after a first version of this
+# file pointed at SF2/ and the three cases SKIPPED silently rather than failing.
+# out/ is gitignored, so these three SKIP on a fresh clone: the same portability
+# limit CLAUDE.md already records for the bundle-diversity control. The
+# corpus-wide invariant test below is the part that still means something
+# without them, and `test_a_REAL_truncation_is_still_reported` uses the TRACKED
+# SF2/Angular.sf2.
+_EMPTY_YET_TRUNCATED = [
+    Path(__file__).resolve().parent.parent / "out" / name
+    for name in ("BMX_Kidz.sf2", "Human_Race.sf2", "Lakers_vs_Celtics.sf2")
+]
+
+
+@pytest.mark.skipif(not all(p.exists() for p in _EMPTY_YET_TRUNCATED),
+                    reason="the three empty-yet-truncated SF2s are not present")
+@pytest.mark.parametrize("sf2", _EMPTY_YET_TRUNCATED, ids=lambda p: p.stem)
+def test_an_empty_track_is_reported_degenerate_not_truncated(sf2):
+    """"Emitted nothing" and "was cut short" cannot both be true.
+
+    Measured at max_rows=2048 BEFORE the fix: each of these three gave
+    tracks [0, 0, 0] with truncated == [0, 1, 2] AND degenerate == [0, 1, 2].
+    Two branches wrote independently -- the degenerate check empties `rows`,
+    and the `cut` flag from the row cap was appended afterwards regardless.
+
+    The distinction is not cosmetic: `truncated` invites a bigger cap, and a
+    bigger cap cannot help. Uncapped, these same three still give [0, 0, 0],
+    because the rows advance no time and are refused on that ground alone.
+    """
+    r = A.row_schedule(sf2, max_rows=2048)
+    assert r is not None
+    assert [len(t) for t in r["tracks"]] == [0, 0, 0]
+    assert r["degenerate"] == [0, 1, 2]
+    assert r["truncated"] == [], (
+        "a track that emitted nothing is not truncated -- it is degenerate")
+
+
+@pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
+def test_a_REAL_truncation_is_still_reported():
+    """The guard above must not silence honest truncation.
+
+    Angular decodes to 564/744/481 rows uncapped; at max_rows=100 every voice
+    really is cut short, and has rows to show for it.
+    """
+    r = A.row_schedule(REAL_SF2, max_rows=100)
+    assert [len(t) for t in r["tracks"]] == [100, 100, 100]
+    assert r["truncated"] == [0, 1, 2]
+    assert r["degenerate"] == []
+
+
+def test_no_track_is_ever_both_truncated_and_degenerate():
+    """The invariant, over the whole readable corpus rather than three files.
+
+    Swept at max_rows=2048 across all 411 top-level .sf2 in SF2/ and out/
+    (TOP-LEVEL only -- an rglob picks up 8,753 nested build files and is not
+    this module's corpus): zero files have a track in both lists, and no
+    truncated flag sits on a track that emitted zero rows. One file still
+    reports truncated -- out/hawkeye_subtune_0.sf2, tracks [2048, 0, 133] --
+    and that one is honest.
+    """
+    root = Path(__file__).resolve().parent.parent
+    files = sorted((root / "SF2").glob("*.sf2")) + sorted((root / "out").glob("*.sf2"))
+    if len(files) < 50:
+        pytest.skip("no corpus on this machine")
+    seen = 0
+    for f in files:
+        try:
+            r = A.row_schedule(f, max_rows=2048)
+        except Exception:                                     # noqa: BLE001
+            continue
+        if not r:
+            continue
+        seen += 1
+        both = set(r["truncated"]) & set(r["degenerate"])
+        assert not both, (f.name, sorted(both))
+        for tno in r["truncated"]:
+            assert len(r["tracks"][tno]) > 0, (
+                "%s track %d is flagged truncated but emitted no rows"
+                % (f.name, tno))
+    assert seen > 300, "swept too few files for this to mean anything: %d" % seen

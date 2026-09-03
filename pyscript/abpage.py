@@ -1871,6 +1871,21 @@ def row_schedule(sf2_path: Path, max_rows: int | None = None) -> dict | None:
         if rows and rows[-1]["f"] == 0:
             degenerate.append(tno)
             rows = []
+            # DEGENERATE WINS OVER TRUNCATED, and the two were being reported
+            # together. `cut` says a cap stopped the walk; the block above then
+            # throws the rows away for an unrelated reason. Reporting both left
+            # three files claiming they had been cut short while emitting
+            # nothing -- measured at max_rows=2048: BMX_Kidz, Human_Race and
+            # Lakers_vs_Celtics each gave tracks [0, 0, 0] with
+            # truncated == [0, 1, 2] AND degenerate == [0, 1, 2].
+            #
+            # "Emitted nothing, and was cut short" is a contradiction, and it
+            # points at the wrong remedy: truncated invites a bigger cap, and a
+            # bigger cap cannot help here. Uncapped, these same three still give
+            # [0, 0, 0] -- the rows are refused because they advance no time,
+            # which is exactly what `degenerate` already says. So a track that
+            # was emptied here is degenerate, full stop.
+            cut = False
         if cut:
             truncated.append(tno)
         tracks.append(rows)
