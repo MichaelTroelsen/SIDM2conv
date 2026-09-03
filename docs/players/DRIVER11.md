@@ -109,3 +109,58 @@ sid-to-sf2.bat input.sid out.sf2 --driver driver11
 It is also the foundation the **Galway** Stage-A transpile targets (see [GALWAY.md](GALWAY.md)) and the table format the native Galway driver reuses.
 
 **Tables (SF2 Driver 11):** `SEQ=$0903`, `INST=$0A03`, `WAVE=$0B03`, `PULSE=$0D03`, `FILTER=$0F03`. Format spec: `docs/reference/SF2_FORMAT_SPEC.md`.
+
+---
+
+## The extractor is INERT on this path — measured 2026-09-03
+
+`analyze_sid_file` picks between three extractors, and for a file that takes the
+SF2-export branch the answer turns out not to matter: **whichever extractor runs,
+the emitted `.sf2` is byte-identical.**
+
+Forcing the SF2 branch on and off over three Rob Hubbard rips (the shape of the
+37 files that used to reach it — see below):
+
+| file | misrouted (SF2PlayerParser) | correct (Laxity table extraction) |
+|---|---|---|
+| `Commodore_64_Music_Examples` | 17,957 B | 17,957 B — **identical** |
+| `Chimera` | 52,658 B | 52,658 B — **identical** |
+| `Delta_Mix-E-Load_loader` | 52,214 B | 52,214 B — **identical** |
+
+That is not because the two extractors agree. They hand downstream materially
+different data for the same file:
+
+| field | SF2PlayerParser | Laxity extraction |
+|---|---|---|
+| `sequences` | **0** | **3** |
+| `instruments` | **0** | **8** |
+| `orderlists` | 3 | 3 |
+
+**Three sequences and eight instruments make no difference to a single output
+byte.** So `ExtractedData.sequences` and `.instruments` do not reach the writer
+on this path at all; the music in the output comes from somewhere else, and the
+extraction stage is decorative for these files.
+
+Two consequences, and the second is the one that matters:
+
+1. **The 2026-09-03 detector fix changed no output.** `has_sf2_magic` was a
+   two-byte substring search that fired on 46 of 1,524 tree SIDs and routed 37
+   native rips into this branch; replacing it with `has_sf2_structure` corrected
+   the routing and the log line — the `.sf2` bytes are unchanged, verified
+   above. Nothing in `out/` needs rebuilding on account of it.
+2. **"100% by construction" is not evidenced by this path.** The claim in this
+   file's header, and `ACCURACY_MATRIX.md`'s "Guaranteed 100%", rest on
+   "converting it back to SF2 with Driver 11 preserves the exact tables". The
+   preservation cannot be happening through `sequences` or `instruments`,
+   because those are demonstrably ignored. Whatever fidelity this path has, it
+   is not delivered by the mechanism the sentence describes. Tracked as
+   `sf2-exported-100pct-fork-decision`, which is a decision for a human: either
+   quarantine the sequence-extraction path and restate the claim, or authorise
+   the repair in `sf2-player-parser-locate-then-decode-then-duration`.
+
+Reproduce by monkeypatching `conversion_pipeline.has_sf2_structure` to a
+constant and converting the same file twice; do NOT read the emitted sequences
+back with `sf2_viewer_core.SF2Parser` to check this — its fallback readers
+over-read (they report 71,236 entries across 12 sequences in the 17,957-byte
+file above), which is `unbounded-laxity-fallback-readers-emit-13k-entry-sequences`
+and would give a confidently wrong answer here.

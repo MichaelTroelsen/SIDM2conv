@@ -26,6 +26,16 @@ the 55):
 |---|---|---|
 | Does `native_dispatch.probe("mattgray", path)` **accept** it? | **11/55** | `locate()` finds every table by signature; raises otherwise |
 
+**QUOTE THE DENOMINATOR WITH THE NUMBER, because 11 and 12 are both right.**
+The 55 is `SID/Gray_Matt/*.sid`, TOP LEVEL ONLY. A recursive sweep of `SID/`
+returns **12** mattgray accepts, and the twelfth is
+`SID/Gray_Matt/Worktunes/2001_Theme.sid` — a subdirectory file outside this
+population, not a disagreement with the 11. Re-measured 2026-09-03; a
+`rglob`-vs-`glob` slip produced a spurious "12 in SID/Gray_Matt" once already.
+The three figures that have appeared for this row reconcile as: **13** retired
+(pre-2026-08-21, see below), **11** current at this denominator, **12** the
+tree-wide recursive count.
+
 **The probe was 13/55 until 2026-08-21, and the 2 it lost were never real.**
 `Pogo_Stick_Olympics` and `Warriors` were accepted on a `locate()` that had
 silently mis-placed two tables. `n_patterns` is `pat_hi - pat_lo`, and the
@@ -46,7 +56,7 @@ table, with the pattern table underneath correctly located. Probe and decode are
 both 11/55 and the accept-but-not-decode gap is empty; a wrong tempo would have
 put every note in the song at the wrong time while the decode still looked fine.
 
-| Does `parse_sid()` **decode** it (tables + sequencer walk)? | **11/55** | the 2 accept-but-not-decode files (`Pogo_Stick_Olympics`, `Warriors`) fail on a pattern-with-no-`$ff`-terminator bug — open separately, see `mattgray-pattern-no-ff-terminator` |
+| Does `parse_sid()` **decode** it (tables + sequencer walk)? | **11/55** | same 11; the gap above it is empty. `Pogo_Stick_Olympics` and `Warriors` are **refused by the probe**, not accepted-and-failing — re-measured 2026-09-03, `probe("mattgray", …)` returns False for both. The pattern-with-no-`$ff`-terminator bug (`mattgray-pattern-no-ff-terminator`) is still open but is no longer reachable through this gate |
 | How many Stage B **artifacts** are on disk? | **8 songs / 37 song×subtune / 78 built `.sf2` parts** | `out/mattgray_native/*.sf2`, one game per song, part-split for length |
 
 These are not disagreeing answers — accept ⊇ decode ⊇ built, each a stricter
