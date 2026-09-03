@@ -44,6 +44,7 @@ import os
 import sys
 import subprocess
 import shutil
+import struct
 import time
 from pathlib import Path
 
@@ -62,6 +63,13 @@ from sidm2 import (
 
 # Import SF2 player parser for SF2-exported SIDs
 from sidm2.sf2_player_parser import SF2PlayerParser
+
+# SF2 file-format constants -- imported, not re-declared, so the detector below
+# cannot drift from the parser that reads the same bytes.
+from sidm2.sf2_parser import (
+    SF2_FILE_ID,
+    BLOCK_DESCRIPTOR as SF2_BLOCK_DESCRIPTOR,
+)
 
 # Import configuration system
 from sidm2.config import ConversionConfig, get_default_config
@@ -405,6 +413,41 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
     print()
 
 
+SF2_MAGIC_LE = struct.pack('<H', SF2_FILE_ID)   # $1337 little-endian
+
+
+def has_sf2_structure(c64_data: bytes) -> bool:
+    """True only for C64 data that really is an SF2 image.
+
+    An SF2 file is [load_lo, load_hi, $37, $13, <block chain>], so once the
+    2-byte PRG load address is stripped the marker sits at C64-data offset 0
+    and the first block descriptor at offset 2, as [id, size_lo, size_hi].
+    That first block is always BLOCK_DESCRIPTOR -- verified 2026-09-03 across
+    every .sf2 in SF2/, bin/music/ and out/: 422 of 422 carry the marker at
+    file offset 2 AND a first block id of $01 whose size stays in bounds.
+
+    Do NOT "strengthen" this by walking the chain to BLOCK_END. The chain in a
+    real file degenerates into id=$00 size=0 filler and runs off the end
+    without ever reaching $FF, so requiring the terminator REJECTS a genuine
+    export -- measured against an sf2_to_sid round trip of
+    bin/music/Driver 11 Test - Arpeggio.sf2, which the terminator version
+    scored False.
+
+    This replaces `b'\\x37\\x13' in c64_data`, a two-byte substring search over
+    an entire 8KB+ image, which therefore matched by chance: over the whole
+    tree it fired on 46 of 1,524 SIDs and NOT ONE of those 46 carried the
+    marker at offset 0. They are native Hubbard (14), Gallefoss (10), Laxity
+    (9), Bjerregaard (5), Gray (3), Shogoon (3) and Tel (2) rips, and the false
+    positive routed every one of them into the SF2-export path.
+    """
+    if len(c64_data) < 5 or c64_data[0:2] != SF2_MAGIC_LE:
+        return False
+    if c64_data[2] != SF2_BLOCK_DESCRIPTOR:
+        return False
+    block_size = int.from_bytes(c64_data[3:5], 'little')
+    return 5 + block_size <= len(c64_data)
+
+
 def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_reference_path: str = None, driver_type: str = None):
     """Analyze a SID file and print detailed information
 
@@ -425,8 +468,8 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     # Detect player type using player-id.exe
     player_type = detect_player_type(filepath)
 
-    # Check for SF2 magic marker
-    has_sf2_magic = b'\x37\x13' in c64_data
+    # Check for SF2 structure (marker at a known offset + a walkable block chain)
+    has_sf2_magic = has_sf2_structure(c64_data)
 
     # Use DriverSelector to determine correct driver (unless manually overridden)
     if driver_type is None:

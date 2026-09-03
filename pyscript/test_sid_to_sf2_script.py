@@ -756,8 +756,26 @@ class TestSF2ExportedPath(unittest.TestCase):
         mock_header.author = "Tester"
         mock_header.copyright = "2025"
         mock_parser_inst.parse_header.return_value = mock_header
-        # Include SF2 marker ($1337) in C64 data - this triggers SF2PlayerParser usage
-        c64_data = b'\x00' * 100 + b'\x37\x13' + b'\x00' * 922  # 1024 bytes with marker
+        # A REAL SF2 IMAGE, not just a buffer containing the marker bytes.
+        #
+        # This fixture used to be `b'\x00'*100 + b'\x37\x13' + b'\x00'*922` -- the
+        # $1337 marker at offset 100 -- and it PINNED A DEFECT rather than the
+        # behaviour: `has_sf2_magic` was `b'\x37\x13' in c64_data`, a two-byte
+        # substring search over the whole image, which fires by chance on 46 of the
+        # 1,524 .sid files in the tree at offsets like 809, 2198 and 11112. Not one
+        # of those 46 is an SF2 export. Because this was the only test covering the
+        # path, the false positive had nothing asserting against it.
+        #
+        # An SF2 file is [load_lo, load_hi, $37, $13, <block chain>], so after
+        # SIDParser strips the 2-byte load address the marker is at C64-data offset
+        # 0 and the first block descriptor -- id $01, then a little-endian size --
+        # is at offset 2. Verified against an sf2_to_sid round trip of
+        # bin/music/Driver 11 Test - Arpeggio.sf2, whose C64 data starts
+        # 37 13 01 25 00. See pyscript/test_conversion_pipeline.py.
+        c64_data = (b'\x37\x13'          # $1337 at offset 0, where a real one lives
+                    + b'\x01'            # BLOCK_DESCRIPTOR
+                    + b'\x05\x00'        # its size, little-endian, in bounds
+                    + b'\x00' * 1019)    # 1024 bytes total
         mock_parser_inst.get_c64_data.return_value = (c64_data, 0x1000)
         mock_parser.return_value = mock_parser_inst
 
