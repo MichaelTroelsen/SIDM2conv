@@ -181,7 +181,18 @@ SID/*.wav
 
 # Test/coverage artifacts
 .coveragerc
-pytest.ini
+# pytest.ini is NOT an artifact -- it is the test configuration, and ignoring it
+# made the suite machine-local. Measured 2026-09-03 against a fresh clone of this
+# repo: with pytest.ini present, `pytest --collect-only -q` gives 3,106 tests and
+# a clean exit; without it the same command gives 3,167 collected AND 10
+# collection errors, and pytest REFUSES TO RUN ("Interrupted: 10 errors during
+# collection"). Eight are files under archive/ that `--ignore=archive` hides, but
+# TWO are live tests -- pyscript/test_audio_export_wrapper.py and
+# pyscript/test_sf2_player_parser.py -- which archive/ carries same-named copies
+# of, so without the ignore the archived copies collide with them on module name
+# and shadow them into import errors. So this line did not merely hide extra
+# tests, it made two tracked test files uncollectable on any machine that lacked
+# a local pytest.ini. Track the file instead: `git add pytest.ini`.
 .pytest_cache/
 htmlcov/
 coverage_report/
