@@ -544,3 +544,86 @@ def test_the_max_dur_threshold_is_overfit_and_must_not_be_shipped():
     assert max(gen) == 384, max(gen)
     assert sum(1 for x in gen if x > 384) == 0
     assert sum(1 for x in gen if x == 384) >= 1, "384 is not even attained -- re-measure"
+
+
+# --- arbitration: the rule this module does not have, and does not need ------
+
+def test_no_file_in_the_tree_is_claimed_by_two_signature_families():
+    """WHY THERE IS NO ARBITRATION RULE, PINNED SO THE ABSENCE IS SAFE.
+
+    `rank()` abstains on a signature collision, and the obvious next step is to
+    design a tie-break. Measured 2026-09-03 over every .sid under SID/ -- 1,524
+    files, all five SIGNATURE probes on each -- THERE ARE NO TIES:
+
+        sig=0   1248 files        sdi           178
+        sig=1    276 files        soundmonitor   37
+        sig>1      0 files        hardtrack      33
+                                  blackbird      16
+                                  mattgray       12
+
+    The place a collision was most plausible is SID/Shogoon, the mixed-player
+    directory where `hardtrack` accepts 33 and `sdi` accepts 16 off its own
+    corpus. Those two sets are DISJOINT -- intersection 0.
+
+    So an arbitration rule would be fitted to zero examples, which is the same
+    error as the `max_dur > 384` threshold the test above refuses: a rule with
+    no evidence under it. What IS worth having is this guard, so that a future
+    probe widening which creates the first collision fails here loudly instead
+    of silently reaching `rank()`'s abstention path and answering None.
+
+    THE VACUOUS PASS IS THE REAL HAZARD and is guarded explicitly. "No file is
+    claimed twice" is trivially true of probes that claim NOTHING, so a refactor
+    that broke every predicate would turn this test green. The per-family floors
+    below are what make the zero mean something.
+    """
+    import glob as _glob
+    import io
+    import contextlib
+
+    sids = sorted(_glob.glob(os.path.join(ROOT, "SID", "**", "*.sid"),
+                             recursive=True))
+    if len(sids) < 100:
+        pytest.skip("no corpus SIDs on this machine")
+
+    collisions = []
+    per = {p: 0 for p in ND.SIGNATURE}
+    for path in sids:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            sig = sorted(p for p in ND.SIGNATURE if ND.probe(p, path)[0])
+        for p in sig:
+            per[p] += 1
+        if len(sig) > 1:
+            collisions.append((os.path.basename(path), sig))
+
+    # NOT VACUOUS: every signature family must still be claiming real files.
+    empty = sorted(p for p, n in per.items() if n == 0)
+    assert not empty, (
+        "signature families accepting nothing, so the zero-collision result "
+        "below is vacuous rather than measured: %s (counts %r)" % (empty, per))
+
+    assert collisions == [], (
+        "a signature collision now exists, so `rank()` will abstain on these "
+        "files. Either the new probe is too loose, or arbitration finally has "
+        "evidence under it -- see dispatch-cross-family-arbitration-for-"
+        "contested-files. Colliding: %r" % collisions)
+
+
+def test_the_two_families_sharing_shogoon_do_not_overlap():
+    """The disjointness above, isolated to the pair that could actually collide.
+
+    Kept separate from the whole-tree sweep because it is the load-bearing
+    half: `hardtrack` and `sdi` are the only two SIGNATURE families measured on
+    the SAME directory, and `sdi` is the one this module documents as weak off
+    its own corpus (16 uncorroborated Shogoon claims). If arbitration is ever
+    needed, it is needed here first.
+    """
+    import glob as _glob
+
+    paths = sorted(_glob.glob(os.path.join(_SHOGOON, "*.sid")))
+    if not paths:
+        pytest.skip("no Shogoon corpus on this machine")
+    ht = {os.path.basename(p) for p in paths if ND.probe("hardtrack", p)[0]}
+    sd = {os.path.basename(p) for p in paths if ND.probe("sdi", p)[0]}
+    assert ht and sd, "one side claims nothing -- the disjointness is vacuous"
+    assert ht & sd == set(), sorted(ht & sd)

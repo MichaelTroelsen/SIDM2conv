@@ -63,6 +63,29 @@ construction -- the editor assembles the player per song. 88 distinct offsets
 over 160 genuine files, so "foreign-only" is what near-unique values give by
 chance.
 
+CROSS-FAMILY ARBITRATION HAS NO INSTANCE TO ARBITRATE. `rank()` abstains when
+two SIGNATURE families both accept, and the obvious next step is a tie-break.
+Measured 2026-09-03 over every .sid under `SID/` -- 1,524 files, all five
+SIGNATURE probes on each -- THERE ARE NO TIES:
+
+    sig = 0   1248 files          sdi           178
+    sig = 1    276 files          soundmonitor   37
+    sig > 1      0 files          hardtrack      33
+                                  blackbird      16
+                                  mattgray       12
+
+The pair that could plausibly collide is `hardtrack` and `sdi`: SID/Shogoon is
+the one directory both are measured on, where hardtrack accepts 33 and sdi
+accepts 16 off its own corpus. Those two sets are DISJOINT -- intersection 0.
+
+So an arbitration rule would be fitted to ZERO examples, which is the same
+error as the `max_dur > 384` threshold below, one step further along. What is
+shipped instead is a guard: `test_no_file_in_the_tree_is_claimed_by_two_
+signature_families` fails the moment a probe widening creates the first
+collision, so the absence is checked rather than assumed. Its own vacuous case
+-- probes that claim NOTHING also produce zero collisions -- is guarded by
+per-family floors in the same test.
+
 THE ONE NEAR-MISS, AND WHY IT IS NOT SHIPPED. `max_dur` (largest `dur_ticks`)
 puts 3 of the 16 outside the genuine range -- but genuine's maximum is 384 and
 the rule would be "> 384", a threshold fitted to the observed high-water mark of
