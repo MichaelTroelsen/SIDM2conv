@@ -3,6 +3,15 @@
 
     py -3 pyscript/instrument_map_sweep.py [-n 3] [-t 20] [dir ...]
 
+KILL-SAFETY: NOT APPLICABLE, and that is measured rather than assumed. The
+other four sweeps bind their spawned builders to a Job Object so a hard kill
+cannot leave one running (pyscript/process_group.py). This one spawns NOTHING --
+no subprocess, no ThreadPoolExecutor, no multiprocessing; it calls
+`siddump_frames_full` in-process. There are no children to orphan, so there is
+no guarantee to install and nothing to print. Checked 2026-09-03; if this file
+ever grows a `subprocess` call, it needs the guard, because a SERIAL sweep
+orphans its child exactly like a pooled one.
+
 One line per file: the verdict from `sidm2.instrument_map.key_reliability` and
 the numbers behind it. The point is NOT to produce a score — it is the
 calibration run for the key itself. A tool that grades every file `reliable`

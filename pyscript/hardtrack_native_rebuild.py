@@ -44,6 +44,15 @@ os.chdir(ROOT)
 
 from sidm2.fidelity_common import MIN_INFORMATIVE_FRAMES, underpowered  # noqa: E402
 
+# Kill-safety: a hard kill of this sweep must not leave its spawned builder
+# running. Lives in pyscript/process_group.py; see that module for the
+# measurement. THIS SWEEP IS SERIAL and needs it anyway -- measured
+# 2026-09-03, a lone blocking subprocess.run orphans its child exactly like
+# a pooled one (unguarded: child survived the parent's hard kill and wrote
+# its artifact; guarded: 0 survivors). The pool multiplies the count, it is
+# not the mechanism.
+from process_group import bind_children_to_this_process  # noqa: E402
+
 SID_DIR = os.path.join("SID", "Shogoon")
 OUT_DIR = os.path.join("out", "hardtrack_native")
 PARTS = re.compile(r"part (\d+)/(\d+) \((\d+)-(\d+)s")
@@ -66,6 +75,11 @@ def _median(vals):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
+    print("  kill-safety: %s" % ("builders die with this process (job object)"
+                                 if bind_children_to_this_process() else
+                                 "NOT ESTABLISHED -- a hard kill will leave "
+                                 "builders running; kill the TREE (taskkill /T)"),
+          flush=True)
     ap.add_argument("--first", type=int, default=0)
     ap.add_argument("--last", type=int, default=1 << 30)
     ap.add_argument("--keep", action="store_true",

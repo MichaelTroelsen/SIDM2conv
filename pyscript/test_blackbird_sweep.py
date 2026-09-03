@@ -186,3 +186,44 @@ class TestRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKillSafetyIsWired(unittest.TestCase):
+    """A hard kill of this sweep must not leave its spawned builder running.
+
+    THIS SWEEP IS SERIAL -- one blocking subprocess.run, no pool -- and it needs
+    the guard ANYWAY. Measured 2026-09-03 with a stand-in child of the same spawn
+    shape: unguarded, the child SURVIVED the parent's hard kill and wrote its
+    artifact afterwards; guarded, zero survivors. The ThreadPoolExecutor in the
+    SDI/DMC sweeps multiplies the number of orphans, it is not what creates them.
+    The mechanism lives in pyscript/process_group.py and is tested there.
+    """
+
+    def test_the_sweep_imports_the_shared_helper(self):
+        import blackbird_sweep
+        self.assertTrue(hasattr(blackbird_sweep, "bind_children_to_this_process"),
+                        "blackbird_sweep spawns a builder but does not bind it to this "
+                        "process; a hard kill would orphan it")
+
+    def test_it_reaches_the_SHARED_module_not_a_private_copy(self):
+        """hasattr alone is NOT enough -- measured. Replacing the import with
+        `bind_children_to_this_process = lambda: False` leaves the attribute in
+        place and still prints a "kill-safety:" line, so both of the other tests
+        here pass against a stub that guarantees nothing. Identity against
+        process_group is what actually pins the wiring."""
+        import blackbird_sweep
+        import process_group
+        self.assertIs(blackbird_sweep.bind_children_to_this_process,
+                      process_group.bind_children_to_this_process)
+
+    def test_main_announces_kill_safety_before_doing_anything(self):
+        import io
+        import contextlib
+        import blackbird_sweep
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            blackbird_sweep.main([])          # the early-return path: prints usage, builds nothing
+        out = buf.getvalue()
+        self.assertIn("kill-safety:", out,
+                      "the sweep must not be SILENT about whether the guarantee "
+                      "holds -- see the task's verify")

@@ -40,6 +40,15 @@ from sidm2.fidelity_common import freq_to_semi as _semi
 from sidm2.fidelity_common import psid_wrap as _psid
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
 
+# Kill-safety: a hard kill of this sweep must not leave its spawned builder
+# running. Lives in pyscript/process_group.py; see that module for the
+# measurement. THIS SWEEP IS SERIAL and needs it anyway -- measured
+# 2026-09-03, a lone blocking subprocess.run orphans its child exactly like
+# a pooled one (unguarded: child survived the parent's hard kill and wrote
+# its artifact; guarded: 0 survivors). The pool multiplies the count, it is
+# not the mechanism.
+from process_group import bind_children_to_this_process  # noqa: E402
+
 # The 11-file Fun Fun corpus (bin/_sm_build_all.py's NAMES list).
 CORPUS = ["Final_Luv", "Dance_at_Night_remix", "Dreamix", "Fun_Mix", "Times_Up",
           "Poppy_Road", "No_Title", "Just_Cant_Get_Enough", "Thats_All",
@@ -277,6 +286,11 @@ def print_comparison(rep):
 
 def main(argv=None):
     argv = list(argv if argv is not None else sys.argv[1:])
+    print("  kill-safety: %s" % ("builders die with this process (job object)"
+                                 if bind_children_to_this_process() else
+                                 "NOT ESTABLISHED -- a hard kill will leave "
+                                 "builders running; kill the TREE (taskkill /T)"),
+          flush=True)
     if not argv:
         print(__doc__)
         return 2

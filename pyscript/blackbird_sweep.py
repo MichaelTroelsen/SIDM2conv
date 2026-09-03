@@ -31,6 +31,15 @@ sys.path.insert(0, ROOT)
 
 from sidm2.fidelity_common import launch_failure  # noqa: E402
 
+# Kill-safety: a hard kill of this sweep must not leave its spawned builder
+# running. Lives in pyscript/process_group.py; see that module for the
+# measurement. THIS SWEEP IS SERIAL and needs it anyway -- measured
+# 2026-09-03, a lone blocking subprocess.run orphans its child exactly like
+# a pooled one (unguarded: child survived the parent's hard kill and wrote
+# its artifact; guarded: 0 survivors). The pool multiplies the count, it is
+# not the mechanism.
+from process_group import bind_children_to_this_process  # noqa: E402
+
 # The v1.2-exact corpus: the files the native Blackbird driver is validated on.
 CORPUS = [
     "Fargo", "Glyptodont", "Dishwasher_Groove", "Dithered_Island",
@@ -193,6 +202,11 @@ def print_comparison(rep):
 
 def main(argv=None):
     argv = list(argv if argv is not None else sys.argv[1:])
+    print("  kill-safety: %s" % ("builders die with this process (job object)"
+                                 if bind_children_to_this_process() else
+                                 "NOT ESTABLISHED -- a hard kill will leave "
+                                 "builders running; kill the TREE (taskkill /T)"),
+          flush=True)
     if not argv:
         print(__doc__)
         return 2
