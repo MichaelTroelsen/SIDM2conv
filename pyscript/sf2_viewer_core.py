@@ -1643,6 +1643,72 @@ class SF2Parser:
             out.append(span)
         return out
 
+    def _sequence_total_is_possible(self, reader: str) -> bool:
+        """Refuse a decode that cannot fit in the file it came from.
+
+        THE THREE FALLBACK READERS ARE UNBOUNDED. When `laxity_seq_table`
+        locates, every body is cut at the NEXT POINTER and its length is
+        structural. When it does not -- 25 of the 47 SF2s in SF2/ -- the
+        fallbacks scan to the grammar's own $7F with nothing stopping them, and
+        that runs away: `_test_commando.sf2` yields two bodies of 11,335 and
+        13,361 entries.
+
+        THIS IS NOT A THRESHOLD, AND THAT MATTERS -- `default_sequence_length`
+        is explicitly NOT the bound (it is the length a NEW sequence gets in the
+        editor, and refusing on it dropped whole legitimate voices; see
+        abpage-overread-guard-refuses-legitimate-columns, settled and pinned).
+        What is used here is an IMPOSSIBILITY: every entry in the packed stream
+        consumes at least one byte, so the entries decoded from a file can never
+        outnumber the file's bytes. A decode that does is not "long", it is
+        arithmetically impossible.
+
+        MEASURED over all 47 .sf2 in SF2/ on 2026-09-03:
+
+            _test_commando.sf2   24,696 entries  >  22,705 bytes   REFUSED
+            next largest         1,762  entries  in 13,276 bytes   13% of bound
+            45 others            far below
+
+        So the bound has ~7x headroom on the worst legitimate file and catches
+        exactly the one impossible case. Note the check is on the TOTAL, not per
+        sequence: commando's individual bodies (13,361 and 11,335) each fit
+        inside 22,705 bytes and only their sum does not.
+
+        WHY REFUSE RATHER THAN EMIT AND LET CONSUMERS DECIDE. Six modules import
+        this one, and only `abpage.row_schedule` has its own over-read guard --
+        `abpage_chips`, `sf2_html_exporter`, `sf2_to_text_exporter`,
+        `sf2_viewer_gui` and `passband_check` take what they are given. The cost
+        of emitting is not theoretical: on 2026-09-03 this parser reported
+        "12 sequences, 71,236 entries" for a 17,957-byte output file during an
+        unrelated investigation, and that number was very nearly used as
+        evidence about what the file contained.
+
+        Returns True when the decode is possible. Otherwise clears `sequences`,
+        records the reason on `sequence_refusals`, and returns False so the
+        dispatch falls through to the next reader exactly as it does for any
+        reader that declines.
+        """
+        seqs = self.sequences or {}
+        total = sum(len(v) for v in seqs.values())
+        try:
+            budget = len(self.data)
+        except Exception:                                     # noqa: BLE001
+            budget = 0
+        if not budget or total <= budget:
+            return True
+        if not hasattr(self, "sequence_refusals"):
+            self.sequence_refusals = []
+        self.sequence_refusals.append({
+            "reader": reader, "entries": total, "bytes": budget,
+            "reason": ("%d entries decoded from a %d-byte file -- every packed "
+                       "entry costs at least one byte, so this decode cannot "
+                       "fit in its own source" % (total, budget)),
+        })
+        logger.warning(
+            "%s: refusing %d sequence entries decoded from a %d-byte file "
+            "(impossible, not merely long); falling through", reader, total, budget)
+        self.sequences = {}
+        return False
+
     def _parse_laxity_two_stage(self):
         """Decode a Laxity payload through BOTH stages. True if it produced any.
 
@@ -1848,17 +1914,20 @@ class SF2Parser:
             # BOTH stages next. The packed-sequence scan below is a heuristic
             # and wins by returning True with plausible-looking garbage, so it
             # must not be reached while a real decode is available.
-            if self._parse_laxity_two_stage():
+            if (self._parse_laxity_two_stage()
+                    and self._sequence_total_is_possible("two-stage Laxity decode")):
                 logger.info(f"Parsed {len(self.sequences)} sequences via the two-stage Laxity decode")
                 return
 
             # Try new Laxity SF2 parser (handles offset table structure)
-            if self._parse_packed_sequences_laxity_sf2():
+            if (self._parse_packed_sequences_laxity_sf2()
+                    and self._sequence_total_is_possible("Laxity SF2 offset-table parser")):
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity SF2 parser")
                 return
 
             # Fallback: Try original Laxity parser
-            if self._parse_laxity_sequences():
+            if (self._parse_laxity_sequences()
+                    and self._sequence_total_is_possible("original Laxity parser")):
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity parser")
                 return
             else:
@@ -1866,7 +1935,8 @@ class SF2Parser:
                 self.sequences = {}  # Clear any partial results
 
         # Second priority: Try generic packed sequences (for other SF2 formats with packed sequences)
-        if self._parse_packed_sequences_laxity_sf2():
+        if (self._parse_packed_sequences_laxity_sf2()
+                and self._sequence_total_is_possible("generic packed-sequence parser")):
             if self.sequences:
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity SF2 offset table parser")
                 return

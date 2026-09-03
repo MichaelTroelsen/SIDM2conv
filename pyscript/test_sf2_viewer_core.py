@@ -503,3 +503,107 @@ def test_the_repo_root_is_on_sys_path_from_this_module():
     assert "sys.path.insert(0, str(Path(__file__).parent.parent))" not in src, (
         "the repo-root entry was changed back to insert(0), which shadows "
         "sibling modules -- see test_stage7_emissions.py")
+
+
+# --- a decode that cannot fit in its own file is refused ----------------------
+#
+# The three Laxity fallback readers scan to the grammar's own $7F with nothing
+# bounding them (22 of 47 SF2s locate a pointer table and are structurally
+# bounded; the other 25 fall through to these). The bound applied is an
+# IMPOSSIBILITY, not a threshold: every packed entry costs at least one byte, so
+# the entries decoded from a file cannot outnumber the file's bytes.
+#
+# default_sequence_length is deliberately NOT used -- refusing on it dropped
+# whole legitimate voices, which is settled and pinned elsewhere.
+
+def _all_sf2s():
+    import glob
+    return sorted(glob.glob(os.path.join(_ROOT, "SF2", "*.sf2")))
+
+
+def _parsed(path):
+    import io
+    import contextlib
+    from sf2_viewer_core import SF2Parser
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        p = SF2Parser(path)
+        if not p.parse():
+            return None
+    return p
+
+
+def test_no_file_decodes_more_entries_than_it_has_bytes():
+    """THE INVARIANT, over the whole SF2/ corpus rather than one file.
+
+    Before the guard, _test_commando.sf2 decoded 24,696 entries from 22,705
+    bytes. Nothing else came close -- the next largest is 1,762 entries in
+    13,276 bytes, 13% of its own bound -- so this is not a tight fit that
+    legitimate files brush against.
+    """
+    files = _all_sf2s()
+    if len(files) < 10:
+        pytest.skip("no SF2 corpus on this machine")
+    seen = 0
+    for f in files:
+        p = _parsed(f)
+        if p is None:
+            continue
+        seen += 1
+        total = sum(len(v) for v in (p.sequences or {}).values())
+        assert total <= len(p.data), (
+            "%s decoded %d entries from %d bytes"
+            % (os.path.basename(f), total, len(p.data)))
+    assert seen > 20, "parsed too few files for this to mean anything: %d" % seen
+
+
+def test_the_guard_costs_the_corpus_NOTHING():
+    """A refusal must not take legitimate decodes with it.
+
+    Measured 2026-09-03: 47 of 47 files in SF2/ still decode sequences after
+    the guard, exactly as before it. The one refusal falls THROUGH to a later
+    reader rather than emptying the file.
+    """
+    files = _all_sf2s()
+    if len(files) < 10:
+        pytest.skip("no SF2 corpus on this machine")
+    parsed = [p for p in (_parsed(f) for f in files) if p is not None]
+    assert parsed, "nothing parsed"
+    with_seqs = [p for p in parsed if p.sequences]
+    assert len(with_seqs) == len(parsed), (
+        "%d of %d files lost their sequences to the guard"
+        % (len(parsed) - len(with_seqs), len(parsed)))
+
+
+def test_commando_records_WHY_it_was_refused():
+    """The refusal is reported, not silent -- five of the six consumers of this
+    module have no over-read guard of their own and cannot tell an impossible
+    decode from a long one."""
+    path = os.path.join(_ROOT, "SF2", "_test_commando.sf2")
+    if not os.path.exists(path):
+        pytest.skip("SF2/_test_commando.sf2 not present")
+    p = _parsed(path)
+    assert p is not None
+    refusals = getattr(p, "sequence_refusals", [])
+    assert refusals, "the impossible decode was accepted silently"
+    r = refusals[0]
+    assert r["entries"] > r["bytes"], r
+    assert "at least one byte" in r["reason"]
+    assert r["reader"], "the refusal does not say which reader produced it"
+    # and it fell through rather than emptying the file
+    assert p.sequences, "the refusal emptied the file instead of falling through"
+
+
+def test_a_pointer_bounded_file_is_not_touched_by_the_guard():
+    """The guard is wired to the FALLBACK readers only. A file whose sequence
+    table locates is cut at the next pointer, so its lengths are structural and
+    it must never acquire a refusal."""
+    files = _all_sf2s()
+    if len(files) < 10:
+        pytest.skip("no SF2 corpus on this machine")
+    bounded = [p for p in (_parsed(f) for f in files)
+               if p is not None and getattr(p, "laxity_seq_table", None)]
+    assert bounded, "no pointer-bounded file in the corpus to check against"
+    for p in bounded:
+        assert not getattr(p, "sequence_refusals", []), (
+            "a pointer-bounded decode was put through the fallback guard")
