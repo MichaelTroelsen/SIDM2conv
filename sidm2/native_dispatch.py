@@ -86,6 +86,21 @@ collision, so the absence is checked rather than assumed. Its own vacuous case
 -- probes that claim NOTHING also produce zero collisions -- is guarded by
 per-family floors in the same test.
 
+RE-CONFIRMED INDEPENDENTLY AT 7e67c33, and the guard is now PROVEN rather than
+asserted. A second census reproduced every number above exactly (sig=0 1248,
+sig=1 276, sig>1 0; sdi 178 / soundmonitor 37 / hardtrack 33 / blackbird 16 /
+mattgray 12; hardtrack n sdi over SID/Shogoon = 0). And the guard was
+mutation-checked: making `_probe_blackbird` accept every file turns it RED with
+"a signature collision now exists, so `rank()` will abstain", and restoring
+returns it to green. So it does fail on the first collision, which is the
+property the paragraph above promises.
+
+ONE TRAP FOR ANYONE RE-RUNNING THAT CENSUS: `probe()` returns a TUPLE --
+`(True, evidence)` or `(False, reason)` -- so `if probe(fam, path)` is ALWAYS
+truthy and reports every family accepting every file. Test `probe(...)[0]`. A
+census written the naive way says 1,524 contested files and looks like a
+catastrophic collision rather than a harness bug.
+
 THE ONE NEAR-MISS, AND WHY IT IS NOT SHIPPED. `max_dur` (largest `dur_ticks`)
 puts 3 of the 16 outside the genuine range -- but genuine's maximum is 384 and
 the rule would be "> 384", a threshold fitted to the observed high-water mark of
