@@ -261,7 +261,74 @@ the write *sequence* agrees. Not wired into SIDM2.
 
 ---
 
-## 7. Where knowledge lives
+## 7. Artifact provenance — what is stamped, and the decision still open
+
+Every native build writes a `<name>.sf2.prov` sidecar beside its artifact
+(`commit / tree / builder / flags`). It is **not in the bytes**, so a `cp` of a
+`.sf2` leaves a stale stamp that a byte-compare cannot see. `_provenance()`
+deliberately omits a timestamp, so a same-commit rebuild stays byte-identical.
+
+**Censused 2026-09-04 (re-measured, superseding the 84.5% figure that circulated
+earlier this session — `out/dmc` was rebuilt in between, which moved it a lot):**
+
+| corpus | stamped | total |
+|---|---|---|
+| `out/dmc` | 1175 | 1177 |
+| `out/hardtrack_native` | 313 | 313 |
+| `out/soundmonitor` | 9 | 31 |
+| `out/mon` | 3 | 211 |
+| `out/sdi` | 2 | 5039 |
+| `out/blackbird` | 0 | 20 |
+| `out/fc` | 0 | 19 |
+| **total** | **1502** | **6810** |
+
+**5,308 UNSTAMPED (77.9%)** — and the distribution is the finding, not the
+headline. `out/sdi` alone accounts for **5,037 of the 5,308**, i.e. **95%** of
+every unstamped artifact in the tree. Two corpora are now fully or nearly fully
+stamped (`hardtrack_native` 313/313, `dmc` 1175/1177), both as a side effect of
+rebuilds done for other reasons.
+
+Distinct stamps on disk: `7e67c33/dirty` ×1407, `423731b/dirty` ×84,
+`21d3b48/dirty` ×9, `c78c349/dirty` ×1, `7e67c33/**clean**` ×1.
+
+**A correction:** it has been written here and elsewhere that *every* existing
+stamp reads `dirty`. That is no longer true — exactly one artifact carries a
+clean-tree stamp. The stronger claim it was supporting still holds: **no corpus
+meets "one stamp at a clean commit"**, because one file out of 6,810 does not
+make a corpus reproducible.
+
+### The decision: rebuild everything, or accept UNSTAMPED — NOT YET TAKEN
+
+This is a human call and it is deliberately left open here. What the evidence
+says, so it does not have to be re-derived:
+
+**For accepting UNSTAMPED.** A mass rebuild buys **dating, not correctness**.
+Measured: rebuilding `out/dmc` from its stale state to a same-flag control
+changed the passband score of **ZERO** files while moving part counts by 11.
+`UNSTAMPED` is also *honest* — the census counts it as such, and
+`fidelity_common`'s own test file records that **a wrong stamp is worse than no
+stamp**, because a stale one is confidently wrong.
+
+**For rebuilding.** Provenance exists so a corpus figure can be dated, and today
+most cannot be. A sweep that averages artifacts from several commits is
+measuring its own build history.
+
+**What has changed since the question was first asked**, and it sharpens the
+decision considerably: the corpus-wide question has collapsed into **one
+corpus**. With `dmc` and `hardtrack_native` already stamped, "rebuild
+everything" now means, in practice, "rebuild `out/sdi`" — 5,039 artifacts, 95%
+of the remaining gap, and by far the most expensive corpus in the tree.
+`blackbird` (20), `fc` (19), `soundmonitor` (22) and `mon` (208) together are
+269 artifacts and are cheap by comparison.
+
+**If the rebuild is chosen: COMMIT FIRST.** Every stamp written from a modified
+tree reads `dirty`, which is exactly the state this exercise is trying to leave.
+Rebuilding before committing reproduces the problem at greater cost.
+
+---
+
+
+## 8. Where knowledge lives
 
 | Layer | Location |
 |-------|----------|
