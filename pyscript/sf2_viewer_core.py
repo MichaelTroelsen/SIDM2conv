@@ -1966,7 +1966,15 @@ class SF2Parser:
 
         if self._find_packed_sequences() is not None:
             self._parse_packed_sequences()
-            if self.sequences:
+            # GUARDED, like the four readers above. This one was NOT, and it is the
+            # most-used path of all: 277 of the 411 .sf2 in SF2/ + out/ end here, so
+            # the single reader with no impossibility check was the one the corpus
+            # leans on hardest. Nothing on disk currently trips it -- 0 of 411 emit a
+            # total exceeding their own byte count -- which is exactly why the hole
+            # stayed invisible. It was latent, not active, and a latent hole in the
+            # reader of first resort is the one worth closing before it is exercised.
+            if (self.sequences
+                    and self._sequence_total_is_possible("packed-sequence heuristic")):
                 logger.info(f"Successfully parsed {len(self.sequences)} packed sequences")
                 self._mark_provenance("packed-sequence heuristic", structural=False)
                 return
@@ -1982,7 +1990,13 @@ class SF2Parser:
                 if seq_idx > 32:  # At least try first 32
                     break
 
-        if self.sequences and self.sequence_provenance is None:
+        # The LAST reader, and it was unguarded too. Its sequence COUNT is bounded
+        # (MAX_SEQUENCES, with an early break past 32) but each BODY is not, so the
+        # total it emits can still exceed the file it came from -- a different shape
+        # from the fallbacks above, and the same impossibility.
+        if self.sequences and not self._sequence_total_is_possible("indexed sequence table"):
+            logger.info("Indexed sequence parsing produced an impossible total; refused")
+        elif self.sequences and self.sequence_provenance is None:
             self._mark_provenance("indexed sequence table", structural=False)
         logger.info(f"Parsed {len(self.sequences)} sequences total")
 

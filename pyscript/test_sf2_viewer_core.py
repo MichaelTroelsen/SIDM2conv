@@ -649,3 +649,68 @@ def test_structural_is_reserved_for_the_pointer_table():
         assert prov.get("structural") == located, (
             "%s: structural=%s but laxity_seq_table located=%s"
             % (os.path.basename(f), prov.get("structural"), located))
+
+
+def test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard():
+    """The counter-example the impossibility guard actually needs.
+
+    test_a_located_file_may_legitimately_exceed_its_default_sequence_length uses
+    Cycles -- but Cycles LOCATES, and the located reader
+    (`_parse_laxity_real_sequences`) returns BEFORE any guard call, because a
+    pointer-bounded decode cannot run away. So that test proves the dsl claim and
+    proves nothing about the guard: its file never meets it.
+
+    Stinsens_Last_Night_of_89 does. It routes through the GUARDED
+    `Laxity SF2 offset-table parser`, its dsl is 65, and its longest sequence is
+    647 -- ten times the dsl -- for 1,762 entries in 13,449 bytes. If the guard
+    ever regresses into a length threshold, this file is what fails first.
+    """
+    p = _parsed_sf2("Stinsens_Last_Night_of_89.sf2")
+    prov = getattr(p, "sequence_provenance", None)
+    reader = prov.get("reader") if isinstance(prov, dict) else prov
+    assert reader == "Laxity SF2 offset-table parser", reader
+    assert not (prov or {}).get("structural"), "must be a GUARDED heuristic path"
+
+    dsl = p.music_data_info.default_sequence_length
+    assert dsl == 65, dsl
+    lengths = [len(v) for v in p.sequences.values()]
+    assert max(lengths) > dsl * 5, (max(lengths), dsl)
+    assert sum(lengths) == 1762, sum(lengths)
+    assert not getattr(p, "sequence_refusals", None), (
+        "the guard refused a legitimate decode: %r" % (p.sequence_refusals,))
+
+
+def test_every_heuristic_reader_in_the_dispatch_is_guarded():
+    """A reader added without a guard is the defect this pins.
+
+    Measured 2026-09-04: `_parse_sequences` had SIX paths marking
+    `structural=False` and only FOUR guard calls. The two unguarded ones were
+    `packed-sequence heuristic` -- the most-used reader in the repo, 277 of the
+    411 .sf2 in SF2/ + out/ end there -- and the final `indexed sequence table`.
+    Neither was tripping on any file on disk (0 of 411 emit a total exceeding
+    their own byte count), so the hole was latent and invisible.
+
+    `structural=True` is exempt BY DESIGN and must stay exempt: the located
+    reader cuts every body at the next pointer, so its length is structural and
+    an impossibility check there would be dead code.
+    """
+    import re
+    src = open(os.path.join(_ROOT, "pyscript", "sf2_viewer_core.py"),
+               encoding="utf-8").read()
+    defs = [(m.start(), m.group(1)) for m in re.finditer(r"\n    def (\w+)", src)]
+    body = None
+    for i, (pos, name) in enumerate(defs):
+        if name == "_parse_sequences":
+            end = defs[i + 1][0] if i + 1 < len(defs) else len(src)
+            body = src[pos:end]
+            break
+    assert body, "_parse_sequences not found -- the dispatch was renamed"
+
+    guards = body.count("_sequence_total_is_possible(")
+    heuristic = body.count("structural=False")
+    structural = body.count("structural=True")
+    assert heuristic >= 6, heuristic
+    assert structural == 1, structural
+    assert guards >= heuristic, (
+        "%d heuristic reader(s) but only %d guard call(s): a reader can emit a "
+        "decode larger than the file it came from" % (heuristic, guards))
