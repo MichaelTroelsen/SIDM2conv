@@ -37,16 +37,41 @@ import build_mon_native_song as BM                                     # noqa: E
 
 # SDI-ONLY filter defaults. `detect_filter_drives` and `_filt_exact` are shared
 # by the NINE builders that route through `build_native_song`, and their two
-# opt-in flags were measured across six corpora (2026-08-19): SDI is the only
+# opt-in flags were measured across six corpora (2026-08-19). SDI is the only
 # player they help -- `Arabia` 97.8 -> 100.0 (the attack falls in a 71-frame gap
 # between onsets, outside the +4 window at both ends) and `Funk_Facet`
 # 99.0 -> 100.0 (its drive is handed a canonical captured over a shorter span,
-# which never reaches the LP -> LP+HP switch). Everywhere else they are inert or
-# pure cost: Blackbird byte-identical, FC 0 of 19 artifacts changed, SoundMonitor
-# 99.252 -> 99.252 with `--compare` clean (including `Dance_at_Night_remix`, the
-# file the FILT_LEAD comment names as the hazard), HardTrack +2 parts for zero
-# fidelity change, DMC +3 parts and `Predictable_main`'s audible v1 freq
-# 100.0 -> 99.35. So they are scoped HERE rather than flipped globally.
+# which never reaches the LP -> LP+HP switch).
+#
+# THE SIX-PLAYER A/B, BOTH ARMS REBUILT AT HEAD. Part counts are quoted beside
+# the fidelity column because these flags move the WINDOWING, so a fidelity
+# figure alone hides their cost:
+#
+#   player        fidelity OFF -> ON            parts OFF -> ON   verdict
+#   SDI           Arabia    97.8 -> 100.0       3111 -> 3111      HELPS, free
+#                 Funk_Facet 99.0 -> 100.0
+#   HardTrack     passband  32/33 -> 32/33       313 ->  315      +2 parts, 0 gain
+#                 (every column identical; Fun_Factory 99.0 both)
+#   DMC           passband  50/70 -> 50/70       992 ->  995      +3 parts, 1 LOSS
+#                 (Predictable_main audible v1 freq 100.0 -> 99.35)
+#   SoundMonitor  99.252 -> 99.252 (--compare)    no part moves    inert
+#   Blackbird     99.963 -> 99.963                byte-changes 0   inert
+#   FC            passband   5/5 -> 5/5           0 of 19 differ   inert
+#
+# Net: helps ONE player, inert on three, +5 parts across two, and one small
+# audible regression. So they are scoped HERE rather than flipped globally.
+#
+# ⚠️ THAT TABLE IS AN A/B TAKEN ON 2026-08-19, NOT A CURRENT CORPUS CENSUS. Its
+# part counts are the two arms of that experiment against each other; the
+# corpora have been rebuilt since (DMC's total is no longer 992). Compare the
+# columns to each other, never to today's `out/`.
+#
+# AND AN A/B AGAINST A SHIPPED CORPUS IS NOT AN A/B -- the run that produced
+# this table first reported DMC as a WIN, because its OFF arm was the shipped
+# corpus rather than a rebuild at HEAD, so stale-corpus drift was being read as
+# the flags' effect. FC exposed it (11 of 19 artifacts "changed" until OFF was
+# rebuilt at HEAD, then 0 of 19) and the DMC win collapsed on re-measurement.
+# Both arms must be built by the same builder.
 #
 # An explicit env var still wins, because every A/B in this repo is driven that
 # way -- setting FILT_LEAD=4 must be able to turn the SDI default back off.
