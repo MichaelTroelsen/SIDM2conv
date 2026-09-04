@@ -921,3 +921,57 @@ def test_the_floor_sits_below_every_real_build_it_was_measured_against():
     assert BUNDLE_FLOOR < 10, (
         "BUNDLE_FLOOR (%d) has been raised to or above the measured corpus "
         "minimum of 10 -- it would now flag real builds" % BUNDLE_FLOOR)
+
+
+def test_bundle_diversity_is_BLIND_to_a_one_voice_dead_trace():
+    """THE MEASURE DOES NOT MOVE AT ALL, which is stronger than "clears the floor".
+
+    bundle_diversity's own docstring says a build whose trace was empty for one
+    voice "can still clear the floor". Measured 2026-09-04, it is worse than
+    that: killing an entire voice's trace changes the bundle count by ZERO.
+
+        Balloon ORIGINAL       bundles 24   Wave2 19   Filter4 5   notes 6732
+        Balloon VOICE-1 DEAD   bundles 24   Wave2 19   Filter4 5   notes 5745
+        whole-trace control    bundles  2   Wave2  2   Filter4 0   notes  424
+
+    The control is out/dmc/EMPTYTRACE_V1_CONTROL_part01.sf2, built by the real
+    DMC builder with voice 1's per-frame registers frozen to a constant for the
+    whole song and everything else untouched. Its bytes DIFFER from Balloon's
+    and its note count drops 15%, so the stub demonstrably took effect -- the
+    bundle count simply does not respond.
+
+    WHY NO THRESHOLD FIXES THIS. `bundles` counts DISTINCT non-zero rows in
+    GLOBAL program tables. Losing one voice removes rows the other two voices
+    still produce, so the distinct SET is unchanged. A floor cannot separate two
+    numbers that are equal, and neither can a per-table floor: Wave2 is 19 on
+    both. The blindness is in the quantity, not in its threshold.
+
+    WHY PER-VOICE ATTRIBUTION CANNOT BE ADDED FROM THE ARTIFACT. Two things
+    would be needed and neither is present: the orderlists that say which voice
+    plays which sequence (SF2Parser exposes no orderlists), and a note->
+    instrument reference (every SequenceEntry in a DMC build carries
+    instrument=0x80, the "no change" sentinel, so no note names an instrument).
+    A per-voice measure has to run against the TRACE, before the build, not
+    against the artifact afterwards.
+
+    This test pins the blindness so that a future "improved" screen has to beat
+    a number rather than an intuition.
+    """
+    from sidm2.fidelity_common import bundle_diversity, bundle_collapse
+    good = bundle_diversity(_skip_missing(_artifact("out", "dmc", "Balloon_part01.sf2")))
+    v1 = bundle_diversity(_skip_missing(
+        _artifact("out", "dmc", "EMPTYTRACE_V1_CONTROL_part01.sf2")))
+    assert good is not None and v1 is not None
+
+    # the stub really did change the build
+    assert v1["notes"] < good["notes"], (
+        "the one-voice-dead control has the same note count as the original -- "
+        "the trace stub did not take effect and this control is worthless")
+
+    # ...and the measure is still blind to it
+    assert v1["bundles"] == good["bundles"], (
+        "bundle diversity now MOVES on a one-voice-dead trace (%d vs %d). That is "
+        "an improvement -- re-measure and rewrite this test rather than deleting "
+        "the assertion" % (v1["bundles"], good["bundles"]))
+    assert bundle_collapse(_artifact("out", "dmc",
+                                     "EMPTYTRACE_V1_CONTROL_part01.sf2")) is False

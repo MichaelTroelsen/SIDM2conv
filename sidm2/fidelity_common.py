@@ -899,9 +899,29 @@ def bundle_diversity(build_path):
     bundles for 212.0. The ratio is dominated by song length, which is exactly
     what a dead trace does not change. Use the ABSOLUTE bundle count.
 
-    WHAT IT DOES NOT DO: it is a screen, not a verdict. A build whose trace was
-    partially empty, or empty for one voice, can still clear the floor. A count
-    above BUNDLE_FLOOR means "not the collapse this looks for", never "correct".
+    WHAT IT DOES NOT DO: it is a screen, not a verdict. A count above
+    BUNDLE_FLOOR means "not the collapse this looks for", never "correct".
+
+    AND IT IS COMPLETELY BLIND TO A ONE-VOICE-DEAD TRACE -- not "can still clear
+    the floor", which is what this said before it was measured. On 2026-09-04 a
+    control was built by the real DMC builder with voice 1's per-frame registers
+    frozen for the whole song:
+
+        Balloon ORIGINAL       bundles 24   Wave2 19   Filter4 5   notes 6732
+        Balloon VOICE-1 DEAD   bundles 24   Wave2 19   Filter4 5   notes 5745
+        whole-trace control    bundles  2   Wave2  2   Filter4 0   notes  424
+
+    The count does not move by ONE. It is not a threshold problem and no floor
+    can fix it: `bundles` counts DISTINCT rows in GLOBAL tables, and losing one
+    voice removes rows the other two still produce, so the distinct SET is
+    unchanged. A per-table floor fails identically (Wave2 is 19 both sides).
+    The control is out/dmc/EMPTYTRACE_V1_CONTROL_part01.sf2 and the blindness is
+    pinned by test_bundle_diversity_is_BLIND_to_a_one_voice_dead_trace.
+
+    A per-voice measure CANNOT be built from the artifact: SF2Parser exposes no
+    orderlists (so no sequence->voice mapping) and every DMC SequenceEntry
+    carries instrument=0x80, the "no change" sentinel (so no note->instrument
+    mapping). Such a measure has to run against the TRACE, before the build.
     """
     import sys
     import os

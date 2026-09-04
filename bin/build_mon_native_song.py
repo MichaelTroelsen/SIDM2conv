@@ -1320,7 +1320,35 @@ def _vibrato_program(prog, step):
 def _pulse_unroll(prog, n):
     """Per-frame 12-bit pulse values a pulse program produces over n frames
     (model of pulse_step: 8X set / 0X add per frame, byte2 = frame count,
-    $7f = freeze)."""
+    $7f = freeze).
+
+    A STRICT PER-FRAME PULSE SCORE UNDERSTATES THIS ENGINE, MEASURED 2026-09-04.
+    The 17 DMC voices that sit under 90% in BOTH the raw and audible columns
+    (audible_n >= 200) were classified with `fidelity_common.shape_agreement`,
+    which asks whether the register moved the same NUMBER of times and the same
+    total DISTANCE -- the phase-invariant question. Across the 26 (voice,
+    register) findings:
+
+        PHASE / ALIGNMENT   13     motion the right size, frames disagree
+        MIXED               13     partial motion agreement
+        DIFFERENT MOTION     0     <- not one
+        NOT EXERCISED        0
+
+    NOT ONE of them is the engine producing different movement. The extremes are
+    the point: Jazz_4 voice 2 pulse scores strict 0.2% with moves 99.5 and
+    travel 99.0; Jazz_3 voice 2 pulse scores 5.5% with 100.0 / 100.0; Ace_II
+    voice 1 pulse 1.4% with 100.0 / 97.7. A sweep reproduced at the right rate,
+    depth and direction but starting a few frames off disagrees on nearly every
+    frame, which reads as a dead pulse engine and is not one.
+
+    So a sub-10% strict pulse number on this builder is evidence of MISALIGNMENT
+    until shape is checked, never of a missing sweep. Quote the two together --
+    `shape_agreement`'s own docstring says it is necessary and not sufficient, so
+    it may not be quoted alone either.
+
+    The 13 MIXED rows (moves/travel roughly 50-95) are NOT explained by phase
+    alone and are not claimed to be: they are partial agreement, and what
+    separates them from the clean phase cases is unmeasured."""
     out, cur, i = [], 0, 0
     while len(out) < n and i < len(prog):
         b0, b1, b2 = prog[i]
