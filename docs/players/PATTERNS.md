@@ -720,6 +720,41 @@ kill-safety (2026-09-03 session).
 
 ---
 
+### F14. A diagnostic that suppresses a builder's OUTPUT changes its RESULT
+
+**Symptom**: instrumenting a builder by no-op'ing its emit step — so the run
+"only measures" and writes no artifacts — produces numbers that do not describe
+the shipped build. `bin/build_dmc_native_song.py`'s adaptive part-splitter packs
+by the **measured byte size of each emitted artifact**, so with `emit_one`
+stubbed out it has nothing to measure and splits differently: `Dreaming_2`
+reported **15 parts** under the suppressed run and builds **22** for real. Every
+per-part number from such a run — window bounds, instrument counts, bundle
+counts — is therefore about a part layout that does not exist on disk.
+
+**And the suppression is not even side-effect-free.** `main()` runs its own
+stale-part pruning independently of emission, so the diagnostic run *deleted*
+`Dreaming_2_part16..22` and left a 15-part truncation of an older 22-part build
+in `out/dmc`. A read-only-looking instrument silently damaged the corpus; it was
+caught only by counting the files afterwards.
+
+**Fix**:
+1. Instrument by MONKEYPATCHING IN A SCRATCH SCRIPT, never by editing or
+   stubbing the builder — a wrapper that calls the real function and records its
+   arguments changes no behaviour, and leaves no debug code in a builder eight
+   players share.
+2. If output must be suppressed, suppress ONLY the file write, not the size
+   measurement the splitter consumes — and say so beside any number the run
+   produces.
+3. Count the artifacts before and after any "read-only" diagnostic that calls a
+   builder's `main()`. Pruning, locking and staging are not part of emission and
+   do not stop when emission does.
+
+**Seen in**: `dmc-dreaming2-v3` voice-3 investigation (2026-09-04) — three
+instrumented runs, all reporting a 15-part split for a song that ships 22, and
+one of them removing 7 shipped parts.
+
+---
+
 ## Adding an entry
 One screenful max: symptom → detection → exploit/fix → players seen in.
 If a technique is rediscovered in a new arc, add the sighting here *in the
