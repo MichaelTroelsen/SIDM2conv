@@ -315,14 +315,25 @@ def setup_logging(
 
         if max_file_size > 0:
             # Rotating file handler
+            # UTF-8 EXPLICITLY, never the locale default. Measured 2026-09-04:
+            # with no encoding= the handler took cp1252 and logging a U+2192
+            # arrow wrote ZERO BYTES -- the line is discarded and the file is
+            # empty. That is worse than the console case (fixed separately): a
+            # console at least spills the traceback to stderr where someone may
+            # see it, whereas a log file is read AFTER the fact and simply has
+            # no record. backslashreplace is belt-and-braces for anything UTF-8
+            # itself cannot encode, e.g. a lone surrogate from a bad decode.
             file_handler = logging.handlers.RotatingFileHandler(
                 log_file,
                 maxBytes=max_file_size,
-                backupCount=backup_count
+                backupCount=backup_count,
+                encoding='utf-8',
+                errors='backslashreplace',
             )
         else:
             # Regular file handler (no rotation)
-            file_handler = logging.FileHandler(log_file)
+            file_handler = logging.FileHandler(
+                log_file, encoding='utf-8', errors='backslashreplace')
 
         file_handler.setLevel(level)
 
@@ -454,13 +465,24 @@ def add_file_handler(
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     if max_file_size > 0:
+        # UTF-8 EXPLICITLY, never the locale default. Measured 2026-09-04:
+        # with no encoding= the handler took cp1252 and logging a U+2192
+        # arrow wrote ZERO BYTES -- the line is discarded and the file is
+        # empty. That is worse than the console case (fixed separately): a
+        # console at least spills the traceback to stderr where someone may
+        # see it, whereas a log file is read AFTER the fact and simply has
+        # no record. backslashreplace is belt-and-braces for anything UTF-8
+        # itself cannot encode, e.g. a lone surrogate from a bad decode.
         handler = logging.handlers.RotatingFileHandler(
             log_file,
             maxBytes=max_file_size,
-            backupCount=backup_count
+            backupCount=backup_count,
+            encoding='utf-8',
+            errors='backslashreplace',
         )
     else:
-        handler = logging.FileHandler(log_file)
+        handler = logging.FileHandler(
+            log_file, encoding='utf-8', errors='backslashreplace')
 
     handler.setLevel(level)
 

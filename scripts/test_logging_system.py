@@ -503,6 +503,59 @@ class TestNonAsciiOnANarrowConsole(unittest.TestCase):
         self.assertNotIn('\\u', out)
 
 
+class TestLogFilesKeepNonAsciiToo(unittest.TestCase):
+    """The FILE handler had the same encoding defect as the console, and worse.
+
+    Measured 2026-09-04 on a cp1252 locale, before the fix: logging a U+2192
+    arrow through a file handler wrote **ZERO BYTES**. The console version at
+    least spills its traceback to stderr where a human may notice; a log file is
+    read AFTER the fact and simply has no record of the line.
+
+    All four construction sites in logging_config (rotating and plain, in both
+    setup_logging and add_file_handler) passed no `encoding=`, so each took
+    `locale.getencoding()`. They now pass encoding='utf-8' with
+    errors='backslashreplace' as a backstop.
+    """
+
+    def _log_to_file(self, message, rotating, via_add_file_handler):
+        import tempfile
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "t.log")
+        size = (10 * 1024 * 1024) if rotating else 0
+        if via_add_file_handler:
+            setup_logging(verbosity=2)
+            add_file_handler(path, max_file_size=size)
+        else:
+            setup_logging(verbosity=2, log_file=path, max_file_size=size)
+        logger = logging.getLogger("sidm2")
+        logger.warning(message)
+        for h in logger.handlers:
+            h.flush()
+        raw = open(path, "rb").read()
+        for h in list(logger.handlers):          # release before tempdir cleanup
+            try:
+                h.close()
+                logger.removeHandler(h)
+            except Exception:                                 # noqa: BLE001
+                pass
+        return raw
+
+    def test_all_four_file_handler_paths_keep_a_non_ascii_glyph(self):
+        for rotating in (True, False):
+            for via_add in (False, True):
+                with self.subTest(rotating=rotating, add_file_handler=via_add):
+                    raw = self._log_to_file("extractor → laxity",
+                                            rotating, via_add)
+                    self.assertTrue(raw, "the log file is EMPTY -- the line was discarded")
+                    self.assertIn("extractor".encode(), raw)
+                    self.assertIn("→".encode("utf-8"), raw,
+                                  "the glyph did not survive as UTF-8")
+
+    def test_plain_ascii_is_unaffected(self):
+        raw = self._log_to_file("ordinary message", False, False)
+        self.assertIn(b"ordinary message", raw)
+
+
 class TestZZPropagateIsRestoredBetweenTests(unittest.TestCase):
     """THE REGRESSION GUARD for the autouse fixture at the top of this file.
 
