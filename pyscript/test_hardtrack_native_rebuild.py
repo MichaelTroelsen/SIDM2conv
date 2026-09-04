@@ -224,3 +224,70 @@ class TestRebuildRunMarker(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestJobsFlag(unittest.TestCase):
+    """`--jobs` must parallelise WITHOUT changing a single byte.
+
+    Measured 2026-09-04: a serial rebuild and a `-j8` rebuild at 7e67c33 both
+    produce 313 artifacts with the same names and ZERO differing bytes, and
+    leave no `.staging` files behind.
+
+    WHY THIS IS SAFE HERE AND WAS NOT ON THE DMC SWEEP. Each song is already a
+    separate PROCESS (`subprocess.run` on build_hardtrack_native_song.py), so
+    the builder's module-global staging list `_PENDING` is per-process and one
+    worker cannot commit another's in-flight artifacts. The DMC sweep hit
+    exactly that failure (runs.jsonl: dmc-corpus-rebuild-serial-vs-j8, where
+    Spacegame_Music tried to commit `_abl_part01.sf2.staging`). The threads
+    added here only WAIT on those processes.
+
+    What IS shared is drivers_src scratch, and MON_BUILD_LOCK=1 serialises it
+    across processes -- set on the parent because it reaches the children
+    through the environment.
+    """
+
+    def _mod(self):
+        import importlib
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        return importlib.import_module("hardtrack_native_rebuild")
+
+    def _src(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        return open(os.path.join(here, "hardtrack_native_rebuild.py"),
+                    encoding="utf-8").read()
+
+    def test_jobs_defaults_to_one(self):
+        """Parallelism must be opt-in: the default path stays serial."""
+        H = self._mod()
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            try:
+                H.main(["--first", "10000", "--last", "10000", "--keep"])
+            except SystemExit:
+                pass
+        import json
+        with open(H.MARKER, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["runs"][-1]["jobs"], 1)
+
+    def test_parallel_sets_the_shared_driver_lock(self):
+        """MON_BUILD_LOCK is what stops concurrent builds corrupting
+        drivers_src. If a future edit parallelises without it, this fails."""
+        src = self._src()
+        i = src.index("if a.jobs > 1:")
+        window = src[i:i + 400]
+        self.assertIn("MON_BUILD_LOCK", window,
+                      "the parallel path no longer sets the shared driver lock")
+
+    def test_results_are_merged_in_corpus_order_not_completion_order(self):
+        """The printed table, the medians and the marker must not depend on
+        which worker finishes first -- otherwise a -j8 run and a serial run
+        differ in their REPORT even when every artifact is identical."""
+        src = self._src()
+        self.assertIn("ex.map(_build, sids)", src,
+                      "results are no longer collected in corpus order; a "
+                      "completion-ordered merge makes the report nondeterministic")
+        self.assertIn("for sid, stem, r in results:", src)

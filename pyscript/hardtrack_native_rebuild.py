@@ -143,6 +143,10 @@ def main(argv=None):
     ap.add_argument("--last", type=int, default=1 << 30)
     ap.add_argument("--keep", action="store_true",
                     help="do not clear out/hardtrack_native first")
+    ap.add_argument("--jobs", "-j", type=int, default=1, metavar="N",
+                    help="build N songs concurrently (default 1). Sets "
+                         "MON_BUILD_LOCK=1 so the one section touching shared "
+                         "drivers_src state is serialised across processes.")
     a = ap.parse_args(argv)
 
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -158,10 +162,39 @@ def main(argv=None):
     built_songs, refused_songs = [], []
     started = datetime.datetime.now(datetime.timezone.utc)
     voices = []            # [(stem, voice_idx, raw_pct|None, raw_n, aud_pct|None, aud_n), ...]
-    for sid in sids:
+    # PARALLEL BUILDS. Each song is already a separate PROCESS
+    # (`subprocess.run` below), so the builder's module-global staging list
+    # `_PENDING` is per-process and one worker cannot commit another's
+    # in-flight artifacts -- the failure measured on the DMC sweep
+    # (runs.jsonl: dmc-corpus-rebuild-serial-vs-j8). The threads here only
+    # WAIT on those processes; they share no builder state.
+    #
+    # What IS shared is drivers_src scratch, and MON_BUILD_LOCK=1 is what
+    # serialises it -- it reaches the children through the environment, which
+    # is why it is set on the parent rather than passed as a flag.
+    #
+    # Results are collected BY INDEX and merged in `sids` order below, so the
+    # printed table, the medians and the marker do not depend on completion
+    # order. A -j8 run and a serial run must differ in wall-clock only.
+    if a.jobs > 1:
+        os.environ["MON_BUILD_LOCK"] = "1"
+        print("  -j%d: MON_BUILD_LOCK=1 (shared driver state serialised)"
+              % a.jobs, flush=True)
+
+    def _build(sid):
         stem = os.path.basename(sid)[:-4]
         r = subprocess.run(["py", "-3", "bin/build_hardtrack_native_song.py", sid],
                            capture_output=True, text=True, cwd=ROOT)
+        return sid, stem, r
+
+    if a.jobs > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=a.jobs) as ex:
+            results = list(ex.map(_build, sids))
+    else:
+        results = [_build(sid) for sid in sids]
+
+    for sid, stem, r in results:
         got = sorted(glob.glob(os.path.join(OUT_DIR, stem + "_part*.sf2")))
         if not got:
             refused += 1
@@ -194,6 +227,7 @@ def main(argv=None):
         "tree": stamp["tree"],
         "flags": stamp["flags"],
         "first": a.first,
+        "jobs": a.jobs,
         "last": None if a.last == 1 << 30 else a.last,
         "cleared": not a.keep,
         "considered": len(sids),
