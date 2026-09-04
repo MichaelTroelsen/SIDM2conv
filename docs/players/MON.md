@@ -17,9 +17,37 @@ it selected"*) is where `passband_trace` was written. **131 of the 206 `out/mon`
 `pyscript/passband_check.py --player mon`, which measures the ARTIFACT rather
 than the builder:
 
-**FIXED 2026-08-13; the current figure is 22 of 27** (2026-08-20). **Both
-earlier figures — 17/19 and 18/20 — are RETRACTED, and not because the corpus
-grew.** They were measured over a glob of `*_sub0_part01.sf2`, which matched 20
+**FIXED 2026-08-13; the current figure is 22 of 27 — re-measured 2026-09-04 and
+unchanged.** This is what the checker prints today, quoted rather than
+paraphrased, so the count above can be checked against its source:
+
+```
+$ py -3 pyscript/passband_check.py --player mon
+22/27 builds select the original's passband (or route nothing through the
+filter, where it cannot be heard)
+  4 file(s) NOT COUNTED EITHER WAY: the original never routes a voice and never
+  selects a passband in this window, so there is nothing to reproduce.
+    Supremacy_sub0, Supremacy_sub1, Supremacy_sub2, Viool_Tello_sub0
+FAILED -- rebuild these first; if it survives a rebuild the builder is at fault,
+not the artifact:
+  Cybernoid_II_sub0_native (84.6%)
+```
+
+So the denominator resolves as **22 pass + 4 never exercise the filter + 1 real
+failure = 27**. The 4 are counted neither way on purpose; treating them as
+passes would inflate the figure to 26/27 on files that reproduce nothing.
+
+**THE 84.6% IS NOT A STALE ARTIFACT, and that is now settled by the checker's
+own test rather than by argument.** Its message says to rebuild a failing file
+first, because a builder fixed after an artifact was written leaves the artifact
+carrying a defect the code no longer has. `Cybernoid_II_sub0_native.sf2` was
+rebuilt on 2026-09-04 from a CLEAN tree and still scores 84.6%; its provenance
+sidecar now reads `commit eaa9f97 / tree clean`, so the failure is reproducible
+from a named commit and belongs to the builder. The mechanism is the one-frame
+transient documented in the next section.
+
+**Both earlier figures — 17/19 and 18/20 — are RETRACTED, and not because the
+corpus grew.** They were measured over a glob of `*_sub0_part01.sf2`, which matched 20
 of the 27 scoreable artifacts and silently dropped four non-sub0 subtunes
 (`Hawkeye` sub2/sub3, `Supremacy` sub1/sub2) and all three single-window
 `_native` builds. A denominator that never announced its own coverage read as a
