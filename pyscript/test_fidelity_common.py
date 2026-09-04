@@ -975,3 +975,174 @@ def test_bundle_diversity_is_BLIND_to_a_one_voice_dead_trace():
         "the assertion" % (v1["bundles"], good["bundles"]))
     assert bundle_collapse(_artifact("out", "dmc",
                                      "EMPTYTRACE_V1_CONTROL_part01.sf2")) is False
+
+
+# ---------------------------------------------------------------------------
+# per-VOICE trace diversity -- the successor to the blindness pinned above
+# ---------------------------------------------------------------------------
+
+def _frames(v0, v1, v2):
+    """Build siddump_frames_full()-shaped frames from three per-voice streams.
+
+    Each stream is a list of (wf, adsr, pul) triples; they are zipped into
+    frames so voice N's information content is exactly the distinct count of
+    its own stream. Deliberately synthetic: the LOGIC of the measure must be
+    testable without a 3-second siddump, and the real trace is pinned
+    separately below.
+    """
+    n = max(len(v0), len(v1), len(v2))
+
+    def at(s, i):
+        wf, adsr, pul = s[i % len(s)]
+        return {"freq": 0, "wf": wf, "adsr": adsr, "pul": pul}
+
+    return [({0: at(v0, i), 1: at(v1, i), 2: at(v2, i)},
+             {"cutoff": 0, "filtctl": 0, "volmode": 0}) for i in range(n)]
+
+
+_LIVE_A = [(0x41, 0x0A, 0x800), (0x40, 0x0A, 0x800), (0x11, 0x59, 0x400)]
+_LIVE_B = [(0x21, 0x18, 0x200), (0x20, 0x18, 0x200)]
+_DEAD = [(None, None, None)]
+
+
+def test_trace_voice_bundles_SEPARATES_the_one_voice_dead_trace():
+    """The thing bundle_diversity provably cannot do (24 vs 24).
+
+    Killing voice 1 must move voice 1 and ONLY voice 1. Asserting the other two
+    are unchanged is the load-bearing half: a measure that responded to the stub
+    by moving every voice would "separate" the control while being useless for
+    attribution, which is how the whole-file measure was wrong the first time.
+    """
+    from sidm2.fidelity_common import trace_voice_bundles
+
+    live = trace_voice_bundles(_frames(_LIVE_A, _LIVE_B, _LIVE_A))
+    dead = trace_voice_bundles(_frames(_LIVE_A, _DEAD, _LIVE_A))
+
+    assert live == {0: 3, 1: 2, 2: 3}
+    assert dead[1] == 1, "a frozen voice must carry exactly one distinct bundle"
+    assert dead[0] == live[0] and dead[2] == live[2], (
+        "killing voice 1 moved another voice's count (%s vs %s) -- the measure "
+        "is not attributing per voice" % (dead, live))
+
+
+def test_trace_voice_bundles_is_None_on_an_empty_trace_not_zero():
+    """None is UNMEASURABLE; 0 would be "the worst possible trace"."""
+    from sidm2.fidelity_common import trace_voice_bundles, voice_collapse
+    assert trace_voice_bundles([]) is None
+    assert voice_collapse([]) is None
+
+
+def test_trace_voice_bundles_REFUSES_the_siddump_per_frame_shape():
+    """siddump_per_frame() drops 'adsr'; measuring it anyway is a silent downgrade.
+
+    The two frame shapes are structurally interchangeable -- both are
+    [({0,1,2: {...}}, x), ...] -- so a caller passing the wrong one gets no
+    error from Python, just a weaker key and a smaller number. That is exactly
+    the class of silent-wrong-answer this module keeps being bitten by, so the
+    refusal is explicit.
+    """
+    from sidm2.fidelity_common import trace_voice_bundles
+    thin = [({vi: {"freq": 0, "wf": 0x41, "pul": 0} for vi in range(3)}, 0)]
+    with pytest.raises(ValueError, match="adsr"):
+        trace_voice_bundles(thin)
+
+
+def test_voice_collapse_alone_CANNOT_call_a_defect():
+    """Three causes produce the same reading, and this records all three.
+
+    Measured 2026-09-04 over 60 randomly-sampled non-Gallefoss SIDs: 15 have a
+    voice at <= 4 distinct bundles. Several read [1, 1, 1] on ALL THREE voices
+    (SID/LFT/Foerklaedd_Gud_eta.sid, SID/Gray_Matt/Always_on_My_Mind.sid,
+    SID/Gray_Matt/Jukebox_64_Part_2.sid) -- rips siddump cannot drive at all.
+    Others trace fine and are genuinely quiet on one voice
+    (Action_Biker [44, 9, 1], Deliverance [25, 194, 2], Nodule [48, 37, 2]).
+
+    So a one-voice-dead BUILD and a healthy corpus file are the same reading,
+    and no absolute floor separates them. This test pins that, so that anyone
+    re-adding an absolute per-voice screen has to beat the measurement.
+    """
+    from sidm2.fidelity_common import voice_collapse
+
+    defect = _frames(_LIVE_A, _DEAD, _LIVE_A)      # cause 1: build lost a voice
+    quiet = _frames(_LIVE_A, _DEAD, _LIVE_A)       # cause 2: never used
+    untraceable = _frames(_DEAD, _DEAD, _DEAD)     # cause 3: nothing was traced
+
+    assert voice_collapse(defect) == [1]
+    assert voice_collapse(quiet) == [1], (
+        "a genuinely unused voice reads IDENTICALLY to a lost one -- if this "
+        "ever differs, voice_collapse gained information it does not have")
+    assert voice_collapse(untraceable) == [0, 1, 2]
+
+
+def test_voice_collapse_vs_catches_the_defect_and_ONLY_the_defect():
+    """The comparative form removes causes 2 and 3 by construction, not by tuning."""
+    from sidm2.fidelity_common import voice_collapse_vs
+
+    ref = _frames(_LIVE_A, _LIVE_B, _LIVE_A)
+    lost_v1 = _frames(_LIVE_A, _DEAD, _LIVE_A)
+    assert voice_collapse_vs(ref, lost_v1) == [1]
+
+    # cause 2: the composer never used voice 2 -- dead on BOTH sides, so it
+    # cannot appear in the difference.
+    quiet_ref = _frames(_LIVE_A, _LIVE_B, _DEAD)
+    quiet_new = _frames(_LIVE_A, _LIVE_B, _DEAD)
+    assert voice_collapse_vs(quiet_ref, quiet_new) == []
+
+    # cause 3: siddump cannot drive the rip -- dead on both sides.
+    assert voice_collapse_vs(_frames(_DEAD, _DEAD, _DEAD),
+                             _frames(_DEAD, _DEAD, _DEAD)) == []
+
+    # and a voice that came BACK is not a collapse either
+    assert voice_collapse_vs(lost_v1, ref) == []
+
+
+def test_voice_collapse_vs_does_NOT_claim_to_catch_a_degraded_voice():
+    """The floor is a definition, not a margin, and this pins what it misses.
+
+    A voice degraded from 3 distinct bundles to 2 still carries information, so
+    it is not "collapsed" and is not reported. Stated in the docstring and
+    asserted here so the screen is never quoted as a per-voice fidelity score.
+    """
+    from sidm2.fidelity_common import voice_collapse_vs
+    degraded = [(0x21, 0x18, 0x200), (0x20, 0x18, 0x200)]
+    assert voice_collapse_vs(_frames(_LIVE_A, _LIVE_A, _LIVE_A),
+                             _frames(_LIVE_A, degraded, _LIVE_A)) == []
+
+
+def test_the_per_voice_floor_is_a_definition_not_a_measured_threshold():
+    """BUNDLE_FLOOR was set below a measured minimum; this one cannot be.
+
+    Live-voice diversity was measured over 36 voices from 11 drivable files
+    (min 12, median 60, max 1037), which would suggest a floor of ~5 by the same
+    reasoning that produced BUNDLE_FLOOR. That reasoning is WRONG here: the
+    broader sample above shows healthy files at 1, 2 and 4, so any floor above 1
+    flags real corpus files. 1 is not a tuned number -- it is "the voice never
+    changed", the exercised() definition.
+    """
+    from sidm2.fidelity_common import VOICE_BUNDLE_FLOOR
+    assert VOICE_BUNDLE_FLOOR == 1, (
+        "raising the per-voice floor makes the screen fire on healthy files: "
+        "15 of 60 sampled SIDs have a voice at <= 4 (see "
+        "test_voice_collapse_alone_CANNOT_call_a_defect)")
+
+
+def test_the_per_voice_measure_on_a_REAL_trace_not_a_synthetic_one():
+    """Balloon, the file the whole-file blindness was measured on. ~3s of siddump.
+
+    Measured 2026-09-04 at -t60:  v0 60  v1 34  v2 14, and with voice 1 stubbed
+    the way the control generator stubs a trace:  v0 60  v1 1  v2 14.
+    """
+    from sidm2.fidelity_common import (siddump_frames_full, trace_voice_bundles,
+                                       voice_collapse_vs)
+    sid = _skip_missing(_artifact("SID", "JohannesBjerregaard", "Balloon.sid"))
+    fr = siddump_frames_full(sid, ["-t60"])
+    real = trace_voice_bundles(fr)
+    assert real == {0: 60, 1: 34, 2: 14}, (
+        "Balloon's per-voice diversity moved from the recorded {0:60,1:34,2:14} "
+        "to %s -- re-measure rather than loosening this" % (real,))
+
+    dead = [({0: dict(v[0]), 1: {"freq": None, "wf": None, "pul": None,
+                                 "adsr": None}, 2: dict(v[2])}, f)
+            for v, f in fr]
+    assert trace_voice_bundles(dead) == {0: 60, 1: 1, 2: 14}
+    assert voice_collapse_vs(fr, dead) == [1]

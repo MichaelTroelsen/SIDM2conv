@@ -921,7 +921,10 @@ def bundle_diversity(build_path):
     A per-voice measure CANNOT be built from the artifact: SF2Parser exposes no
     orderlists (so no sequence->voice mapping) and every DMC SequenceEntry
     carries instrument=0x80, the "no change" sentinel (so no note->instrument
-    mapping). Such a measure has to run against the TRACE, before the build.
+    mapping). Such a measure has to run against the TRACE, before the build --
+    and it now does: see trace_voice_bundles() and voice_collapse_vs() below.
+    They are COMPARATIVE, not a second floor, because measuring showed no
+    absolute per-voice threshold is safe.
     """
     import sys
     import os
@@ -988,6 +991,124 @@ def bundle_collapse(build_path, floor=BUNDLE_FLOOR):
         return None
     return m["bundles"] <= floor
 
+
+# ---------------------------------------------------------------------------
+# per-VOICE trace diversity — the half bundle_diversity cannot see
+# ---------------------------------------------------------------------------
+
+# A voice that never changed carries exactly ONE distinct (wf, adsr, pul)
+# triple over the whole trace. Unlike BUNDLE_FLOOR this is NOT a tuned
+# threshold picked below a measured minimum — it is the DEFINITION of "carried
+# no information", the same shape as exercised(). That matters, because the
+# measurement below shows no absolute threshold above 1 is safe.
+VOICE_BUNDLE_FLOOR = 1
+
+
+def trace_voice_bundles(frames):
+    """Distinct (wf, adsr, pul) triples EACH VOICE carries in a siddump trace.
+
+    `frames` is `siddump_frames_full()` output — [({0,1,2: {...}}, filt), ...].
+    Returns {0: n, 1: n, 2: n}, or None for an empty trace (UNMEASURABLE, not
+    a collapse; None is not 0, the same discipline bundle_diversity keeps).
+
+    WHY THIS RUNS ON THE TRACE AND NOT THE ARTIFACT. bundle_diversity() is
+    COMPLETELY BLIND to a one-voice-dead build — measured, it does not move by
+    one (Balloon 24 bundles both sides) — because it counts DISTINCT rows in
+    GLOBAL program tables, and losing one voice removes only rows the other two
+    still produce. A per-voice measure cannot be recovered from the artifact at
+    all: SF2Parser exposes no orderlists, so there is no sequence->voice map,
+    and every DMC SequenceEntry carries instrument=0x80 ("no change"). The
+    voice identity exists only upstream, in the trace the builder consumed.
+
+    Measured on Balloon (-t60), stubbing voice 1 the way the control generator
+    stubs the whole trace:
+
+        ORIGINAL trace    v0 60   v1 34   v2 14
+        VOICE-1 DEAD      v0 60   v1  1   v2 14      <- and the other two exact
+
+    REQUIRES the 'adsr' field, so a caller who passes siddump_per_frame() output
+    (which drops it) is refused rather than silently measured on a weaker key.
+    """
+    if not frames:
+        return None
+    out = {}
+    for vi in range(3):
+        seen = set()
+        for v, _f in frames:
+            d = v[vi]
+            if "adsr" not in d:
+                raise ValueError(
+                    "trace_voice_bundles needs siddump_frames_full() output; "
+                    "siddump_per_frame() drops 'adsr' and would silently "
+                    "measure a weaker key")
+            seen.add((d.get("wf"), d.get("adsr"), d.get("pul")))
+        out[vi] = len(seen)
+    return out
+
+
+def trace_voice_diversity(path, args):
+    """siddump `path`, then trace_voice_bundles() over the result."""
+    return trace_voice_bundles(siddump_frames_full(path, args))
+
+
+def voice_collapse(frames, floor=VOICE_BUNDLE_FLOOR):
+    """Voices that carried NO INFORMATION. NOT a defect verdict on its own.
+
+    Returns a sorted list of voice indices, or None if unmeasurable.
+
+    READ THE NEXT PARAGRAPH BEFORE USING THIS AS A SCREEN. A collapsed voice
+    has three possible causes and this function cannot tell them apart:
+
+      1. the build lost a voice          — a defect
+      2. the composer never used it      — not a defect
+      3. siddump cannot drive the rip    — not a measurement at all
+
+    and cause 3 alone is common enough to sink an absolute screen. Over 60
+    randomly-sampled non-Gallefoss SIDs, 15 have a voice at <= 4 distinct
+    bundles, and several are [1, 1, 1] across ALL THREE voices — LFT rips
+    (CLAUDE.md: siddump cannot drive an LFT rip at all) and Matt Gray RSIDs.
+    SID/Gallefoss_Glenn/Arabical.sid reports {0: 1, 1: 1, 2: 5} with ZERO note
+    onsets on every voice: nothing was traced, so nothing was measured.
+
+    Cause 2 is real too, and separately: Action_Biker [44, 9, 1] and
+    Deliverance [25, 194, 2] trace fine on two voices and carry ~nothing on the
+    third. So an absolute per-voice floor set anywhere above 1 flags healthy
+    corpus files, and set AT 1 still cannot separate cause 1 from causes 2/3.
+
+    That is why the usable verdict is voice_collapse_vs(), which asks the
+    comparative question instead — and why this returns a list of indices
+    rather than a bool: the caller must decide what it means.
+    """
+    b = trace_voice_bundles(frames)
+    if b is None:
+        return None
+    return sorted(vi for vi, n in b.items() if n <= floor)
+
+
+def voice_collapse_vs(ref_frames, new_frames, floor=VOICE_BUNDLE_FLOOR):
+    """Voices ALIVE in the reference trace and COLLAPSED in the new one.
+
+    This is the defect detector; voice_collapse() is only its input. Returns a
+    sorted list of voice indices, or None if either side is unmeasurable.
+
+    The comparison is what removes causes 2 and 3 above, and it removes them by
+    construction rather than by tuning: a voice the composer never wrote is
+    collapsed on BOTH sides, and a rip siddump cannot drive is dead on both, so
+    neither can appear in the difference. What survives is a voice the
+    reference proves carried information and the new trace does not.
+
+    WHAT IT STILL DOES NOT CATCH, stated because the floor is a definition and
+    not a margin: a voice degraded from 194 distinct bundles to 2 is not
+    "collapsed" by this measure and will not be reported. This is a screen for
+    an ABSENT voice, not a fidelity score for a present one — the same "a count
+    above the floor means 'not the collapse this looks for', never 'correct'"
+    caveat bundle_diversity carries.
+    """
+    a = trace_voice_bundles(ref_frames)
+    b = trace_voice_bundles(new_frames)
+    if a is None or b is None:
+        return None
+    return sorted(vi for vi in range(3) if a[vi] > floor and b[vi] <= floor)
 
 
 def provenance_census(build_paths):
