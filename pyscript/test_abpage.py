@@ -1297,3 +1297,45 @@ def test_no_track_is_ever_both_truncated_and_degenerate():
                 "%s track %d is flagged truncated but emitted no rows"
                 % (f.name, tno))
     assert seen > 300, "swept too few files for this to mean anything: %d" % seen
+
+
+# --- a heuristic decode is labelled on the page, not presented as the music ---
+
+def test_a_heuristic_decode_is_labelled_on_the_pattern_card():
+    """21-of-45 was the measured split when this task was opened; today it is
+    22 structural / 25 heuristic. Refusing the heuristic files would blank
+    their pattern view; drawing them unlabelled presents a decode that is
+    measurably misaligned (seven rows off on the one ground-truth file) as the
+    file's music. So the card says what it is."""
+    root = Path(__file__).resolve().parent.parent
+    hit = None
+    for f in sorted((root / "SF2").glob("*.sf2")):
+        r = A.row_schedule(f)
+        if (r and (r.get("provenance") or {}).get("structural") is False
+                and any(r["tracks"])):
+            hit = r
+            break
+    if hit is None:
+        pytest.skip("no heuristic decode with rows in the corpus")
+    card = A.patterns_card(hit)
+    assert "heuristic decode" in card
+    assert "unverified" in card
+    assert hit["provenance"]["reader"] in card
+
+
+@pytest.mark.skipif(not REAL_SF2.exists(), reason="SF2/Angular.sf2 not present")
+def test_a_structural_decode_gets_NO_heuristic_banner():
+    """Angular's sequence table locates, so its lengths are structural and the
+    banner would be a false alarm."""
+    r = A.row_schedule(REAL_SF2)
+    assert (r.get("provenance") or {}).get("structural") is True
+    assert "heuristic decode" not in A.patterns_card(r)
+
+
+def test_row_schedule_carries_provenance_verbatim():
+    """The page's JSON sidecar is written from this dict, so the field must be
+    present (None is acceptable only for parsers predating it)."""
+    root = Path(__file__).resolve().parent.parent
+    r = A.row_schedule(root / "SF2" / "Angular.sf2")
+    assert "provenance" in r
+    assert set(r["provenance"]) == {"reader", "structural"}

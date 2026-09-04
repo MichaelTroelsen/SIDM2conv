@@ -607,3 +607,45 @@ def test_a_pointer_bounded_file_is_not_touched_by_the_guard():
     for p in bounded:
         assert not getattr(p, "sequence_refusals", []), (
             "a pointer-bounded decode was put through the fallback guard")
+
+
+# --- every decode says where it came from -------------------------------------
+
+def test_every_decoded_file_carries_provenance():
+    """The packed heuristic's locate is SEVEN ROWS OFF on Angular, the one file
+    with editor ground truth -- so a consumer must be able to tell a structural
+    decode from a heuristic one. Re-measured 2026-09-03 over SF2/: 22 files
+    decode via the pointer table (structural), 25 via a heuristic reader."""
+    files = _all_sf2s()
+    if len(files) < 10:
+        pytest.skip("no SF2 corpus on this machine")
+    structural = heuristic = 0
+    for f in files:
+        p = _parsed(f)
+        if p is None or not p.sequences:
+            continue
+        prov = getattr(p, "sequence_provenance", None)
+        assert prov, "%s decoded sequences with no provenance" % os.path.basename(f)
+        assert set(prov) == {"reader", "structural"}, prov
+        if prov["structural"]:
+            structural += 1
+        else:
+            heuristic += 1
+    assert structural > 10 and heuristic > 10, (structural, heuristic)
+
+
+def test_structural_is_reserved_for_the_pointer_table():
+    """structural=True must mean 'lengths cut at the file's own next pointer'
+    and nothing weaker -- exactly the files where laxity_seq_table located."""
+    files = _all_sf2s()
+    if len(files) < 10:
+        pytest.skip("no SF2 corpus on this machine")
+    for f in files:
+        p = _parsed(f)
+        if p is None or not p.sequences:
+            continue
+        prov = getattr(p, "sequence_provenance", None) or {}
+        located = bool(getattr(p, "laxity_seq_table", None))
+        assert prov.get("structural") == located, (
+            "%s: structural=%s but laxity_seq_table located=%s"
+            % (os.path.basename(f), prov.get("structural"), located))

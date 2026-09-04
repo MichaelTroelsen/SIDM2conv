@@ -1892,6 +1892,12 @@ def row_schedule(sf2_path: Path, max_rows: int | None = None) -> dict | None:
     while len(tracks) < 3:
         tracks.append([])
     return {"tempo": tempo, "tracks": tracks,
+            # WHERE the sequences came from, verbatim from the parser. The
+            # packed heuristic's locate is measurably misaligned (seven rows
+            # off on Angular, the one file with editor ground truth), so a
+            # column drawn from it must be LABELLED, not presented as the
+            # file's music. None on parsers that predate the field.
+            "provenance": getattr(p, "sequence_provenance", None),
             "frames": max((t[-1]["f"] if t else 0) for t in tracks),
             "sequences": len(seqs), "degenerate": degenerate,
             "truncated": truncated,
@@ -1984,8 +1990,26 @@ def patterns_card(pat: dict | None) -> str:
                  '<div class="trkbody" id="trk%d">'
                  '<div class="trkinner" id="trkin%d">%s</div></div></div>'
                  % (tno + 1, label, tno, tno, body))
+    prov = pat.get("provenance") or {}
+    if prov and not prov.get("structural"):
+        # THE LABEL THIS BANNER EXISTS FOR. Some Laxity SF2s decode via the
+        # file's own pointer table (structural lengths); the rest fall to a
+        # heuristic locate that is SEVEN ROWS OFF on Angular, the one file
+        # with editor ground truth. Refusing would blank those files' pattern
+        # view entirely; drawing them unlabelled presents a misaligned decode
+        # as the file's music. So: emit, and say what it is.
+        provbanner = ('  <div class="trkstat">heuristic decode '
+                      '(&#8220;%s&#8221;), unverified &mdash; the sequence '
+                      'table did not locate, so these rows come from a scan '
+                      'whose alignment is not established. On the one file '
+                      'with editor ground truth the same scan lands seven '
+                      'rows off.</div>\n'
+                      % prov.get("reader", "?"))
+    else:
+        provbanner = ""
     return (
         '<div class="card">\n  <h2>The pattern, as our conversion wrote it</h2>\n'
+        + provbanner +
         '  <div class="trkstat" id="trkstat">scroll: waiting for playback</div>\n'
         '  <div class="trk">%s</div>\n'
         '  <p class="trknote">Rows are placed by the tempo written IN THE FILE '

@@ -484,6 +484,14 @@ class SF2Parser:
         # Set only when the sequence table is located; None means the file fell
         # through to a reader that decodes orderlists as sequences.
         self.laxity_seq_table = None
+        # WHICH reader produced self.sequences, and whether its lengths are
+        # STRUCTURAL (cut at the file's own next-pointer) or HEURISTIC (a scan
+        # that located something plausible). None until parse() runs. The
+        # packed heuristic's locate is measurably misaligned -- SEVEN ROWS OFF
+        # on Angular, the one file with editor ground truth -- so a consumer
+        # must be able to label a heuristic column rather than present it as
+        # the file's music. dict: {"reader": str, "structural": bool}
+        self.sequence_provenance = None
         self.laxity_orderlists: List[List[int]] = []
 
         self.parse()
@@ -1869,6 +1877,15 @@ class SF2Parser:
         logger.debug(f"Converted Laxity sequence: {len(entries)} entries")
         return entries
 
+    def _mark_provenance(self, reader: str, structural: bool) -> None:
+        """Record which reader supplied self.sequences.
+
+        structural=True is reserved for the ONE reader whose lengths come from
+        the file's own pointer table (_parse_laxity_real_sequences). Everything
+        else is a heuristic locate and a consumer should say so.
+        """
+        self.sequence_provenance = {"reader": reader, "structural": structural}
+
     def _parse_sequences(self):
         """Extract all sequences from memory"""
         if not self.music_data_info:
@@ -1909,6 +1926,7 @@ class SF2Parser:
             if self._parse_laxity_real_sequences():
                 logger.info("Parsed %d sequences from the real Laxity sequence table",
                             len(self.sequences))
+                self._mark_provenance("real Laxity sequence table", structural=True)
                 return
 
             # BOTH stages next. The packed-sequence scan below is a heuristic
@@ -1917,18 +1935,21 @@ class SF2Parser:
             if (self._parse_laxity_two_stage()
                     and self._sequence_total_is_possible("two-stage Laxity decode")):
                 logger.info(f"Parsed {len(self.sequences)} sequences via the two-stage Laxity decode")
+                self._mark_provenance("two-stage Laxity decode", structural=False)
                 return
 
             # Try new Laxity SF2 parser (handles offset table structure)
             if (self._parse_packed_sequences_laxity_sf2()
                     and self._sequence_total_is_possible("Laxity SF2 offset-table parser")):
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity SF2 parser")
+                self._mark_provenance("Laxity SF2 offset-table parser", structural=False)
                 return
 
             # Fallback: Try original Laxity parser
             if (self._parse_laxity_sequences()
                     and self._sequence_total_is_possible("original Laxity parser")):
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity parser")
+                self._mark_provenance("original Laxity parser", structural=False)
                 return
             else:
                 logger.warning("Laxity driver detected but parsing failed, trying fallback methods")
@@ -1939,6 +1960,7 @@ class SF2Parser:
                 and self._sequence_total_is_possible("generic packed-sequence parser")):
             if self.sequences:
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity SF2 offset table parser")
+                self._mark_provenance("generic packed-sequence parser", structural=False)
                 return
             self.sequences = {}  # Clear if no sequences found
 
@@ -1946,6 +1968,7 @@ class SF2Parser:
             self._parse_packed_sequences()
             if self.sequences:
                 logger.info(f"Successfully parsed {len(self.sequences)} packed sequences")
+                self._mark_provenance("packed-sequence heuristic", structural=False)
                 return
 
         # Fallback: Try traditional indexed sequence parsing
@@ -1959,6 +1982,8 @@ class SF2Parser:
                 if seq_idx > 32:  # At least try first 32
                     break
 
+        if self.sequences and self.sequence_provenance is None:
+            self._mark_provenance("indexed sequence table", structural=False)
         logger.info(f"Parsed {len(self.sequences)} sequences total")
 
     def _parse_sequence(self, sequence_index: int) -> Optional[List[SequenceEntry]]:
