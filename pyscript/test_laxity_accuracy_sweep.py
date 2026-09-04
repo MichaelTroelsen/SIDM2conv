@@ -126,3 +126,81 @@ def test_the_corpus_comes_from_the_selector_not_a_hand_list():
     body = src[src.index("def laxity_corpus("):]
     body = body[:body.find("\ndef ", 1)] if body.find("\ndef ", 1) > 0 else body
     assert "DriverSelector" in body, "the corpus is no longer derived from the selector"
+
+
+def test_the_sweep_cannot_see_a_wrong_instrument_locate_BECAUSE_NOTHING_CAN():
+    """THE BLIND SPOT, DEMONSTRATED 2026-09-04 -- and it is worse than the task said.
+
+    frame-accuracy-does-not-exercise-the-laxity-locate asked to show a file whose
+    instrument-table locate is deliberately wrong and whose frame accuracy stays
+    at 100.00%. That was shown: with LAXITY_INSTR_TABLE_OFFSET moved from $0A6B
+    to $0500 -- 1,387 bytes off -- Stinsens_Last_Night_of_89 still measured
+    `frame 100.0  exact 100.0%  n=1000`.
+
+    BUT THE PREMISE IS WRONG ABOUT WHY, and the difference matters. The sweep is
+    not a measure that happens to be insensitive to the locate. The locate never
+    reaches the artifact at all:
+
+        LaxityParser._extract_instruments  8 instruments, md5 cab9a978 at $0A6B
+                                           8 instruments, md5 d1b22dd1 at $0500
+        scripts/sid_to_sf2.py --driver laxity   13,449 bytes, BYTE-IDENTICAL
+
+    The extraction genuinely reads a different table and returns different bytes;
+    the emitted SF2 does not change by one byte. So the instruments that reach
+    the SF2 come from somewhere other than this locate, and NO downstream
+    measurement -- frame accuracy, register agreement, audio -- can see the
+    offset be wrong, because nothing it produces depends on it.
+
+    That is consistent with two independent findings already on record: the
+    ADSR-keyed oracle finds $0A6B ABSENT from every candidate layout on four
+    files whose key it grades reliable (laxity-needs-a-ground-truth-instrument-
+    table-locator), and the extraction stage was already noted as inert on this
+    path. A constant that is both refuted AND unused is not a fidelity risk; it
+    is dead weight that looks load-bearing.
+
+    SO DO NOT "FIX" THE SWEEP BY ASSERTING THE LOCATE. An assertion there would
+    guard a value the conversion does not consult -- a green check on an
+    irrelevance, which is the shape this repo has published wrong before. What
+    the sweep measures (round-trip frame agreement) is sound; what it must not
+    be read as is evidence that the table locate is right.
+
+    This test pins the PARSE-level half, which is fast. The SF2-level half is
+    recorded above rather than asserted, because asserting it would mean running
+    two full conversions per test run.
+    """
+    import hashlib
+    import io
+    import contextlib
+    sys.path.insert(0, os.path.dirname(_HERE))
+    import sidm2.laxity_parser as LP
+    from sidm2.sid_parser import SIDParser
+
+    sid = os.path.join(os.path.dirname(_HERE), "SID",
+                       "Stinsens_Last_Night_of_89.sid")
+    if not os.path.exists(sid):
+        pytest.skip("Stinsens_Last_Night_of_89.sid absent")
+
+    original = LP.LAXITY_INSTR_TABLE_OFFSET
+
+    def extract(offset):
+        LP.LAXITY_INSTR_TABLE_OFFSET = offset
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            sp = SIDParser(sid)
+            h = sp.parse_header()
+            data, load = sp.get_c64_data(h)
+            r = LP.LaxityParser(data, load).parse()
+        ins = getattr(r, "instruments", None) or []
+        return len(ins), hashlib.md5(b"".join(bytes(x) for x in ins)).hexdigest()
+
+    try:
+        good = extract(0x0A6B)
+        bad = extract(0x0500)
+    finally:
+        LP.LAXITY_INSTR_TABLE_OFFSET = original
+
+    assert good[0] == bad[0] == 8, (good, bad)
+    assert good[1] != bad[1], (
+        "moving the instrument locate 1,387 bytes no longer changes what "
+        "_extract_instruments returns -- the demonstration this test rests on "
+        "is gone, so re-measure before trusting the docstring above")
