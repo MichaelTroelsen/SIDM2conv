@@ -390,7 +390,11 @@ dp_vib:
         beq dp_novol             ; all idle -> leave $D418 to the digi (clean sawtooth)
 .endif
         lda F_MODE               ; filter passband bits (from the filter program)
-        ora #$0f                 ; + main volume: keep the gated SID voices at full vol
+        ora #MAIN_VOL            ; + the song's master volume (layout.inc). Was a
+                                 ; hardcoded $0f; MicroProse_Soccer_intro plays at $c,
+                                 ; so full volume was simply wrong there. romuzak/
+                                 ; layout.inc already defines MAIN_VOL = 15, so that
+                                 ; corpus is byte-identical by construction.
         sta SID_VOL
 dp_novol:
 .if DIGI_SPIKE

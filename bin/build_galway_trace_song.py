@@ -823,7 +823,24 @@ def main():
     if filt_prog:
         print(f"  filter: routed osc{filt_voice + 1}, {len(filt_prog)}-row cutoff "
               f"envelope, {len(filt_instr_set)} instr(s) flagged")
+    # $D418 MASTER VOLUME, from the original -- MODAL over the trace, never
+    # frame 0. Neverending_Story writes 16 distinct low-nibble values and its
+    # modal $F is what must keep shipping; a frame-0 read is exactly how that
+    # regresses (the same shape as the INIT_PASSBAND seed bug fixed in 8c3fd8e).
+    # Falls back to $0F when siddump cannot drive the rip, so a trace failure
+    # cannot silently change a build.
+    main_vol = 0x0F
+    try:
+        from sidm2.fidelity_common import siddump_frames_full
+        _fr = siddump_frames_full(sid, [f'-a{subtune}', f'-t{frames // 50 + 2}'])
+        _lo = [f['volmode'] & 0x0F for _v, f in _fr if f.get('volmode') is not None]
+        if _lo:
+            main_vol = max(set(_lo), key=_lo.count)
+    except Exception as _e:                                    # noqa: BLE001
+        print(f"  MAIN_VOL: trace failed ({_e}); defaulting to $0F")
+    print(f"  MAIN_VOL: ${main_vol:X}")
     gen, edit, mdp, seq0 = N.gen_includes_song(segs, instrs,
+                                               main_vol=main_vol,
                                                filter_lead=False,
                                                wave_programs=iwave,
                                                fm_programs=fmprogs,

@@ -38,7 +38,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
                       wave_programs=None, fm_programs=None, multispeed=1,
                       pulse_programs=None, pulse_by_cmd=None,
                       filter_program=None, filter_instr_set=None,
-                      tempo=None):
+                      tempo=None, main_vol=0x0F):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
     and writes drivers_src/galway/layout.inc.
@@ -266,6 +266,13 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         f.write(f"IPULSE_LO = ${ipulse_lo_addr:04x}\n")
         f.write(f"IPULSE_HI = ${ipulse_hi_addr:04x}\n")
         f.write(f"MULTISPEED = {max(1, int(multispeed))}\n")
+        # $D418 master volume, from the ORIGINAL's own trace. The shared
+        # engine reads it as `ora #MAIN_VOL` (common/sf2_native_driver.asm);
+        # it was a hardcoded $0f, which is right for 39 of the 40 Galway
+        # tunes and a quarter too loud for MicroProse_Soccer_intro, whose
+        # low nibble is $c. Default $0F keeps every other caller -- including
+        # this module's own main() -- byte-identical.
+        f.write(f"MAIN_VOL = {main_vol & 0x0F}\n")
     return gen, bytes(edit), mdp, seq0
 
 
