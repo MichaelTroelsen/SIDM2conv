@@ -714,3 +714,67 @@ def test_every_heuristic_reader_in_the_dispatch_is_guarded():
     assert guards >= heuristic, (
         "%d heuristic reader(s) but only %d guard call(s): a reader can emit a "
         "decode larger than the file it came from" % (heuristic, guards))
+
+
+def test_STILL_DECODES_is_not_the_same_measurement_as_DRAWS_ROWS():
+    """The guard's real reach, swept over the WHOLE tree on 2026-09-04.
+
+    8591f95's commit message says "cost to the corpus is zero -- 47 of 47 files
+    still decode". That was measured over SF2/ only. A later re-measure covered
+    the 411 TOP-LEVEL .sf2 in out/ + SF2/ and found the guard firing on 2.
+    Neither sweep reaches out/<player>/ subdirectories, which is where nearly
+    every artifact actually lives.
+
+    Swept recursively over all 8,716 .sf2 under out/ + SF2/:
+
+        files scanned                        8716   (0 unparseable)
+        REFUSED by the impossibility guard    310   <- 155x the top-level count
+          of those, ending with NO sequences    0
+          of those, DRAWING ZERO ROWS         282
+
+    THE TWO NUMBERS ARE NOT THE SAME MEASUREMENT AND THEY DISAGREE ALMOST
+    COMPLETELY. Every refused file falls through to another reader and still
+    decodes something, so "0 lose their sequences" is true and reassuring. But
+    282 of the 310 then draw NO ROWS AT ALL, because what survives the fallback
+    is not what the refused reader would have drawn. Median drawn rows across
+    the refused set is 0; the maximum is 196.
+
+    This is the same shape as 2_Young_2_Die_native_part01, whose page went from
+    92 drawn rows to 0 while still "decoding" -- the case that prompted the
+    sweep. The guard is still correct: those 92 rows came from a decode claiming
+    21,068 entries in an 18,043-byte file. Refusing is right; the point is that
+    "costs the corpus nothing" was measured with the wrong instrument at the
+    wrong scope.
+
+    Pinned here on ONE representative file so the suite stays fast -- the full
+    sweep takes ~25 minutes and does not belong in it.
+    """
+    import io
+    import contextlib
+    sys.path.insert(0, _HERE) if "_HERE" in globals() else None
+    f = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "out", "dmc", "Blue_Monday_88_part02.sf2")
+    if not os.path.exists(f):
+        pytest.skip("out/dmc/Blue_Monday_88_part02.sf2 absent")
+
+    from sf2_viewer_core import SF2Parser
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        p = SF2Parser(f)
+        p.parse()
+
+    # the guard fired ...
+    assert getattr(p, "sequence_refusals", None), (
+        "this file no longer trips the impossibility guard -- the numbers in "
+        "this docstring were measured against a corpus where it did; re-sweep "
+        "before trusting them")
+    # ... and it STILL DECODES (the reassuring measurement) ...
+    assert p.sequences, "refused AND left with no sequences at all"
+    # ... yet DRAWS NOTHING (the consequential one)
+    import abpage
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        sched = abpage.row_schedule(f)
+    drawn = sum(len(t) for t in (sched.get("tracks") or []))
+    assert drawn == 0, (
+        "this file now draws %d rows -- the decodes/draws divergence this test "
+        "pins has changed; re-measure the 310/282 split" % drawn)
