@@ -28,7 +28,56 @@ corpus verdict while being a subset nobody chose for being representative.
 Widening it made the number **worse, which is the point**:
 `Cybernoid_II_sub0_native` scores **84.6%** — the original holds LP+BP while
 ours is briefly off before settling — and that artifact had never been measured
-at all. `passband_check --player mon` now exits 1 on it. The other 4 of 27
+at all. `passband_check --player mon` now exits 1 on it.
+
+### The 84.6% is a ONE-FRAME TRANSIENT in the init seed — diagnosed 2026-09-04
+
+**So read the 22 of 27 as: 22 pass, 4 never exercise the filter, and the single
+failure is the `INIT_PASSBAND` seed reading a transient.** The mechanism, and
+the correction, in full:
+
+The driver zeroes `F_MODE` at init, so a build opens with `$D418`'s mode bits
+OFF and declares the real passband only when its first filter program runs —
+here about **215 frames** in. `INIT_PASSBAND` (opt-in) exists to seed that
+opening value from the original. It was seeding from `pbtr[win[0]]`, i.e. **frame
+0 alone**, and on this tune frame 0 is `$01` = **LP** while every frame after it
+is `$03` = LP+BP (1440 of 1500 frames). So the flag swapped a wrong `off` for a
+wrong `LP`.
+
+**The trap is that this LOOKS like a fix and measures as nothing.** The printed
+mode string improves — `off/LP+BP` becomes `LP/LP+BP`, and a 2026-09-03 note
+recorded exactly that as corroboration — while the score does **not move at
+all**: 84.6% before, 84.6% after, the same 215 audible mismatched frames, because
+both arms are wrong for the same stretch. An improvement in how a mismatch is
+*spelled* is not an improvement. Only re-running the check caught it; the
+mode-string report alone would have shipped the wrong conclusion.
+
+Seeding from the **modal value over the opening 50 frames** instead takes the
+same file to **100.0% with `dChg` 0**. That is the shipped rule, pinned by
+`test_init_passband_seeds_from_the_opening_run_not_frame_zero`.
+
+Two scope facts, because neither is guessable:
+
+- **It is a no-op everywhere the flag was already validated.** All 13 files in
+  the DMC + HardTrack `INIT_PASSBAND` A/B seed identically under both rules
+  (13 SAME / 0 DIFF), so that A/B's result — 11 up and 2 up, 0 regressions —
+  carries over unchanged.
+- **It is NOT a no-op on MoN: 12 of 24 songs seed differently.** `Hawkeye`
+  sub2/sub3 read `LP+BP+HP` at frame 0 where the song holds `LP`; `Ice_Age`,
+  `M_A_C_C`, `Sample`, `Wizzy` and others read `off`. None of that reaches a
+  shipped artifact today, because **`INIT_PASSBAND` is off by default** — but a
+  MoN corpus A/B must be run under the modal rule, not the frame-0 one.
+
+⚠️ **`out/mon/Cybernoid_II_sub0_native.sf2` on disk is still the 84.6% build.**
+It is deliberately left at the flag-off default so the corpus stays internally
+consistent; adopting the flag is an open decision
+(`passband-default-needs-the-other-five-players`). Reproduce the 100.0% with
+`INIT_PASSBAND=1 py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Cybernoid_II.sid 0 0`.
+Note that this artifact is **known-bad on other dimensions regardless** — its
+build force-merges 464 of 527 bundles over the 63-bundle cap, so its freq/pulse
+programs are wrong for merged notes whatever the passband does.
+
+The other 4 of 27
 (`Supremacy` sub0/1/2, `Viool_Tello` sub0) never exercise the filter, so they
 are counted neither way. Scoring the original at its **own** subtune (`-a{N}`,
 not a hardcoded `-a0`) was part of the same fix. Measurement is scoped to each

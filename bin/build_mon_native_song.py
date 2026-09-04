@@ -1625,7 +1625,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # is byte-identical. Adopting it as a default is dmc-driver-init-passband-default.
     if os.environ.get("INIT_PASSBAND") and pbtr:
         _w0 = win[0] if win else 0
-        m._init_fmode = (pbtr[min(_w0, len(pbtr) - 1)] & 0x07) << 4
+        _i0 = min(_w0, len(pbtr) - 1)
+        _seg = pbtr[_i0:_i0 + 50] or [pbtr[_i0]]
+        m._init_fmode = (max(set(_seg), key=_seg.count) & 0x07) << 4
     # A trace with NO FRAMES is the no-notes failure one layer down, and it is the
     # one that guard cannot see: the notes decoded fine, so the build proceeds and
     # derives every per-note (FM, pulse) bundle from an empty series, shipping held

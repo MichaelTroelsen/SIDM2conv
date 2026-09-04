@@ -173,3 +173,56 @@ def test_byte_bite_writes_d418_for_its_volume_nibble():
     assert {(v >> 4) & 0x07 for v in vals} == {0, 1}    # so the mode bits follow
     # the pulse is brief: the resting value dominates
     assert vals.count(0x09) > len(vals) // 2, vals.count(0x09)
+
+
+CYBERNOID_II = os.path.join(_ROOT, "SID", "Tel_Jeroen", "Cybernoid_II.sid")
+
+
+def test_init_passband_seeds_from_the_opening_run_not_frame_zero():
+    """INIT_PASSBAND must not seed from a ONE-FRAME transient.
+
+    THE DEFECT THIS PINS, measured on Cybernoid_II sub0 (2026-09-04).
+    `passband_trace` returns `$01` (LP) at frame 0 and `$03` (LP+BP) from frame 1
+    onward -- 1440 of 1500 frames are LP+BP. Seeding `_init_fmode` from
+    `pbtr[win[0]]` alone therefore opened the driver on LP, a value the tune holds
+    for exactly one frame, instead of the LP+BP it actually plays.
+
+    WHY THE OLD SEED LOOKED LIKE IT WORKED: it does remove the leading `off`, and
+    a report saying "ours goes off/LP+BP -> LP/LP+BP" is literally true. But the
+    passband score did not move AT ALL -- 84.6% before and 84.6% after, the same
+    215 audible mismatched frames -- because a wrong `LP` is no better than a
+    wrong `off`. An improvement in the printed mode string is not an improvement.
+    With the modal seed the same file scores 100.0 with dChg 0.
+
+    THE FIX IS NOT A NO-OP ELSEWHERE, and that is the point of the census in
+    docs/players/MON.md: 12 of 24 MoN songs seed differently under the two rules
+    (Hawkeye sub2/sub3 read LP+BP+HP at frame 0 where the song holds LP). It IS a
+    no-op on every file the DMC/HardTrack A/B validated -- 13 of 13 identical --
+    so those results carry over unchanged.
+
+    This asserts the RULE against the real trace rather than the constant, so it
+    fails if the seed reverts to frame 0.
+    """
+    if not os.path.isfile(CYBERNOID_II):
+        pytest.skip("Cybernoid_II.sid absent")
+    import inspect
+
+    import build_mon_native_song as B
+
+    pbtr = B.passband_trace(CYBERNOID_II, 0, 30)
+    assert pbtr, "no passband trace"
+
+    # the trap itself: frame 0 disagrees with the run that follows it
+    assert (pbtr[0] & 0x07) == 0x01, hex(pbtr[0])
+    assert (pbtr[1] & 0x07) == 0x03, hex(pbtr[1])
+
+    seg = pbtr[0:50]
+    modal = max(set(seg), key=seg.count)
+    assert (modal & 0x07) == 0x03, hex(modal)
+    assert (modal & 0x07) != (pbtr[0] & 0x07), (
+        "frame 0 and the opening run agree here, so this file no longer "
+        "exercises the transient -- find another before deleting this test")
+
+    src = inspect.getsource(B.build_native_song)
+    assert "_seg" in src and "count" in src, (
+        "the seed no longer looks like a modal-over-a-run rule")
