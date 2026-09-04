@@ -550,3 +550,80 @@ def test_a_lone_out_of_range_reference_does_not_refuse():
     assert decoded == 26, (
         f"{decoded} (file, subtune) pairs decode; the guard changed the corpus "
         f"denominator, which it must not")
+
+
+# --- Pogo_Stick_Olympics and Warriors have NO tempo load instruction ----------
+
+def test_the_two_unlocatable_files_have_no_tempo_read_site_at_all():
+    """WHY the tempo locate cannot succeed on these two, from the play routine
+    rather than from another heuristic.
+
+    Every Matt Gray build that decodes reads its tempo with an `LDA abs,y`
+    ($b9) immediately after the six per-voice track-pointer sites. Disassembled
+    2026-09-03, the bytes right after the last track site are:
+
+        Maze_Mania (decodes)          Pogo_Stick_Olympics / Warriors
+        ---------------------------   ------------------------------
+        STA abs  $158F                STA abs  $1407 / $2407
+        LDA abs,y $1983   <- tempo    JMP      $1013 / $2013
+        STA abs  $159A                (no load; straight to the jump)
+        JMP      $1022
+
+    So on these two builds the instruction does not exist. That is why
+    `_locate_tables` reports "every indexed-read site is claimed by another
+    table" -- there was never a seventh site to claim. The pattern table is NOT
+    the problem and is already correctly located ($16a6/22 and $268f/23,
+    matching their 21 and 22 track references).
+
+    TWO HEURISTICS HAVE ALREADY PRODUCED WRONG ANSWERS HERE -- 129, read out of
+    `instr_a0`, and 21/37, read out of the arpeggio pointer table's high byte.
+    Both were silently wrong tempos, which is worse than a refusal: every note
+    lands at the wrong time while the decode still looks like it worked. A third
+    heuristic is not the answer; this test exists so the next attempt starts
+    from "the read site is absent" rather than re-deriving it.
+
+    STILL UNKNOWN: where the tempo actually comes from on these builds. A scan
+    for `LDA #imm; STA abs` with imm in 1..8 over the whole image finds only VIC
+    writes ($D019, $D020) on Pogo and one init store on Warriors, so it is not a
+    simple baked constant either. See
+    mattgray-tempo-table-unlocatable-on-two-files.
+    """
+    import io
+    import contextlib
+    import pytest
+    from sidm2.mattgray_parser import MattGrayParser, load_sid
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def after_track_group(name):
+        path = os.path.join(root, "SID", "Gray_Matt", name + ".sid")
+        if not os.path.exists(path):
+            return None
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            r = load_sid(path)
+            body, load, init, play = r[0], r[1], r[2], r[3]
+            sites = MattGrayParser(body, load, init, play)._b9_sites()
+        for i in range(len(sites) - 6):
+            win = [sites[i + k][1] for k in range(6)]
+            step = win[1] - win[0]
+            if 0 < step <= 64 and all(win[k + 1] - win[k] == step for k in range(5)):
+                # +3: the site offset is the OPCODE, so opcode+operand is 3 bytes
+                idx = sites[i + 5][0] - load + 3
+                return body[idx:idx + 8]
+        return None
+
+    ref = after_track_group("Maze_Mania")
+    if ref is None:
+        pytest.skip("Matt Gray corpus not present")
+    # a file that decodes: STA abs, then the $b9 tempo load
+    assert ref[0] == 0x8D and ref[3] == 0xB9, [hex(b) for b in ref[:4]]
+
+    for name in ("Pogo_Stick_Olympics", "Warriors"):
+        got = after_track_group(name)
+        assert got is not None, name
+        assert got[0] == 0x8D, (name, [hex(b) for b in got[:4]])
+        assert got[3] == 0x4C, (
+            "%s now has an instruction other than JMP where the tempo load is "
+            "absent -- if a $b9 appeared here the locate may work and this "
+            "test's premise is stale: %s" % (name, [hex(b) for b in got[:4]]))

@@ -346,13 +346,22 @@ def test_every_built_mattgray_song_is_accepted_by_the_probe():
     """SET-INCLUSION AGAINST THE SHIPPED CORPUS -- the check that made the
     HardTrack probe trustworthy, applied here.
 
-    NOTE IT IS INCLUSION, NOT THE EQUALITY HARDTRACK GOT. Five accepted songs
-    have no artifact (Bangkok_Knights_Loader, Make_My_Day, Pogo_Stick_Olympics,
-    THEC64-Hall_of_Fame, Warriors). That is not a probe error -- it says the
-    builder has not been run on them -- so asserting equality here would pin a
-    build backlog as if it were a parser property. The direction that IS a
-    defect is a file the builder could build and the probe calls foreign, and
-    that is what this asserts.
+    NOTE IT IS INCLUSION, NOT THE EQUALITY HARDTRACK GOT. Re-measured
+    2026-09-04: 11 accepted, 8 built, and THREE accepted songs have no artifact
+    -- Bangkok_Knights_Loader, Make_My_Day, THEC64-Hall_of_Fame. That is not a
+    probe error, it says the builder has not been run on them, so asserting
+    equality here would pin a build backlog as if it were a parser property. The
+    direction that IS a defect is a file the builder could build and the probe
+    calls foreign, and that is what this asserts (measured: zero such files).
+
+    THIS LIST SAID FIVE UNTIL 2026-09-04, naming Pogo_Stick_Olympics and
+    Warriors as well. Those two are no longer ACCEPTED at all -- the probe
+    refuses them -- for the same reason MATTGRAY.md:29 records the count going
+    13/55 -> 11/55 on 2026-08-21: their `locate()` had silently mis-placed two
+    tables, and taking the widest adjacent site pair rather than the first
+    exposed a tempo table that cannot be located in those two builds. The stale
+    prose survived that change because the assertion is set-inclusion and never
+    read the list.
     """
     import os
     import re

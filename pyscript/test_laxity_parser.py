@@ -165,3 +165,127 @@ def test_refusal_is_not_an_exception():
     result = LaxityParser(data, load).parse()          # must not raise
     assert result is not None
     assert result.sequences == []
+
+
+# --- LAXITY_INSTR_TABLE_OFFSET is load-relative and the player is not ---------
+
+def _laxity_sids():
+    import io
+    import contextlib
+    from pathlib import Path
+    from sidm2.driver_selector import DriverSelector
+    root = Path(__file__).resolve().parent.parent
+    out = []
+    for f in sorted((root / "SID").rglob("*.sid")):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                if DriverSelector().select_driver(f).driver_name == "laxity":
+                    out.append(f)
+        except Exception:                                     # noqa: BLE001
+            continue
+    return out
+
+
+def test_the_instrument_offset_is_the_same_bug_73780fa_fixed_for_seq_ptrs():
+    """LAXITY_INSTR_TABLE_OFFSET resolves against the LOAD ADDRESS, and the
+    player is assembled per song, so the constant cannot be right for more than
+    a handful of files.
+
+    73780fa established this for LAXITY_SEQ_PTRS_*_OFFSET and replaced the
+    lookup with locate_seq_ptr_table. The instrument constant was left behind,
+    and it is wrong on the same inputs for the same reason.
+
+    MEASURED 2026-09-03 over all 241 laxity-routed SIDs in SID/:
+
+        distinct (located lo_base - load_address) values      114
+        files where that offset equals the constant $0A1C       3
+        files where load + $0A6B is OUTSIDE the loaded data    69
+        files with a located seq-ptr                          180
+        of those, constant == lo_base + $4F                     3
+        where it disagrees (n=177): median |error| 1011 bytes
+                                    min 8, max 2544
+
+    An 8x8 instrument table is 64 bytes, so a 1,011-byte median error is not a
+    near miss -- it reads unrelated memory.
+
+    THIS TEST DELIBERATELY PINS THE DEFECT, NOT A FIX. No replacement is
+    shipped. `table_extraction.find_instrument_table` cannot arbitrate -- it
+    returns NOTHING for 180 of the 180 files that have a located seq-ptr.
+
+    AN ORACLE WAS FOUND, AND IT REFUTES BOTH CANDIDATES (2026-09-04).
+    `sidm2.instrument_map.locate_instrument_table` ranks candidate layouts by
+    how many onset ADSR values they explain, and `key_reliability` grades
+    whether the ADSR key is trustworthy at all. Run over the files where the two
+    hypotheses disagree and both land inside the image:
+
+        file      key         cands  top candidate    CONSTANT $1A6B   DELTA
+        Chaser    reliable     2148  $1963 hits 8/9   ABSENT           rank 974, 2 hits
+        Dreamy    reliable       75  $1AFE hits 4/4   ABSENT           ABSENT
+        Balance   reliable      171  $1B51 hits 5/6   ABSENT           ABSENT
+        Beast     reliable      258  $1B3D hits 7/8   ABSENT           ABSENT
+
+    ABSENT means the address does not reach `min_hits=2` in ANY layout -- fewer
+    than two of the observed ADSR values are found there at all. On four files
+    whose key the grader calls RELIABLE, the shipped constant explains
+    essentially nothing, and `lo_base + $4F` is no better. The uniform-layout
+    argument that made the delta attractive does not survive contact with the
+    ADSRs the player actually writes.
+
+    WHAT IS NOT CLAIMED: that the top-ranked candidate IS the table. With 75 to
+    2,148 candidates the ranking is doing a lot of work, and a best fit among
+    hundreds is not proof. The strong result here is the ABSENCE, which needs no
+    ranking to be believed.
+
+    The test asserts the measured shape, so it fails if someone fixes the
+    constant, changes the locate, or lands a validator -- at which point this
+    docstring is the thing to update. See
+    laxity-table-constants-are-load-relative-but-the-tables-are-absolute.
+    """
+    import pytest
+    from sidm2.sid_parser import SIDParser
+    from sidm2.laxity_parser import (locate_seq_ptr_table,
+                                     LAXITY_SEQ_PTRS_LO_OFFSET,
+                                     LAXITY_INSTR_TABLE_OFFSET)
+    import io
+    import contextlib
+
+    files = _laxity_sids()
+    if len(files) < 50:
+        pytest.skip("no Laxity corpus on this machine")
+
+    delta = LAXITY_INSTR_TABLE_OFFSET - LAXITY_SEQ_PTRS_LO_OFFSET
+    assert delta == 0x4F, "the internal layout gap moved; re-measure before trusting this test"
+
+    offsets, outside, located, agree = set(), 0, 0, 0
+    for f in files:
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                sp = SIDParser(str(f))
+                h = sp.parse_header()
+                data, load = sp.get_c64_data(h)
+                loc = locate_seq_ptr_table(data, load)
+        except Exception:                                     # noqa: BLE001
+            continue
+        addr = load + LAXITY_INSTR_TABLE_OFFSET
+        if not (load <= addr < load + len(data)):
+            outside += 1
+        if loc:
+            located += 1
+            offsets.add(loc[0] - load)
+            if addr == loc[0] + delta:
+                agree += 1
+
+    # THE POINT: the offset is not a property of the format, it is per-song.
+    assert len(offsets) > 50, (
+        "the located seq-ptr offset is no longer widely variable (%d distinct) "
+        "-- if the player stopped being assembled per song, this whole task is "
+        "moot and the constant may be defensible again" % len(offsets))
+    assert agree < located // 10, (
+        "the load-relative constant now agrees with the located base on %d of "
+        "%d files -- if something fixed this, update the docstring above"
+        % (agree, located))
+    assert outside > 10, (
+        "load + $0A6B now lands inside the data on nearly every file (%d "
+        "outside) -- re-measure" % outside)

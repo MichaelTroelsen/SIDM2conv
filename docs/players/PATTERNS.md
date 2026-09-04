@@ -693,14 +693,30 @@ correctly rejects the mutation, when in fact the mutation never landed. A
 mutation check that silently does not apply is WORSE than none: it certifies
 the very test it failed to exercise.
 
-**Fix**: around any same-length mutation, delete
-`pyscript/__pycache__/test_<name>*.pyc` before re-running — or make the
-mutation change the file's length so the cache invalidates on its own. Before
-mutating, assert the anchor string is unique (and matches the source's actual
-quoting) so a mismatched patch fails loudly instead of applying to nothing.
+**A third variety, twice in a row (2026-09-03)**: the anchor sat in a shell
+heredoc and its backslashes did not survive into the Python source, so
+`s.count(anchor)` was 0. Both times the suite then passed — again looking like
+a test that correctly rejects the mutation. Unlike the quoting case, matching
+the source's quoting does not help: the anchor is right in the file you typed
+and corrupted in transit.
+
+**Fix**:
+1. Delete `pyscript/__pycache__/test_<name>*.pyc` around a same-length
+   mutation, or make the mutation change the file's length.
+2. `assert s.count(anchor) == 1` **before** patching. Without it a no-op patch
+   is indistinguishable from a passing mutation check — this is the whole
+   defence and it caught both 2026-09-03 misfires.
+3. **Patch by LINE RANGE, not string anchor, when the target contains
+   backslashes, quotes or `%` formatting**: slice by line number, assert the
+   block's first and last lines, splice, then assert a marker is present. No
+   escaping layer to survive; it is what worked on the third attempt.
+4. **Back up from the ALREADY-EDITED file.** Restoring `blackbird_sweep.py`
+   from a *pre-edit* copy reverted the feature along with the mutation; only a
+   strengthened test noticed.
 
 **Seen in**: `test_driver11_section_injectors.py` mutation check (2026-08-31
-session).
+session); `test_sid_to_sf2_script.py` fixture and `pyscript/blackbird_sweep.py`
+kill-safety (2026-09-03 session).
 
 ---
 
