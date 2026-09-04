@@ -17,33 +17,66 @@ it selected"*) is where `passband_trace` was written. **131 of the 206 `out/mon`
 `pyscript/passband_check.py --player mon`, which measures the ARTIFACT rather
 than the builder:
 
-**FIXED 2026-08-13; the current figure is 22 of 27 — re-measured 2026-09-04 and
-unchanged.** This is what the checker prints today, quoted rather than
-paraphrased, so the count above can be checked against its source:
+**The current figure is 22 of 26, and READ THE NEXT PARAGRAPH BEFORE COMPARING
+IT TO THE 22 of 27 THIS FILE USED TO QUOTE.** This is what the checker prints
+today, quoted rather than paraphrased:
 
 ```
-$ py -3 pyscript/passband_check.py --player mon
-22/27 builds select the original's passband (or route nothing through the
+$ py -3 pyscript/passband_check.py --player mon        # exit 0
+22/26 builds select the original's passband (or route nothing through the
 filter, where it cannot be heard)
   4 file(s) NOT COUNTED EITHER WAY: the original never routes a voice and never
   selects a passband in this window, so there is nothing to reproduce.
     Supremacy_sub0, Supremacy_sub1, Supremacy_sub2, Viool_Tello_sub0
-FAILED -- rebuild these first; if it survives a rebuild the builder is at fault,
-not the artifact:
-  Cybernoid_II_sub0_native (84.6%)
 ```
 
-So the denominator resolves as **22 pass + 4 never exercise the filter + 1 real
-failure = 27**. The 4 are counted neither way on purpose; treating them as
-passes would inflate the figure to 26/27 on files that reproduce nothing.
+**22/27 BECAME 22/26 BY REMOVING A FILE, NOT BY FIXING ONE.** The numerator did
+not move and no build got better. `Cybernoid_II_sub0_native` — the single
+failure — was QUARANTINED to `out/mon/_quarantine/` on 2026-09-04 (moved, never
+deleted, matching the `Bahbar_v` / `Neverending_Story` precedent). Anyone
+quoting an improvement here is quoting a smaller denominator.
+
+So the denominator now resolves as **22 pass + 4 never exercise the filter =
+26**. The 4 are counted neither way on purpose; treating them as passes would
+inflate the figure to 26/26 on files that reproduce nothing — and that 26/26 is
+the number this quarantine makes most tempting and least honest.
+
+### Why the non-windowed build was retired rather than the builder changed
+
+Its own build log declares its output wrong. Rebuilding it prints:
+
+```
+WARNING: 464 of 527 bundles FORCE-MERGED (ungated) — the window exceeds the
+63-bundle cap; freq/pulse programs WILL be wrong for merged notes.
+Use adaptive ('auto') windows.
+```
+
+and instrumenting the clustering confirms the warning is not over-stated: 553
+merge steps, GATED 0, UNGATED 553 — because `BUNDLE_TOL` defaults to 0 and the
+call site passes `gate=None` unless it is positive, so with the shipped
+configuration every merge is ungated *by construction*.
+
+Three reasons the artifact goes and the builder stays:
+
+1. **Nothing is lost.** The windowed sibling `Cybernoid_II_sub0` (13 parts)
+   already scores **100.0% at 100% routed** — the same song, correctly built.
+2. **It is the only one.** Checked rather than assumed: the other two
+   single-window builds, `Hawkeye_sub2_native` and `Hawkeye_sub3_native`, emit
+   **zero** force-merge warnings. This is one artifact, not a class.
+3. **Making `emit_one` refuse is a nine-player change to catch one file.** That
+   function is shared by DMC, MoN, Sound Monitor, FC, HardTrack, SDI, Hubbard
+   and Matt Gray; the builder's own comment warns that touching it moves every
+   corpus at once — the same trap that keeps `INIT_PASSBAND` opt-in.
 
 **THE 84.6% IS NOT A STALE ARTIFACT, and that is now settled by the checker's
 own test rather than by argument.** Its message says to rebuild a failing file
 first, because a builder fixed after an artifact was written leaves the artifact
 carrying a defect the code no longer has. `Cybernoid_II_sub0_native.sf2` was
-rebuilt on 2026-09-04 from a CLEAN tree and still scores 84.6%; its provenance
-sidecar now reads `commit eaa9f97 / tree clean`, so the failure is reproducible
-from a named commit and belongs to the builder. The mechanism is the one-frame
+rebuilt on 2026-09-04 from a CLEAN tree and still scored 84.6%, so the failure
+is reproducible from a named commit and belongs to the builder. (The sidecar
+that proved it read `commit eaa9f97 / tree clean` AT THAT TIME; the file has
+since been replaced and now reads `7e67c33 / tree dirty` — see the provenance
+correction below before re-quoting either stamp.) The mechanism is the one-frame
 transient documented in the next section.
 
 **Both earlier figures — 17/19 and 18/20 — are RETRACTED, and not because the
@@ -60,8 +93,10 @@ at all. `passband_check --player mon` now exits 1 on it.
 
 ### The 84.6% is a ONE-FRAME TRANSIENT in the init seed — diagnosed 2026-09-04
 
-**So read the 22 of 27 as: 22 pass, 4 never exercise the filter, and the single
-failure is the `INIT_PASSBAND` seed reading a transient.** The mechanism, and
+**This was the single failure behind the old 22 of 27, and its cause is the
+`INIT_PASSBAND` seed reading a transient.** The artifact is now quarantined, so
+the live figure is 22 of 26; the diagnosis below is kept because it is the
+reason the file was retired rather than trusted. The mechanism, and
 the correction, in full:
 
 The driver zeroes `F_MODE` at init, so a build opens with `$D418`'s mode bits
@@ -96,16 +131,22 @@ Two scope facts, because neither is guessable:
   shipped artifact today, because **`INIT_PASSBAND` is off by default** — but a
   MoN corpus A/B must be run under the modal rule, not the frame-0 one.
 
-⚠️ **`out/mon/Cybernoid_II_sub0_native.sf2` on disk is still the 84.6% build.**
-It is deliberately left at the flag-off default so the corpus stays internally
-consistent; adopting the flag is an open decision
-(`passband-default-needs-the-other-five-players`). Reproduce the 100.0% with
-`INIT_PASSBAND=1 py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Cybernoid_II.sid 0 0`.
-Note that this artifact is **known-bad on other dimensions regardless** — its
-build force-merges 464 of 527 bundles over the 63-bundle cap, so its freq/pulse
-programs are wrong for merged notes whatever the passband does.
+⚠️ **That artifact now lives in `out/mon/_quarantine/`, not `out/mon/`.** It is
+the 84.6% flag-off build and is kept, not deleted, because it is the evidence
+behind this whole section. Reproduce the 100.0% with
+`INIT_PASSBAND=1 py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Cybernoid_II.sid 0 0`
+— but note the artifact is **known-bad on other dimensions regardless**, so the
+passband was never the only thing wrong with it.
 
-The other 4 of 27
+**A provenance correction:** this file used to say the quarantined artifact's
+sidecar reads `commit eaa9f97 / tree clean`. On disk it reads
+**`commit 7e67c33 / tree dirty`** — it was replaced after that sentence was
+written. The clean-tree rebuild DID happen and its result (84.6%, so a builder
+defect rather than a stale artifact) still stands; what is no longer true is
+that the file on disk carries the stamp proving it. Do not re-quote the
+`eaa9f97 / tree clean` stamp from memory.
+
+The other 4 of 26
 (`Supremacy` sub0/1/2, `Viool_Tello` sub0) never exercise the filter, so they
 are counted neither way. Scoring the original at its **own** subtune (`-a{N}`,
 not a hardcoded `-a0`) was part of the same fix. Measurement is scoped to each
