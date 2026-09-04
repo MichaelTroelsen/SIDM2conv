@@ -32,7 +32,9 @@ only reports its own chunk's voices, same as the build/refused counts already
 did.
 """
 import argparse
+import datetime
 import glob
+import json
 import os
 import re
 import subprocess
@@ -56,6 +58,63 @@ from process_group import bind_children_to_this_process  # noqa: E402
 SID_DIR = os.path.join("SID", "Shogoon")
 OUT_DIR = os.path.join("out", "hardtrack_native")
 PARTS = re.compile(r"part (\d+)/(\d+) \((\d+)-(\d+)s")
+
+# The RUN marker. Per-artifact `.prov` sidecars (a1e6f9a) say which commit built
+# each file that EXISTS; they are structurally silent about the rest of the run.
+# 117 of 150 HardTrack rips are refused, and a refusal writes no artifact, so it
+# leaves no stamp -- "this song was never in the corpus" and "this song failed
+# the last rebuild" look identical from the artifacts alone. That negative space
+# is what this file records, and it is the reason a staleness check previously
+# had to reconstruct coverage from part-count bursts and commit mtimes instead
+# of reading it.
+#
+# NOT a `.sf2`, deliberately: `_provenance()` omits a timestamp so same-commit
+# rebuilds stay byte-identical across every sidecar, and three no-regression
+# checks rest on that. A run marker is not an artifact and SHOULD carry a time,
+# so it is kept out of the `*.sf2` glob every byte-comparison sweep uses.
+MARKER = os.path.join(OUT_DIR, "_rebuild.json")
+
+
+def _run_stamp():
+    """commit/tree/flags for the RUN, same fields as the artifact sidecars."""
+    def git(*a):
+        try:
+            out = subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
+                                 text=True, timeout=10)
+            return out.stdout.strip() if out.returncode == 0 else None
+        except Exception:                                        # noqa: BLE001
+            return None
+    st = git("status", "--porcelain")
+    return {
+        "commit": git("rev-parse", "--short", "HEAD") or "unknown",
+        "tree": "unknown" if st is None else ("dirty" if st else "clean"),
+        "flags": " ".join("%s=%s" % (k, v) for k, v in sorted(os.environ.items())
+                          if k.startswith(("FILT_", "INIT_", "SR_", "SM_", "BB_"))),
+    }
+
+
+def _write_marker(record, keep):
+    """Append this run to the marker; a chunked rebuild is several runs.
+
+    APPEND, never overwrite, because `--keep` exists so a rebuild can be split
+    into chunks. A marker that recorded only the last chunk would claim the
+    corpus was covered when files 0..N never ran -- the same false completeness
+    the artifacts already suffer from, reintroduced one level up.
+    """
+    runs = []
+    if keep:
+        try:
+            with open(MARKER, encoding="utf-8") as f:
+                runs = json.load(f).get("runs", [])
+        except (OSError, ValueError):
+            runs = []                    # a marker we cannot read is not fatal
+    runs.append(record)
+    try:
+        with open(MARKER, "w", encoding="utf-8") as f:
+            json.dump({"runs": runs}, f, indent=1, sort_keys=True)
+        return True
+    except OSError:
+        return False                     # provenance we cannot write is not fatal
 
 # Matches the builder's own FIDELITY table row, e.g.:
 #   "      0   |  94.9% ( 1234) |  96.0% ( 1000)     |    5 of   10 (2 ...)"
@@ -96,6 +155,8 @@ def main(argv=None):
 
     sids = sorted(glob.glob(os.path.join(SID_DIR, "*.sid")))[a.first:a.last]
     built = refused = 0
+    built_songs, refused_songs = [], []
+    started = datetime.datetime.now(datetime.timezone.utc)
     voices = []            # [(stem, voice_idx, raw_pct|None, raw_n, aud_pct|None, aud_n), ...]
     for sid in sids:
         stem = os.path.basename(sid)[:-4]
@@ -104,8 +165,10 @@ def main(argv=None):
         got = sorted(glob.glob(os.path.join(OUT_DIR, stem + "_part*.sf2")))
         if not got:
             refused += 1
+            refused_songs.append(stem)
             continue                     # a refused rip is expected, not a fault
         built += 1
+        built_songs.append({"song": stem, "parts": len(got)})
         spans = PARTS.findall(r.stdout or "")
         last = spans[-1] if spans else None
         for line in (r.stdout or "").splitlines():
@@ -121,6 +184,23 @@ def main(argv=None):
                                        ", song %ss" % last[3] if last else ""))
         sys.stdout.flush()
     print("built %d, refused %d, of %d files" % (built, refused, len(sids)))
+
+    stamp = _run_stamp()
+    ok = _write_marker({
+        "at": started.isoformat(timespec="seconds"),
+        "finished": datetime.datetime.now(
+            datetime.timezone.utc).isoformat(timespec="seconds"),
+        "commit": stamp["commit"],
+        "tree": stamp["tree"],
+        "flags": stamp["flags"],
+        "first": a.first,
+        "last": None if a.last == 1 << 30 else a.last,
+        "cleared": not a.keep,
+        "considered": len(sids),
+        "built": built_songs,
+        "refused": refused_songs,
+    }, keep=a.keep)
+    print("  marker: %s (%s)" % (MARKER, "written" if ok else "NOT WRITTEN"))
 
     # Per-voice fidelity MEDIAN, matching dmc_native_sweep's summary block so
     # the two corpora are comparable at a glance. Only ONE metric here (freq
