@@ -486,42 +486,42 @@ needs_gray = pytest.mark.skipif(not os.path.isdir(_GRAY),
 
 
 @needs_gray
-@pytest.mark.parametrize("name", ["Pogo_Stick_Olympics.sid", "Warriors.sid"])
-def test_the_two_unlocatable_files_refuse_on_the_tempo_table(name):
-    """These two are accepted by the dispatcher probe (their tables ARE found)
-    and then fail the sequencer walk -- the 13-accept/11-decode gap.
+@pytest.mark.parametrize("name,patterns", [("Pogo_Stick_Olympics.sid", 22),
+                                           ("Warriors.sid", 23)])
+def test_the_two_unlocatable_files_now_decode_with_a_static_tempo(name, patterns):
+    """WAS test_the_two_unlocatable_files_refuse_on_the_tempo_table.
 
-    The chain of causes, each found by fixing the one above it:
+    It pinned the refusal at the END of a five-link chain, each link found by
+    fixing the one above it:
       1. "pattern at $1517 has no $ff terminator" blamed the WALK for a locate
-         fault -- $1517 is the player's own clear-SID loop, ten bytes ahead of
-         Pogo's play routine at $1557.
+         fault -- $1517 is the player's own clear-SID loop.
       2. The table declared ONE pattern because `n_patterns = pat_hi - pat_lo`
-         and locate took the FIRST adjacent site pair, which was one byte wide.
-         Taking the WIDEST pair finds the real table ($16a6/22 for Pogo,
-         $268f/23 for Warriors) -- exactly covering their 21 and 22 track refs.
-      3. That table was only reachable once `tune_tempo` stopped claiming it:
-         tempo was chosen BEFORE the pattern table and grabbed its lo-table.
-      4. And then no free site remains for tempo at all. The only candidate
-         left is the ARPEGGIO pointer table ($1511 -> $1517/$151b/$151f, whose
-         targets read `00 05 09 0c` and `00 04 07 0c` -- chord shapes in
-         semitones), whose high byte would have been read as a tempo of 21.
-    So these two still refuse, but on the last link rather than the first, and
-    the pattern table underneath is now correct.
-    """
-    from sidm2.mattgray_parser import MattGrayError, parse_sid
-    with pytest.raises(MattGrayError) as e:
-        parse_sid(os.path.join(_GRAY, name), 1)
+         and locate took the FIRST adjacent site pair, one byte wide. Taking
+         the WIDEST pair finds the real table.
+      3. That table was only reachable once `tune_tempo` stopped claiming it.
+      4. And then no free site remained for tempo at all.
+      5. Because THERE IS NO TEMPO TABLE IN THESE BUILDS -- pinned separately
+         by test_..._have_no_tempo_read_site_at_all, which still passes and is
+         the fact this fix rests on.
 
-    msg = str(e.value)
-    assert "could not locate the tempo table" in msg
-    assert "no $ff terminator" not in msg, (
-        "the old message blamed the walk for a locate fault")
-    assert "arpeggio pointer table" in msg, (
-        "the refusal must name what the last free candidate actually IS, or the "
-        "next reader re-derives it")
-    assert "located OK" in msg, (
-        "it must say the PATTERN table was found -- that is the part this "
-        "chain already fixed, and hiding it invites re-doing the work")
+    The fifth link is resolved by asking the tick counter instead of hunting
+    for a producer: the `dec ctr / bpl / lda slot / sta ctr` reload names the
+    slot, nothing in the play routine writes it, so its image byte IS the
+    tempo. Both read 3.
+
+    THE OLD ASSERTIONS ARE DELIBERATELY NOT KEPT IN A WEAKER FORM. A test still
+    demanding "could not locate the tempo table" would now be asserting the bug.
+    """
+    from sidm2.mattgray_parser import parse_sid, TRK_STOP
+    song = parse_sid(os.path.join(_GRAY, name), 1)
+    assert song.tempo == 3
+    assert song.frames_per_tick == 4           # a row every 4 frames
+    assert len(song.patterns) == patterns      # $16a6/22 and $268f/23
+
+    # and the locate is right for a reason INDEPENDENT of the tempo: every
+    # track reference resolves to a pattern that exists.
+    refs = {b for tr in song.tracks for b in tr if b < TRK_STOP}
+    assert refs and not {b for b in refs if b >= len(song.patterns)}
 
 
 @needs_gray
@@ -547,7 +547,12 @@ def test_a_lone_out_of_range_reference_does_not_refuse():
             assert len(oor) * 2 <= len(refs), (
                 f"{os.path.basename(f)} sub{sub} decoded with a majority of its "
                 f"track references unreachable -- the guard let a bad locate through")
-    assert decoded == 26, (
+    # 26 -> 29 when the static-tempo fallback landed. The three added pairs are
+    # Pogo_Stick_Olympics sub1 and sub2 and Warriors sub1, and each has ZERO
+    # unreachable track references (21 refs / 22 patterns, 2 / 22, 23 / 23), so
+    # they pass the majority guard above with room rather than squeaking past
+    # it. Raise this number only alongside that check, never to make a run green.
+    assert decoded == 29, (
         f"{decoded} (file, subtune) pairs decode; the guard changed the corpus "
         f"denominator, which it must not")
 

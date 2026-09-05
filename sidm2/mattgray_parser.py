@@ -594,13 +594,83 @@ class MattGrayParser:
                 found["tune_tempo"] = a
                 break
         if "tune_tempo" not in found:
-            raise MattGrayError(
-                "could not locate the tempo table: every indexed-read site is "
-                "claimed by another table, and the only free pair is the "
-                "arpeggio pointer table (pattern table at $%04x/%d located "
-                "OK)" % (pat_lo, found["pattern_hibytes"] - pat_lo))
+            # NOT EVERY BUILD HAS A TEMPO TABLE. Pogo_Stick_Olympics and
+            # Warriors have no `lda tune_tempo,y` at all -- their play routine
+            # goes straight from the sixth track-pointer load to `sta`/`jmp` --
+            # so there is nothing for the scan above to find and no amount of
+            # widening it will help. Three heuristics tried to widen it anyway
+            # and each produced a confident wrong tempo: 129 read out of
+            # instr_a0, 21/37 read out of the arpeggio pointer's high byte, and
+            # trk_v3_hi read out of a `<load>;sta;jmp` idiom that matches the
+            # tempo on 8 of 8 files that DO have a table.
+            #
+            # So ask the CONSUMER instead of hunting for a producer. Every build
+            # reloads its per-frame tick counter the same way, and that is what
+            # the tempo is FOR:
+            #     dec tempo_ctr / bpl skip / lda tempo_slot / sta tempo_ctr
+            # On a table build the slot is RAM the table read writes into
+            # (Hyperion_2 $B2BA, Maze_Mania $159A); on these two nothing writes
+            # it, so its value is baked into the image and is the tempo itself.
+            slot = self._static_tempo_slot()
+            if slot is None:
+                raise MattGrayError(
+                    "could not locate the tempo table: every indexed-read site "
+                    "is claimed by another table, and no static tick-counter "
+                    "reload slot was found either (pattern table at $%04x/%d "
+                    "located OK)" % (pat_lo, found["pattern_hibytes"] - pat_lo))
+            found["tune_tempo"] = slot
+            found["tune_tempo_static"] = 1
 
         return found
+
+    def _static_tempo_slot(self) -> Optional[int]:
+        """The address the tick counter reloads from, when nothing writes it.
+
+        The idiom is the counter's own reload and is the same in every build:
+
+            dec  tempo_ctr        ; CE lo hi
+            bpl  skip             ; 10 xx      (bmi on one variant)
+            lda  tempo_slot       ; AD lo hi
+            sta  tempo_ctr        ; 8D lo hi   -- the SAME address as the dec
+
+        Requiring the `sta` to name the address the `dec` just decremented is
+        what makes this a reload rather than any two nearby memory ops, and it
+        is why this is not a fourth positional guess: it is the semantics of
+        frames-per-tick, read off the instruction that implements it.
+
+        Returns the slot only when NO code site writes it -- a slot the play
+        routine writes is a table build's RAM copy, whose image byte is a
+        leftover rather than the tempo. Measured over SID/Gray_Matt: on the
+        table builds the image byte at the slot nevertheless AGREES with the
+        located table (Hyperion_2 4 vs [0,4,5,...], Maze_Mania 5 vs
+        [0,5,3,...]), so this is checked against a known answer and not only
+        against the files it was written for.
+        """
+        written = set()
+        sites = []
+        for pc in sorted(set(self._code_map())):
+            op = self.byte(pc)
+            if op in (0x8D, 0x99, 0x9D):          # sta abs / abs,y / abs,x
+                written.add(self.word(pc + 1))
+            if op != 0xCE:                        # dec abs
+                continue
+            ctr = self.word(pc + 1)
+            if self.byte(pc + 3) not in (0x10, 0x30):     # bpl / bmi
+                continue
+            q = pc + 5
+            if self.byte(q) != 0xAD:              # lda abs
+                continue
+            if self.byte(q + 3) != 0x8D or self.word(q + 4) != ctr:
+                continue
+            sites.append(self.word(q + 1))
+        free = [s for s in sites if s not in written]
+        if len(free) != 1:
+            # Refuse on 0 (no static slot -- this build reads a table, or the
+            # idiom is spelled differently) and on 2+ (ambiguous). This module
+            # imports no logging on purpose, so the refusal is silent and the
+            # caller raises MattGrayError with the full context instead.
+            return None
+        return free[0]
 
     def _duration_base(self) -> Optional[int]:
         """Find the LN2-style duration split, if this build uses one.
@@ -754,7 +824,11 @@ class MattGrayParser:
             play_voice=self.play_voice,
             subtune=subtune,
             psid_song=psid_song,
-            tempo=self.byte(tempo_tab + subtune),
+            # A STATIC slot holds ONE tempo for the whole song, so it must not
+            # be indexed by subtune -- tempo_tab+1 on Pogo_Stick_Olympics is
+            # $70, a row every 113 frames.
+            tempo=self.byte(tempo_tab + (0 if tabs.get("tune_tempo_static")
+                                         else subtune)),
             tracks=tracks,
             patterns=patterns,
             pattern_addrs=pattern_addrs,
