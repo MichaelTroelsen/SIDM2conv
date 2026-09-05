@@ -8,7 +8,7 @@ Version: 1.0.0
 Date: 2025-12-22
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import List, Dict, Optional
 from pathlib import Path
@@ -159,29 +159,118 @@ class PipelineConfig:
                 self.mode = "custom"  # Switch to custom mode
 
     def to_dict(self) -> Dict:
-        """Convert config to dictionary for serialization"""
-        return {
-            "mode": self.mode,
-            "primary_driver": self.primary_driver,
-            "generate_both": self.generate_both,
-            "output_directory": self.output_directory,
-            "overwrite_existing": self.overwrite_existing,
-            "create_nested_dirs": self.create_nested_dirs,
-            "enabled_steps": self.enabled_steps,
-            "log_level": self.log_level,
-            "log_to_file": self.log_to_file,
-            "log_file_path": self.log_file_path,
-            "log_json_format": self.log_json_format,
-            "validation_duration": self.validation_duration,
-            "run_accuracy_validation": self.run_accuracy_validation,
-            "stop_on_error": self.stop_on_error,
-            "step_timeout_ms": self.step_timeout_ms
-        }
+        """Every field, by construction -- NOT a hand-written list.
+
+        THIS USED TO HAND-LIST 15 OF 16 FIELDS and silently omitted
+        `concurrent_workers`. Because `from_dict` is `cls(**data)`, the missing
+        key did not raise: it simply fell back to the default, so exporting a
+        config with concurrent_workers=8 and re-importing it returned 2. The
+        loss was invisible at the default value, which is why a round trip
+        checked with defaults reported "no fields differ" while dropping data.
+
+        IT WAS NEVER JUST AN IMPORT/EXPORT BUG. `save_to_settings` iterates
+        `self.to_dict().items()`, so QSettings persisted the same 15 keys and
+        the cockpit forgot the user's worker count between sessions.
+
+        `asdict` is used rather than adding the sixteenth key BECAUSE THE
+        MECHANISM WAS THE DEFECT: a hand-written list drops the NEXT field
+        added to the dataclass in exactly the same silent way. This cannot.
+        `test_to_dict_exports_every_dataclass_field` fails if anyone reverts it.
+
+        One deliberate behaviour change: `asdict` deep-copies, so the returned
+        `enabled_steps` is no longer the live dict. The only caller that takes
+        it (`ConfigPanel.set_config`, via conversion_cockpit_gui) reads keys
+        with `.get()` and never mutates, so nothing depended on the alias.
+        """
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict) -> "PipelineConfig":
         """Create config from dictionary"""
         return cls(**data)
+
+    def to_json_text(self, indent: int = 2) -> str:
+        """This config as pretty JSON, ready to write to a file.
+
+        Built on `to_dict`, which is `dataclasses.asdict` and therefore TOTAL --
+        every field is exported by construction. That matters here more than
+        anywhere else: an exported file is the thing a user carries between
+        machines, so a field missing from it is a setting silently lost at the
+        far end, with nothing to notice it. (to_dict hand-listed 15 of 16 fields
+        until 2026-09-04 and dropped `concurrent_workers` exactly that way.)
+        """
+        import json
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
+
+    @classmethod
+    def from_json_text(cls, text: str) -> "PipelineConfig":
+        """Parse an exported config, REFUSING anything it cannot honour.
+
+        Three refusals, and each exists because the silent alternative loses a
+        user's setting without telling them:
+
+        * not a JSON object -> there is no config here at all;
+        * an UNKNOWN key -> `cls(**data)` would raise a bare TypeError naming
+          one key with no context; worse, ignoring it would drop a setting the
+          file plainly asks for. Named explicitly instead.
+        * a field of the wrong TYPE is left to the dataclass -- this does not
+          coerce, because guessing that "8" meant 8 is how a config import
+          starts inventing values.
+
+        MISSING keys are ACCEPTED and take their defaults. That is deliberate
+        and is the one asymmetry: an older export should still load, and a
+        default is a defined value rather than a guess. Callers that need to
+        know use `defaulted_fields`.
+        """
+        import dataclasses
+        import json
+
+        try:
+            data = json.loads(text)
+        except ValueError as exc:
+            raise ConfigurationError(
+                setting='config_file',
+                value=str(exc),
+                example='{"mode": "simple", "primary_driver": "laxity"}',
+                docs_link='guides/CONVERSION_COCKPIT_USER_GUIDE.md'
+            ) from exc
+
+        if not isinstance(data, dict):
+            raise ConfigurationError(
+                setting='config_file',
+                value=type(data).__name__,
+                valid_options=['a JSON object'],
+                example='{"mode": "simple"}',
+                docs_link='guides/CONVERSION_COCKPIT_USER_GUIDE.md'
+            )
+
+        known = {f.name for f in dataclasses.fields(cls)}
+        unknown = sorted(set(data) - known)
+        if unknown:
+            raise ConfigurationError(
+                setting='config_file',
+                value=', '.join(unknown),
+                valid_options=sorted(known),
+                example='remove the unrecognised key, or upgrade SIDM2',
+                docs_link='guides/CONVERSION_COCKPIT_USER_GUIDE.md'
+            )
+
+        return cls.from_dict(data)
+
+    @classmethod
+    def defaulted_fields(cls, text: str) -> List[str]:
+        """Which fields an exported config does NOT mention, so a caller can
+        tell the user what fell back to a default rather than leaving them to
+        discover it in the behaviour."""
+        import dataclasses
+        import json
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return []
+        if not isinstance(data, dict):
+            return []
+        return sorted({f.name for f in dataclasses.fields(cls)} - set(data))
 
     def save_to_settings(self, settings):
         """Save configuration to QSettings"""

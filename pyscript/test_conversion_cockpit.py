@@ -410,3 +410,152 @@ def run_tests():
 
 if __name__ == "__main__":
     sys.exit(run_tests())
+
+# ---------------------------------------------------------------------------
+# PipelineConfig serialisation must be TOTAL.
+#
+# to_dict() hand-listed 15 of the dataclass's 16 fields and omitted
+# concurrent_workers. from_dict is cls(**data), so the absent key did not
+# raise -- the field just reverted to its default. That made the loss
+# INVISIBLE whenever the value happened to equal the default, which is why a
+# round trip checked at defaults reported success while dropping data.
+# save_to_settings iterates to_dict().items(), so QSettings lost it too.
+#
+# The first test is the one that matters: it fails for a field that does not
+# exist yet, so the next field added to PipelineConfig cannot be dropped the
+# same silent way.
+# ---------------------------------------------------------------------------
+
+class TestPipelineConfigSerialisationIsTotal(unittest.TestCase):
+
+    def test_to_dict_exports_every_dataclass_field(self):
+        """THE MECHANISM GUARD. Not 'concurrent_workers is present' -- that
+        would pass again the moment someone adds a seventeenth field."""
+        import dataclasses
+        cfg = PipelineConfig()
+        fields = {f.name for f in dataclasses.fields(cfg)}
+        exported = set(cfg.to_dict())
+        self.assertEqual(fields - exported, set(),
+                         "to_dict() drops dataclass field(s); from_dict is "
+                         "cls(**data) so they revert to defaults SILENTLY")
+        self.assertEqual(exported - fields, set(),
+                         "to_dict() exports a key that is not a field; "
+                         "from_dict would raise TypeError on it")
+
+    def test_round_trip_at_NON_DEFAULT_values(self):
+        """A round trip verified at DEFAULTS is vacuous -- the dropped field
+        equalled its default, so nothing differed. Every field is moved off
+        its default here before the trip."""
+        import dataclasses
+        import json
+        cfg = PipelineConfig()
+        for f in dataclasses.fields(cfg):
+            cur = getattr(cfg, f.name)
+            if isinstance(cur, bool):
+                setattr(cfg, f.name, not cur)
+            elif isinstance(cur, int):
+                setattr(cfg, f.name, cur + 7)
+            elif isinstance(cur, str):
+                setattr(cfg, f.name, cur + "_x")
+            elif isinstance(cur, dict):
+                setattr(cfg, f.name, {"conversion": True, "sentinel": False})
+
+        back = PipelineConfig.from_dict(json.loads(json.dumps(cfg.to_dict())))
+        for f in dataclasses.fields(cfg):
+            self.assertEqual(getattr(back, f.name), getattr(cfg, f.name),
+                             "field %r did not survive the round trip" % f.name)
+
+    def test_concurrent_workers_specifically(self):
+        """The field that was actually lost, pinned by name as well as by the
+        general rule -- a regression here should say WHICH field."""
+        import json
+        cfg = PipelineConfig()
+        cfg.concurrent_workers = 8
+        blob = json.dumps(cfg.to_dict())
+        self.assertIn("concurrent_workers", json.loads(blob))
+        self.assertEqual(PipelineConfig.from_dict(json.loads(blob)).concurrent_workers, 8)
+
+# ---------------------------------------------------------------------------
+# CC-7: exporting and importing a configuration file.
+#
+# The serialisation these rest on is `to_dict` == dataclasses.asdict, TOTAL by
+# construction. That is load-bearing for an EXPORT specifically: the file is
+# what a user carries between machines, so a field missing from it is a setting
+# lost at the far end with nothing to notice it.
+#
+# Every round trip below moves fields OFF their defaults first. A round trip
+# checked at defaults is vacuous -- to_dict dropped concurrent_workers for
+# months and the check still reported "nothing differs", because the value it
+# lost equalled the default it reverted to.
+# ---------------------------------------------------------------------------
+
+class TestConfigExportImport(unittest.TestCase):
+
+    @staticmethod
+    def _off_defaults():
+        import dataclasses
+        cfg = PipelineConfig()
+        for f in dataclasses.fields(cfg):
+            cur = getattr(cfg, f.name)
+            if isinstance(cur, bool):
+                setattr(cfg, f.name, not cur)
+            elif isinstance(cur, int):
+                setattr(cfg, f.name, cur + 13)
+            elif isinstance(cur, str):
+                setattr(cfg, f.name, cur + "_exported")
+            elif isinstance(cur, dict):
+                setattr(cfg, f.name, {"conversion": True, "marker": False})
+        return cfg
+
+    def test_every_field_survives_an_export_import_round_trip(self):
+        import dataclasses
+        cfg = self._off_defaults()
+        back = PipelineConfig.from_json_text(cfg.to_json_text())
+        for f in dataclasses.fields(cfg):
+            self.assertEqual(getattr(back, f.name), getattr(cfg, f.name),
+                             "field %r did not survive export/import" % f.name)
+
+    def test_a_full_export_defaults_nothing(self):
+        """If this ever reports a field, the export is incomplete -- which is
+        the defect, not a curiosity."""
+        cfg = self._off_defaults()
+        self.assertEqual(PipelineConfig.defaulted_fields(cfg.to_json_text()), [])
+
+    def test_an_unknown_key_is_REFUSED_and_named(self):
+        """cls(**data) would raise a bare TypeError; ignoring it would drop a
+        setting the file plainly asks for. Neither is acceptable."""
+        import json
+        blob = json.dumps({"mode": "simple", "not_a_real_setting": 1})
+        with self.assertRaises(Exception) as ctx:
+            PipelineConfig.from_json_text(blob)
+        self.assertIn("not_a_real_setting", str(ctx.exception))
+
+    def test_malformed_and_non_object_json_are_refused(self):
+        for blob in ("{oops", "[1, 2]", '"a string"', "null"):
+            with self.assertRaises(Exception):
+                PipelineConfig.from_json_text(blob)
+
+    def test_a_PARTIAL_file_loads_and_says_what_it_defaulted(self):
+        """Deliberate asymmetry: missing keys are accepted so an older export
+        still loads, but the caller can tell the user which fell back."""
+        import json
+        blob = json.dumps({"mode": "advanced"})
+        cfg = PipelineConfig.from_json_text(blob)
+        self.assertEqual(cfg.mode, "advanced")
+        defaulted = PipelineConfig.defaulted_fields(blob)
+        self.assertIn("concurrent_workers", defaulted)
+        self.assertNotIn("mode", defaulted)
+
+    def test_exported_text_is_stable_and_readable(self):
+        """sort_keys + indent, so two exports of the same config diff cleanly
+        and a human can edit one by hand."""
+        cfg = self._off_defaults()
+        a, b = cfg.to_json_text(), cfg.to_json_text()
+        self.assertEqual(a, b)
+        self.assertIn(chr(10), a)
+        # TOP-LEVEL keys only -- enabled_steps is a nested dict whose inner
+        # keys are also quoted lines, and they have no reason to be sorted
+        # against the outer ones.
+        keys = [ln.split('"')[1] for ln in a.splitlines()
+                if ln.startswith('  "')]
+        self.assertEqual(keys, sorted(keys), "keys should be sorted")

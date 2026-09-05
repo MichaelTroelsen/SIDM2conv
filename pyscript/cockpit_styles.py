@@ -55,6 +55,94 @@ class ColorScheme:
     INFO_LIGHT = "#B2EBF2"
 
 
+
+class DarkColorScheme:
+    """The same names as ColorScheme, dark.
+
+    EVERY ATTRIBUTE ColorScheme DEFINES MUST EXIST HERE. A hand-written second
+    palette drops a colour the moment someone adds one to the light class, and
+    the failure is silent: the stylesheet f-string raises AttributeError only
+    for the widget that uses it, at runtime, in dark mode only. So the pairing
+    is asserted by a test rather than trusted -- exactly the shape that let
+    PipelineConfig.to_dict hand-list 15 of 16 fields (fixed 2026-09-04); a
+    hand-maintained mirror of a structure is a mirror that goes stale.
+
+    The hues are kept and the LIGHTNESS inverted, rather than picking new
+    colours: PRIMARY stays blue, ERROR stays red. A dark theme that also
+    re-assigns meaning is two changes wearing one name.
+    """
+
+    PRIMARY = "#64B5F6"
+    PRIMARY_DARK = "#42A5F5"
+    PRIMARY_LIGHT = "#1E3A5F"
+
+    SUCCESS = "#81C784"
+    SUCCESS_DARK = "#66BB6A"
+    SUCCESS_LIGHT = "#1B3A22"
+
+    WARNING = "#FFB74D"
+    WARNING_DARK = "#FFA726"
+    WARNING_LIGHT = "#4A3418"
+
+    ERROR = "#E57373"
+    ERROR_DARK = "#EF5350"
+    ERROR_LIGHT = "#4A2222"
+
+    BACKGROUND = "#121212"
+    SURFACE = "#1E1E1E"
+    TEXT_PRIMARY = "#ECECEC"
+    TEXT_SECONDARY = "#A0A0A0"
+    TEXT_DISABLED = "#5C5C5C"
+    DIVIDER = "#333333"
+
+    INFO = "#4DD0E1"
+    INFO_LIGHT = "#12363B"
+
+
+# The scheme the stylesheet builders read when none is passed. Module-level
+# rather than a GUI attribute so `StyleSheet.get_main_stylesheet()` keeps its
+# existing zero-argument call sites working unchanged.
+_ACTIVE_DARK = False
+
+
+def active_scheme():
+    """ColorScheme or DarkColorScheme, per `set_dark_mode`."""
+    return DarkColorScheme if _ACTIVE_DARK else ColorScheme
+
+
+def set_dark_mode(enabled: bool) -> None:
+    """Switch the palette every stylesheet builder reads.
+
+    Returns nothing and touches no widget -- a caller that wants the change on
+    screen re-applies `StyleSheet.get_main_stylesheet()`. Keeping the toggle
+    free of Qt is what lets it be tested without a QApplication.
+    """
+    global _ACTIVE_DARK
+    _ACTIVE_DARK = bool(enabled)
+
+
+def dark_mode_enabled() -> bool:
+    return _ACTIVE_DARK
+
+
+# ---------------------------------------------------------------------------
+# TOOLTIPS -- declared as DATA, so a control without help text is findable.
+#
+# Scoped DELIBERATELY to the configuration surface rather than "all controls":
+# those are the ones whose meaning is not obvious from their label, and a
+# tooltip on a button that says "Start" adds nothing. See docs/IMPROVEMENTS_TODO.md
+# CC-6b for what was implemented and what was struck.
+# ---------------------------------------------------------------------------
+
+TOOLTIPS = {
+    "simple_radio": "Run only the essential pipeline steps -- parse, convert, write SF2.",
+    "advanced_radio": "Run every pipeline step, including validation and audio export.",
+    "custom_radio": "Choose individual steps yourself; nothing is implied.",
+    "driver_combo": ("Target SF2 driver. Auto-selection reads the player id, so override "
+                     "this only when you know the file's player better than player-id does "
+                     "-- a native Laxity NP21 file converted with Driver 11 scores 1-8%."),
+}
+
 class IconGenerator:
     """Generate icons programmatically"""
 
@@ -268,35 +356,43 @@ class StyleSheet:
     """Qt Stylesheet definitions"""
 
     @staticmethod
-    def get_main_stylesheet() -> str:
-        """Get main application stylesheet"""
+    def get_main_stylesheet(scheme=None) -> str:
+        """Get main application stylesheet for `scheme` (default: active).
+
+        The palette is a PARAMETER now rather than a hard reference to
+        ColorScheme, which is what makes a second palette possible at all --
+        every colour in this 160-line f-string used to name the light class
+        directly, so "dark mode" could not have been more than a re-skin of
+        one widget.
+        """
+        C = scheme or active_scheme()
         return f"""
         QMainWindow, QWidget {{
-            background-color: {ColorScheme.BACKGROUND};
-            color: {ColorScheme.TEXT_PRIMARY};
+            background-color: {C.BACKGROUND};
+            color: {C.TEXT_PRIMARY};
         }}
 
         QTabWidget::pane {{
-            border: 1px solid {ColorScheme.DIVIDER};
+            border: 1px solid {C.DIVIDER};
         }}
 
         QTabBar::tab {{
-            background-color: {ColorScheme.SURFACE};
-            color: {ColorScheme.TEXT_SECONDARY};
+            background-color: {C.SURFACE};
+            color: {C.TEXT_SECONDARY};
             padding: 8px 20px;
-            border: 1px solid {ColorScheme.DIVIDER};
+            border: 1px solid {C.DIVIDER};
             margin-right: 2px;
             border-radius: 4px 4px 0px 0px;
         }}
 
         QTabBar::tab:selected {{
-            background-color: {ColorScheme.SURFACE};
-            color: {ColorScheme.PRIMARY};
-            border-bottom: 3px solid {ColorScheme.PRIMARY};
+            background-color: {C.SURFACE};
+            color: {C.PRIMARY};
+            border-bottom: 3px solid {C.PRIMARY};
         }}
 
         QPushButton {{
-            background-color: {ColorScheme.PRIMARY};
+            background-color: {C.PRIMARY};
             color: white;
             border: none;
             padding: 8px 16px;
@@ -306,50 +402,50 @@ class StyleSheet:
         }}
 
         QPushButton:hover {{
-            background-color: {ColorScheme.PRIMARY_DARK};
+            background-color: {C.PRIMARY_DARK};
         }}
 
         QPushButton:pressed {{
-            background-color: {ColorScheme.PRIMARY_DARK};
+            background-color: {C.PRIMARY_DARK};
             padding: 9px 15px 7px 17px;
         }}
 
         QPushButton:disabled {{
-            background-color: {ColorScheme.TEXT_DISABLED};
-            color: {ColorScheme.TEXT_SECONDARY};
+            background-color: {C.TEXT_DISABLED};
+            color: {C.TEXT_SECONDARY};
         }}
 
         QPushButton#startBtn {{
-            background-color: {ColorScheme.SUCCESS};
+            background-color: {C.SUCCESS};
         }}
 
         QPushButton#startBtn:hover {{
-            background-color: {ColorScheme.SUCCESS_DARK};
+            background-color: {C.SUCCESS_DARK};
         }}
 
         QPushButton#pauseBtn {{
-            background-color: {ColorScheme.WARNING};
+            background-color: {C.WARNING};
         }}
 
         QPushButton#pauseBtn:hover {{
-            background-color: {ColorScheme.WARNING_DARK};
+            background-color: {C.WARNING_DARK};
         }}
 
         QPushButton#stopBtn {{
-            background-color: {ColorScheme.ERROR};
+            background-color: {C.ERROR};
         }}
 
         QPushButton#stopBtn:hover {{
-            background-color: {ColorScheme.ERROR_DARK};
+            background-color: {C.ERROR_DARK};
         }}
 
         QGroupBox {{
-            border: 1px solid {ColorScheme.DIVIDER};
+            border: 1px solid {C.DIVIDER};
             border-radius: 4px;
             margin-top: 10px;
             padding-top: 10px;
             font-weight: bold;
-            color: {ColorScheme.TEXT_PRIMARY};
+            color: {C.TEXT_PRIMARY};
         }}
 
         QGroupBox::title {{
@@ -359,93 +455,94 @@ class StyleSheet:
         }}
 
         QProgressBar {{
-            border: 1px solid {ColorScheme.DIVIDER};
+            border: 1px solid {C.DIVIDER};
             border-radius: 4px;
-            background-color: {ColorScheme.SURFACE};
+            background-color: {C.SURFACE};
             padding: 2px;
             text-align: center;
             height: 20px;
         }}
 
         QProgressBar::chunk {{
-            background-color: {ColorScheme.PRIMARY};
+            background-color: {C.PRIMARY};
             border-radius: 3px;
         }}
 
         QLineEdit, QComboBox {{
-            border: 1px solid {ColorScheme.DIVIDER};
+            border: 1px solid {C.DIVIDER};
             border-radius: 4px;
             padding: 6px;
-            background-color: {ColorScheme.SURFACE};
-            color: {ColorScheme.TEXT_PRIMARY};
+            background-color: {C.SURFACE};
+            color: {C.TEXT_PRIMARY};
         }}
 
         QLineEdit:focus, QComboBox:focus {{
-            border: 2px solid {ColorScheme.PRIMARY};
+            border: 2px solid {C.PRIMARY};
         }}
 
         QTableWidget, QListWidget {{
-            border: 1px solid {ColorScheme.DIVIDER};
-            background-color: {ColorScheme.SURFACE};
-            color: {ColorScheme.TEXT_PRIMARY};
-            gridline-color: {ColorScheme.DIVIDER};
+            border: 1px solid {C.DIVIDER};
+            background-color: {C.SURFACE};
+            color: {C.TEXT_PRIMARY};
+            gridline-color: {C.DIVIDER};
         }}
 
         QTableWidget::item:selected, QListWidget::item:selected {{
-            background-color: {ColorScheme.PRIMARY_LIGHT};
-            color: {ColorScheme.TEXT_PRIMARY};
+            background-color: {C.PRIMARY_LIGHT};
+            color: {C.TEXT_PRIMARY};
         }}
 
         QHeaderView::section {{
-            background-color: {ColorScheme.PRIMARY_LIGHT};
-            color: {ColorScheme.TEXT_PRIMARY};
+            background-color: {C.PRIMARY_LIGHT};
+            color: {C.TEXT_PRIMARY};
             padding: 6px;
             border: none;
             font-weight: bold;
         }}
 
         QScrollBar:vertical {{
-            background-color: {ColorScheme.BACKGROUND};
+            background-color: {C.BACKGROUND};
             width: 12px;
         }}
 
         QScrollBar::handle:vertical {{
-            background-color: {ColorScheme.TEXT_DISABLED};
+            background-color: {C.TEXT_DISABLED};
             border-radius: 6px;
             min-height: 20px;
         }}
 
         QScrollBar::handle:vertical:hover {{
-            background-color: {ColorScheme.TEXT_SECONDARY};
+            background-color: {C.TEXT_SECONDARY};
         }}
 
         QLabel {{
-            color: {ColorScheme.TEXT_PRIMARY};
+            color: {C.TEXT_PRIMARY};
         }}
 
         QStatusBar {{
-            border-top: 1px solid {ColorScheme.DIVIDER};
-            color: {ColorScheme.TEXT_SECONDARY};
+            border-top: 1px solid {C.DIVIDER};
+            color: {C.TEXT_SECONDARY};
         }}
         """
 
     @staticmethod
-    def get_dashboard_stylesheet() -> str:
+    def get_dashboard_stylesheet(scheme=None) -> str:
         """Get dashboard-specific stylesheet"""
+        C = scheme or active_scheme()
         return f"""
         QLabel {{
-            color: {ColorScheme.TEXT_SECONDARY};
+            color: {C.TEXT_SECONDARY};
         }}
 
         QLabel[title="true"] {{
-            color: {ColorScheme.TEXT_PRIMARY};
+            color: {C.TEXT_PRIMARY};
             font-size: 14px;
             font-weight: bold;
         }}
 
         QFrame#dashboardSection {{
-            background-color: {ColorScheme.SURFACE};
-            border: 1px solid {ColorScheme.DIVIDER};
+            background-color: {C.SURFACE};
+            border: 1px solid {C.DIVIDER};
             border-radius: 4px;
             padding: 15px;
         }}
@@ -480,6 +577,22 @@ class UIHelpers:
         elif button_type == "stop":
             button.setObjectName("stopBtn")
             button.setToolTip("Stop conversion")
+
+    @staticmethod
+    def apply_tooltips(widgets: dict) -> int:
+        """Set help text on any widget whose key appears in TOOLTIPS.
+
+        Takes a name->widget mapping so the caller decides what it owns, and
+        returns how many were applied -- a silent zero is how a tooltip pass
+        gets quietly lost in a refactor that renames a control.
+        """
+        n = 0
+        for name, widget in (widgets or {}).items():
+            text = TOOLTIPS.get(name)
+            if text and widget is not None and hasattr(widget, "setToolTip"):
+                widget.setToolTip(text)
+                n += 1
+        return n
 
     @staticmethod
     def format_large_text(text: str, size: int = 14, bold: bool = True) -> str:

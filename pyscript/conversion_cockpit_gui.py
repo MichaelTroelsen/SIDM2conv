@@ -25,7 +25,8 @@ try:
         QSplitter, QFrame, QScrollArea, QInputDialog
     )
     from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject, QUrl, QSize
-    from PyQt6.QtGui import QFont, QColor, QIcon, QDragEnterEvent, QDropEvent
+    from PyQt6.QtGui import (QFont, QColor, QIcon, QDragEnterEvent, QDropEvent,
+                             QKeySequence, QShortcut)
     PYQT6_AVAILABLE = True
 except ImportError:
     PYQT6_AVAILABLE = False
@@ -48,6 +49,20 @@ from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStream
 from cockpit_history_widgets import BatchHistorySectionWidget, HistoryControlWidget
 from batch_history_manager import BatchHistoryManager
 from cockpit_styles import ColorScheme, IconGenerator, StyleSheet
+import cockpit_styles
+
+
+# CC-6b. Declared as DATA, not buried in the wiring, so the binding a user
+# is told about and the binding that exists are the same string. Each value
+# is the name of a method on CockpitMainWindow; a typo is caught at startup
+# by _install_shortcuts rather than by a key that silently does nothing.
+SHORTCUTS = {
+    "Ctrl+O": "add_files_manually",
+    "Ctrl+S": "save_configuration",
+    "F5": "refresh_dashboard",
+    "Esc": "stop_conversion",
+    "Ctrl+D": "toggle_dark_mode",
+}
 from report_generator import generate_batch_report
 
 
@@ -69,6 +84,8 @@ class CockpitMainWindow(QMainWindow):
 
         # Initialize UI
         self.init_ui()
+        self._apply_saved_theme()
+        self._install_shortcuts()
         self.setup_drag_drop()
         self.load_settings()
 
@@ -851,6 +868,125 @@ class CockpitMainWindow(QMainWindow):
     # =========================================================================
     # Control Methods
     # =========================================================================
+
+    def export_configuration(self):
+        """Write the current pipeline config to a JSON file the user picks.
+
+        The serialisation is `PipelineConfig.to_json_text`, which is total by
+        construction -- this method owns only the dialog and the file write, so
+        the part worth testing is testable without a QApplication.
+        """
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export configuration", "sidm2-config.json",
+            "JSON files (*.json);;All files (*)")
+        if not path:
+            return None
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(self.config.to_json_text())
+        except OSError as exc:
+            QMessageBox.critical(self, "Export failed", str(exc))
+            return None
+        self.statusBar().showMessage("Configuration exported to %s" % path, 5000)
+        return path
+
+    def import_configuration(self):
+        """Load a config the user picks, REPORTING what it did not contain.
+
+        A file missing a key is accepted and that field takes its default --
+        but the user is told which, because a setting that quietly reverts is
+        the same failure this whole thread started from.
+        """
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import configuration", "",
+            "JSON files (*.json);;All files (*)")
+        if not path:
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read()
+            cfg = PipelineConfig.from_json_text(text)
+            defaulted = PipelineConfig.defaulted_fields(text)
+        except OSError as exc:
+            QMessageBox.critical(self, "Import failed", str(exc))
+            return None
+        except Exception as exc:                              # noqa: BLE001
+            # ConfigurationError names the offending key; show it verbatim
+            # rather than a generic "invalid file".
+            QMessageBox.critical(self, "Import failed", str(exc))
+            return None
+
+        self.config = cfg
+        try:
+            self.config_panel.set_config(cfg.to_dict())
+        except Exception:                                     # noqa: BLE001
+            pass
+        msg = "Configuration imported from %s" % path
+        if defaulted:
+            msg += " (%d field(s) not in the file took defaults: %s)" % (
+                len(defaulted), ", ".join(defaulted))
+        self.statusBar().showMessage(msg, 8000)
+        return cfg
+
+    def _install_shortcuts(self, _seq=None, _sc=None):
+        """Bind every entry in SHORTCUTS, and REFUSE a binding that points at
+        nothing.
+
+        The failure this guards is a key that silently does nothing: rename or
+        remove a handler and the QShortcut still constructs, still swallows the
+        keypress, and the only symptom is a user pressing Ctrl+S and getting no
+        feedback whatever. Raising at startup makes that a crash in the
+        developer's face instead.
+
+        `_seq` / `_sc` exist so the table can be verified without a QApplication.
+        """
+        seq_cls = _seq or QKeySequence
+        sc_cls = _sc or QShortcut
+        installed = []
+        for key, handler in SHORTCUTS.items():
+            fn = getattr(self, handler, None)
+            if not callable(fn):
+                raise AttributeError(
+                    "SHORTCUTS binds %s to %r, which is not a method on %s"
+                    % (key, handler, type(self).__name__))
+            sc = sc_cls(seq_cls(key), self)
+            sc.activated.connect(fn)
+            installed.append((key, handler))
+        self._shortcuts = installed
+        return installed
+
+    def _apply_saved_theme(self):
+        """Restore the dark-mode choice from QSettings and apply it."""
+        try:
+            settings = QSettings("SIDM2", "ConversionCockpit")
+            dark = settings.value("ui/dark_mode", False, type=bool)
+        except Exception:                                     # noqa: BLE001
+            dark = False
+        cockpit_styles.set_dark_mode(bool(dark))
+        self._restyle()
+
+    def toggle_dark_mode(self):
+        """Flip the palette, persist the choice, and restyle in place."""
+        new = not cockpit_styles.dark_mode_enabled()
+        cockpit_styles.set_dark_mode(new)
+        try:
+            QSettings("SIDM2", "ConversionCockpit").setValue("ui/dark_mode", new)
+        except Exception:                                     # noqa: BLE001
+            pass
+        self._restyle()
+        return new
+
+    def _restyle(self):
+        """Re-apply the main stylesheet from whichever palette is active.
+
+        Separate from the toggle because the palette switch is pure data and
+        the re-skin is the only part that needs a live widget -- which is what
+        makes `toggle_dark_mode` testable at all.
+        """
+        try:
+            self.setStyleSheet(StyleSheet.get_main_stylesheet())
+        except Exception:                                     # noqa: BLE001
+            pass
 
     def start_conversion(self):
         """Start batch conversion"""

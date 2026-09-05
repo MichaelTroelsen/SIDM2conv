@@ -463,6 +463,22 @@ class ConfigPanel(QWidget):
             },
         }
 
+    def apply_tooltips(self):
+        """Attach the declared help text to this panel's controls.
+
+        The mapping lives in cockpit_styles.TOOLTIPS as DATA, so a control with
+        no help text is findable by reading a dict rather than by auditing a
+        constructor. Returns the number applied -- a silent zero is how a
+        tooltip pass gets lost when a control is renamed.
+        """
+        from cockpit_styles import UIHelpers
+        return UIHelpers.apply_tooltips({
+            "simple_radio": getattr(self, "simple_radio", None),
+            "advanced_radio": getattr(self, "advanced_radio", None),
+            "custom_radio": getattr(self, "custom_radio", None),
+            "driver_combo": getattr(self, "driver_combo", None),
+        })
+
     def set_config(self, config: dict):
         """Push an externally-owned config dict onto the panel's controls.
 
