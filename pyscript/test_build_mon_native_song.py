@@ -564,3 +564,78 @@ def f():
     assert not guarded, (
         'emit_one is inside a try/except at line(s) %s -- a WAVE overflow would '
         'become a silently skipped part' % guarded)
+# ---------------------------------------------------------------------------
+# the per-voice screen actually FIRES -- it was dead code until it was wired
+# ---------------------------------------------------------------------------
+
+def _frames(bundles_per_voice, n=200):
+    """A siddump_frames_full-shaped trace where voice i carries `bundles[i]`
+    distinct (wf, adsr, pul) triples. 1 == collapsed, by the definition
+    VOICE_BUNDLE_FLOOR encodes."""
+    out = []
+    for f in range(n):
+        vs = {}
+        for vi, k in enumerate(bundles_per_voice):
+            j = f % max(1, k)
+            vs[vi] = {"freq": 0x1000, "wf": 0x41 + j, "adsr": 0x0500 + j,
+                      "pul": 0x800 + j}
+        out.append((vs, {"cutoff": 0, "filtctl": 0, "volmode": 0}))
+    return out
+
+
+def test_the_voice_screen_FIRES_on_a_collapse(monkeypatch, capsys):
+    """THE POINT OF WIRING IT. trace_voice_bundles and voice_collapse_vs were
+    written, tested, and then called by nothing -- the measure protected no
+    corpus. A screen that never fires is indistinguishable from the dead code
+    it replaced, so this pins that it speaks.
+
+    Voice 1 carries 9 distinct bundles in the reference and exactly 1 in the
+    build: alive, then collapsed.
+    """
+    import build_mon_native_song as mod
+    from sidm2 import fidelity_common as FC
+    monkeypatch.setattr(FC, "artifact_trace", lambda p, a: _frames([9, 1, 9]))
+    mod._screen_voices("ignored.sf2", _frames([9, 9, 9]), 0, 200, 1, 3)
+    out = capsys.readouterr().out
+    assert "VOICE COLLAPSE" in out, out
+    assert "[1]" in out, "it must name WHICH voice, not just that one died"
+
+
+def test_the_voice_screen_is_SILENT_on_a_clean_build(monkeypatch, capsys):
+    """The other direction, so the test above cannot be satisfied by a screen
+    that shouts at everything. Same bundles both sides."""
+    import build_mon_native_song as mod
+    from sidm2 import fidelity_common as FC
+    monkeypatch.setattr(FC, "artifact_trace", lambda p, a: _frames([9, 9, 9]))
+    mod._screen_voices("ignored.sf2", _frames([9, 9, 9]), 0, 200, 1, 3)
+    assert capsys.readouterr().out == ""
+
+
+def test_an_unmeasurable_artifact_is_NOT_reported_as_clean(monkeypatch, capsys):
+    """None is not []. An artifact that will not parse is UNSCREENED, and the
+    whole reason this screen exists is that unmeasured and measured-clean were
+    being conflated one level up."""
+    import build_mon_native_song as mod
+    from sidm2 import fidelity_common as FC
+    monkeypatch.setattr(FC, "artifact_trace", lambda p, a: None)
+    mod._screen_voices("ignored.sf2", _frames([9, 9, 9]), 0, 200, 2, 3)
+    assert "UNMEASURABLE" in capsys.readouterr().out
+
+
+def test_a_missing_reference_trace_says_UNSCREENED(capsys):
+    """If siddump could not drive the ORIGINAL there is no reference, and
+    silence there would read exactly like a clean part."""
+    import build_mon_native_song as mod
+    mod._screen_voices("ignored.sf2", None, 0, 200, 1, 1)
+    assert "UNSCREENED" in capsys.readouterr().out
+
+
+def test_the_screen_can_be_switched_off(monkeypatch, capsys):
+    """It costs one siddump per part (~1.4 s measured), so a bulk sweep needs
+    an escape hatch -- and the escape hatch must be provably silent."""
+    import build_mon_native_song as mod
+    from sidm2 import fidelity_common as FC
+    monkeypatch.setattr(FC, "artifact_trace", lambda p, a: _frames([9, 1, 9]))
+    monkeypatch.setenv("MON_NO_VOICE_SCREEN", "1")
+    mod._screen_voices("ignored.sf2", _frames([9, 9, 9]), 0, 200, 1, 3)
+    assert capsys.readouterr().out == ""

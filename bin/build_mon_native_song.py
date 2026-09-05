@@ -2518,6 +2518,52 @@ def _write_span(out_path, label, dst=None):
     return True
 
 
+def _screen_voices(out_path, ref_frames, t0, t1, part, nparts):
+    """WARN if a voice the ORIGINAL carries went dead in this part.
+
+    WHY THIS EXISTS AT ALL. fidelity_common grew trace_voice_bundles() and
+    voice_collapse_vs() because bundle_diversity() is COMPLETELY BLIND to a
+    one-voice-dead build -- a control with voice 1 frozen scores 24 bundles,
+    exactly the certified Balloon_part01, since losing one voice removes only
+    rows the other two still produce. Both functions were written, tested and
+    then called by nothing: the measure protected no corpus. This is the wire.
+
+    THE REFERENCE MUST BE SLICED TO THE WINDOW. Part N covers frames [t0, t1)
+    of the song but its artifact renders from frame 0, so comparing the whole
+    original trace against a later part's render lines up two different pieces
+    of music and reports collapses that are only misalignment. Everything after
+    part 1 would false-alarm.
+
+    IT WARNS AND NEVER REFUSES. voice_collapse_vs is a screen for an ABSENT
+    voice, not a fidelity score -- a voice degraded from 194 bundles to 2 is
+    not "collapsed" and will not appear here -- and a screen with that much
+    deliberate blind spot has no business failing a build. Set
+    MON_NO_VOICE_SCREEN=1 to skip it; it costs one siddump per part (~1.4 s
+    measured on Children_Songs part 1).
+    """
+    if os.environ.get("MON_NO_VOICE_SCREEN"):
+        return
+    if ref_frames is None:
+        print("    voice screen: no reference trace -- UNSCREENED")
+        return
+    try:
+        from sidm2.fidelity_common import artifact_trace, voice_collapse_vs
+        ref = ref_frames[t0:t1]
+        secs = max(1, (t1 - t0) // 50 + 2)
+        got = artifact_trace(out_path, [f"-t{secs}"])
+        dead = voice_collapse_vs(ref, got)
+    except Exception as exc:                            # noqa: BLE001
+        print(f"    voice screen unavailable ({type(exc).__name__})")
+        return
+    if dead is None:
+        # UNMEASURABLE is not clean. Say so, or an unparseable artifact reads
+        # exactly like a screened one.
+        print(f"    voice screen: UNMEASURABLE for part {part}/{nparts}")
+    elif dead:
+        print(f"    !! VOICE COLLAPSE part {part}/{nparts}: voice(s) "
+              f"{dead} carry information in the original and none here")
+
+
 def emit_one(m, br, out_path, label):
     """Assemble + wrap one build result (segs, bundles, instrs, ...) into an SF2."""
     (segs, bundles, instrs, wave_programs, instr_flags, filter_programs,
@@ -2755,6 +2801,16 @@ def main():
         print(f"  tracing full song ({secs}s) once...")
         traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']),
                   filter_trace(sid, sub, secs), passband_trace(sid, sub, secs))
+        # The per-voice screen needs the FULL-shape trace: mon_fidelity.per_frame
+        # drops 'adsr', and trace_voice_bundles refuses that shape outright
+        # rather than silently measuring on a weaker key (it raises, and the
+        # first wiring of this screen hit exactly that on every part). One extra
+        # siddump per SONG -- sliced per part, not re-run.
+        try:
+            from sidm2.fidelity_common import siddump_frames_full as _sff
+            vref = _sff(sid, [f'-a{sub}', f'-t{secs}'])
+        except Exception:                               # noqa: BLE001
+            vref = None
 
         if adaptive:
             # Greedily grow each window to the largest span whose PRE-cluster resource
@@ -2808,6 +2864,7 @@ def main():
                                    win=(t0, t1), traces=traces)
             out = os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}_part{part:02d}.sf2")
             emit_one(m, br, out, f"part {part}/{nparts} ({t0 // 50}-{t1 // 50}s)")
+            _screen_voices(out, vref, t0, t1, part, nparts)
         prune_stale_parts(os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}"),
                           nparts)
         return

@@ -900,6 +900,49 @@ gate-off, or prune trailing parts that render silent — changes the part
 splitter, which is shared by nine builder modules, so it needs its own task with
 the corpora in `touches`. Tracked as `dmc-span-should-be-bounded-by-the-trace`.
 
+## `out/dmc/Rockbuster.sf2` has ZERO bundles because NO BUILDER CAN PRODUCE IT (2026-09-05)
+
+It is the worst-looking row on the bundle-collapse list — 3,302 notes decoded and
+**0** distinct non-zero program rows, with all three tables empty
+(`Filter3 (0,0)`, `Filter4 (0,0)`, `Wave2 (0,0)`). Zero is not the unmeasurable
+case: `bundle_diversity` returns `None` for a file it cannot parse, and this file
+returns a real 0.
+
+**It is an orphan, not a build defect, and the arithmetic is one-sided enough to
+say so plainly.** Of the **1,177** `.sf2` files under `out/dmc`, exactly **one**
+lacks a `_partNN` suffix — this one. It is also the only one with no `.prov`
+sidecar. And `bin/build_dmc_native_song.py` has exactly two emit sites, at
+`:365` and `:540`, whose filenames are `f"{base_name}_part{part:02d}.sf2"` and
+`f"{base}_part01.sf2"`. **Neither can emit `{base}.sf2`.** The current builder
+has no code path that produces this filename, so the artifact is not
+reproducible from the tree at all.
+
+**The same song is healthy in the build that replaced it.** Rockbuster's live
+parts measure 53 / 58 / 46 / 50 bundles, each with a populated `Wave2` and
+`Filter4`:
+
+    Rockbuster.sf2          bundles 0    notes 3302   Filter4 (0,0)    Wave2 (0,0)
+    Rockbuster_part01.sf2   bundles 53   notes 4470   Filter4 (161,24) Wave2 (47,29)
+    Rockbuster_part02.sf2   bundles 58   notes 3014   Filter4 (119,20) Wave2 (61,38)
+    Rockbuster_part03.sf2   bundles 46   notes 4450   Filter4 (103,16) Wave2 (51,30)
+    Rockbuster_part04.sf2   bundles 50   notes 3117   Filter4 (53,17)  Wave2 (48,33)
+
+So the timbre data is not missing from the DMC build; it is missing from a
+superseded whole-song artifact that outlived its builder — the same shape as the
+force-merged single-file MoN build retired in `2289987`.
+
+**WHAT TO DO WITH IT, and why this note does not do it.** The remedy is
+retirement — quarantine it the way `Bahbar_v` and `Neverending_Story` were, not
+a rebuild, because there is nothing to rebuild it *with*. That is a write to
+`out/dmc`, which the task that produced this note declared **`r:`**, so the file
+is still on disk. Until it goes, every corpus-wide bundle audit will keep
+reporting one collapsed DMC artifact, and that one row is this file.
+
+**READ THE COUNT, NOT THE ROW.** A bundle audit over `out/dmc` reports `1`
+collapse. That 1 is not a DMC fidelity figure and must not be quoted as one —
+it is an inventory artifact, and it will read as a defect to anyone who does not
+follow it here.
+
 ## Open issues / TODO
 
 - **Per-voice legato onset undercount — SOLVED by the full-song A/B (`DMC_LEGATO_AB`,

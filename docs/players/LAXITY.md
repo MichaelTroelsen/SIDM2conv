@@ -372,3 +372,120 @@ real sequences the octaves are correct.
 - **`F#-10` appears in the decode** (seq 3, 4, 7, 11–13) — a note value above
   `$5F`, so a command byte being read as a note. A real stage-2 gap, unrelated
   to the numbering.
+
+### The editor's orderlist panel cannot confirm a locate — it reads a stub
+
+Two ground-truth captures of Angular's orderlist disagree: the table above
+records the editor showing `01 / 02 / 05`, and a 2026-09-05 SF2II capture of a
+freshly converted Angular showed `0000: 00 01 02` with track labels
+`a000 / a001 / a002`. The second reading is the converter's own SF2-level
+orderlist, and it is **the same on every file**, so a panel showing it
+discriminates nothing.
+
+Measured, no GUI involved — `SF2Parser` over three converted files:
+
+| converted file | SF2 orderlist (what the editor loads) | `laxity_orderlists` (the embedded NP21 payload) |
+|---|---|---|
+| Angular | `A0 00 / A0 01 / A0 02` | `87 **01**` / `93 **02**` / `87 **05**` |
+| Cascade | `A0 00 / A0 01 / A0 02` | `85 **07**` / `85 **09**` / `91 **05**` |
+| Cycles  | `A0 00 / A0 01 / A0 02` | `93 **01**` / `87 **0C**` / `87 **02**` |
+
+The left column is byte-identical across all three (`a0 00 fe ff ff …`) while
+the right is file-specific and reproduces `locate_seq_ptr_table` +
+`read_orderlist_numbers` exactly. The SF2 orderlist is a **stub**: the Laxity
+driver plays from the payload, so the emitted SF2 needs only enough of a
+Driver-11-shaped orderlist for the editor to open the file. Angular's stub is
+one to two positions long against fourteen sequences.
+
+**And the stub can never coincide with a real answer.** Across all 14 files the
+locate accepts, the native first entries are `01 02 05`, `08 02 01`,
+`0E 00 0A`, `01 03 05`, `01 03 06`, `07 09 05`, `01 02 17`, `01 02 03`,
+`01 0C 02`, `05 02 05`, `01 02 03`, `01 05 07`, `07 08 02`, `01 11 09` —
+**zero of 14 are `00 01 02`**. So a panel reading `00 01 02` disagrees with
+every file by construction, including Angular, whose `01 02 05` is proven. A
+disagreement read off that panel is therefore not evidence against a locate,
+and an agreement is impossible.
+
+Consequences for anyone resuming the "11 files are plausible, not verified"
+question:
+
+- **Do not re-run the SF2II panel method for this.** It is refuted with a
+  mechanism, not merely unlucky. The earlier `01 / 02 / 05` capture must have
+  come from a different panel or a different artifact; until someone records
+  *which* panel, the table row above should be read as "the payload's numbers",
+  not "what SF2II displays".
+- **siddump pitch is not the fallback.** Angular's sounded onsets are `B-7`
+  (semitone 95, the top of the table) on all three voices — the instruments'
+  arpeggio and wave-program own the pitch, not the sequencer. Comparing a
+  decoded note stream against siddump onsets scores 0 agreement on all three
+  *confirmed* files, so it fails its own control.
+- What is left is a ground truth that reads the **sequence rows** at a recorded
+  orderlist position, which is what the `07` decode above already did once.
+
+## `Unboxed_Ending_8580` at 98.73%: voice 1 acquires a wave program the original does not (2026-09-05)
+
+It is the sole Laxity file under 100% in the round-trip sweep, and the residual
+is **not** spread thin — it is one voice, three registers, and a periodic
+pattern from a single frame onward.
+
+### Which registers
+
+Of the 22 the validator scores, **three** are below 100, and all three are
+voice 1:
+
+| register | accuracy | original writes | ours | delta |
+|---|---|---|---|---|
+| `Voice1_Control` | 85.33% | 377 | 459 | **+82** |
+| `Voice1_FreqLo` | 95.73% | 751 | 767 | +16 |
+| `Voice1_FreqHi` | 95.73% | 751 | 767 | +16 |
+
+Voices 2 and 3 are **100.00 / 100.00** on both frequency and waveform, and
+`filter_accuracy` is 100.0. We do not write *less* than the original — we write
+**more**, which is the shape of an engine running where none should.
+
+### Which frames
+
+Re-measured directly with siddump over the same 30 s / 1500-frame window:
+voice 1 disagrees on **236 frames (15.73%)**, voices 2 and 3 on **zero**. The
+236 span frames **586 to 1499** — to the end of the window — in **27 contiguous
+runs** at a regular ~12-frame period:
+
+```
+(586,591) (598,603) (610,615) (622,627) (634,639) (646,651) ...
+```
+
+Six frames on, six off, repeating. Nothing before frame 586 disagrees at all.
+
+### What the defect is
+
+On those frames the original holds three waveform values — `$20` (saw, gate
+off), `$21` (saw, gate on), `$09` — while ours emits a spread: `$F8` ×82,
+`$2A`, `$02`, `$2B`, `$2C`, `$1C`. Two tells:
+
+- **`$F8` sets the TEST bit** (plus all four waveform bits). TEST holds the
+  oscillator at zero, so where the original is releasing a sawtooth we silence
+  it. Our gate is also ON for fewer of these frames than the original's (42 vs
+  94).
+- **The frequency ramps with lo == hi.** At frames 588–590 ours reads 2313,
+  2570, 2827 — steps of exactly **+257 = `$0101`** — against the original's
+  9436, 9436, 7940. The comparison JSON records the same shape as `$0909` and
+  `$0A0A`. A value whose low and high bytes are equal and increment together is
+  a **table index landing in `$D400/$D401`**, not a pitch.
+
+Taken together: from frame 586 our voice 1 runs a wave/arp program the original
+does not, and its table index leaks into the frequency pair.
+
+### So it is a defect, not an inaudible residual
+
+This is the branch the task's verify asks to be chosen between, and the
+evidence picks it. The differing frames carry real waveform changes on a real
+voice, including a TEST bit that silences an oscillator the original leaves
+ringing. It is a release-tail and timbre difference rather than a wrong note,
+which is exactly the class a gate-on-only "audible" column cannot see (see
+`docs/players/MATTGRAY.md` for the same blindness stated there). **Do not quote
+the 98.73% as inaudible.**
+
+Not diagnosed here: *why* frame 586 — what the song does there, and which
+table our converter attaches to voice 1 at that point. That is where the next
+attempt starts; the span, the period, the three registers and the lo==hi tell
+are all measured and need no re-deriving.

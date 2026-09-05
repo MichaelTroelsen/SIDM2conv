@@ -291,3 +291,112 @@ class TestJobsFlag(unittest.TestCase):
                       "results are no longer collected in corpus order; a "
                       "completion-ordered merge makes the report nondeterministic")
         self.assertIn("for sid, stem, r in results:", src)
+
+
+# ---------------------------------------------------------------------------
+# SLING'S OPENING $D418 GAP IS BENIGN BY CONSTRUCTION, AND THIS PINS WHY.
+#
+# Measured 2026-09-05 (a re-measurement, not inherited -- this thread's FIRST
+# explanation, "startup latency", was reported as confirmed and then refuted by
+# a sweep, so the number is taken again here):
+#
+#   original   declares a filter MODE at frame 0, first ROUTES a voice at 17
+#   ours       declares at 14 and routes at 14        -- gap 0
+#   routing offset ours-orig = -3, this player's documented render offset,
+#              so the routing itself is correctly aligned
+#
+# The original can declare a passband BEFORE it uses one. Our driver cannot:
+# F_MODE (the $D418 high nibble) is zeroed at INIT and written in exactly one
+# other place, from a filter program row, so mode and routing are COUPLED and
+# our mode can never precede our first filter row.
+#
+# That leaves 14 disagreeing frames (3..16 at the aligned offset) and EVERY ONE
+# has $D417's low nibble 0 on BOTH sides -- neither build feeds a voice to the
+# filter, so nothing can be heard. Inaudible by construction rather than by
+# luck, which is the distinction worth keeping: a fix that made our mode
+# precede routing would change nothing audible and would decouple two things
+# the driver deliberately ties together.
+#
+# `passband_check --player hardtrack --files Sling` agrees independently and
+# PASSES the file: 99.0% agree, "all 13 mismatches on frames the original does
+# not route -- inaudible". 13 vs 14 is the window, not a disagreement: the
+# checker scores part 1's own span while this compares the full 26s trace.
+# ---------------------------------------------------------------------------
+
+_SLING_ORIG = ROOT / "SID" / "Shogoon" / "Sling.sid"
+_SLING_OURS = ROOT / "out" / "hardtrack_native" / "Sling_part01.sid"
+_RENDER_OFFSET = -3          # documented for this player
+
+
+def _filter_state(path, secs=26):
+    from sidm2.fidelity_common import siddump_frames_full
+    frames = siddump_frames_full(str(path), ['-a0', '-t%d' % secs])
+    mode = [((f[1]['volmode'] or 0) >> 4) & 7 for f in frames]
+    route = [(f[1]['filtctl'] or 0) & 0x0F for f in frames]
+    return mode, route
+
+
+class TestSlingOpeningPassbandGap(unittest.TestCase):
+
+    def setUp(self):
+        if not _SLING_ORIG.exists() or not _SLING_OURS.exists():
+            self.skipTest("Sling original or built part01 not present")
+
+    def test_every_disagreeing_frame_routes_nothing_on_BOTH_sides(self):
+        """The inaudibility claim, stated as the thing that makes it true.
+
+        Comparison starts at original frame 3 because the render offset is -3:
+        our frames 0..2 have no aligned counterpart, so those three original
+        frames are not comparable rather than being quietly dropped.
+        """
+        o_mode, o_route = _filter_state(_SLING_ORIG)
+        u_mode, u_route = _filter_state(_SLING_OURS)
+        n = min(len(o_mode), len(u_mode))
+        self.assertGreater(n, 1000, "control: only %d frames traced" % n)
+
+        start = -_RENDER_OFFSET
+        mism = [i for i in range(start, n)
+                if o_mode[i] != u_mode[i + _RENDER_OFFSET]]
+        self.assertTrue(mism, "no mismatch at all -- the premise changed")
+        audible = [i for i in mism if o_route[i] != 0]
+        self.assertEqual(
+            audible, [],
+            "the original ROUTES a voice on %d disagreeing frame(s) %s -- the "
+            "gap is no longer inaudible and needs a real fix"
+            % (len(audible), audible[:8]))
+
+    def test_the_gap_is_the_opening_only_and_bounded(self):
+        """If it ever spreads past the opening it is a different defect."""
+        o_mode, o_route = _filter_state(_SLING_ORIG)
+        u_mode, _ = _filter_state(_SLING_OURS)
+        n = min(len(o_mode), len(u_mode))
+        start = -_RENDER_OFFSET
+        mism = [i for i in range(start, n)
+                if o_mode[i] != u_mode[i + _RENDER_OFFSET]]
+        self.assertLessEqual(len(mism), 20, "gap grew to %d frames" % len(mism))
+        self.assertLess(max(mism), 40,
+                        "a mismatch at frame %d is past the opening" % max(mism))
+
+    def test_our_mode_cannot_precede_our_routing_and_the_originals_can(self):
+        """The MECHANISM, pinned so the 'latency' reading cannot come back.
+
+        This is not a timing lag: our first mode frame EQUALS our first routed
+        frame because F_MODE is written only from a filter program row.
+        """
+        o_mode, o_route = _filter_state(_SLING_ORIG)
+        u_mode, u_route = _filter_state(_SLING_OURS)
+        o_first_mode = next(i for i, m in enumerate(o_mode) if m)
+        o_first_route = next(i for i, r in enumerate(o_route) if r)
+        u_first_mode = next(i for i, m in enumerate(u_mode) if m)
+        u_first_route = next(i for i, r in enumerate(u_route) if r)
+
+        self.assertLess(o_first_mode, o_first_route,
+                        "the original no longer declares before it routes")
+        self.assertEqual(u_first_mode, u_first_route,
+                         "our mode (%d) and routing (%d) are no longer coupled "
+                         "-- if that is deliberate, this test should go"
+                         % (u_first_mode, u_first_route))
+        self.assertEqual(u_first_route - o_first_route, _RENDER_OFFSET,
+                         "routing offset moved from the documented %d"
+                         % _RENDER_OFFSET)
+
