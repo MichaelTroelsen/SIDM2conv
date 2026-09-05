@@ -509,3 +509,109 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# ---------------------------------------------------------------------------
+# set_position / set_volume / toggle_loop DESCRIBE A UI SF2 II DOES NOT HAVE.
+#
+# All three were TODO stubs returning False, and the task to implement them was
+# refuted 2026-09-05 against bin/config.ini -- the editor's OWN key map, 105
+# `Key.*` bindings:
+#
+#   position : no seek binding exists. Only PLAY FROM (@f1 / @f2 / @f2:shift /
+#              @f2:control). SF2 II is a tracker, not a media player.
+#   volume   : ZERO bindings mention volume or gain. The only control is
+#              `Sound.Output.Gain`, read at STARTUP.
+#   loop     : Ctrl+L IS bound -- to SetOrderlistLoopPointAll, which EDITS THE
+#              SONG. Guessing it for "toggle loop playback" would silently
+#              modify the user's music.
+#
+# These tests exist so nobody re-implements the guesses. They deliberately do
+# NOT launch the editor: the config file enumerates every binding, which is
+# stronger evidence for an ABSENT control than a screenshot of one place it
+# is not.
+# ---------------------------------------------------------------------------
+
+_CONFIG_INI = Path(__file__).resolve().parent.parent / "bin" / "config.ini"
+
+
+def _key_bindings():
+    text = _CONFIG_INI.read_text(encoding="utf-8", errors="replace")
+    return [ln for ln in text.splitlines() if ln.startswith("Key.")]
+
+
+@pytest.mark.skipif(not _CONFIG_INI.exists(), reason="bin/config.ini not present")
+def test_no_key_binding_controls_volume_or_gain():
+    """The positive control comes first: if the file has no bindings at all,
+    'none mention volume' is vacuously true and proves nothing."""
+    keys = _key_bindings()
+    assert len(keys) > 50, "only %d Key.* bindings parsed -- check the format" % len(keys)
+    hits = [k for k in keys if "volume" in k.lower() or "gain" in k.lower()]
+    assert not hits, (
+        "SF2 II now binds a volume key %s -- set_volume() may be implementable; "
+        "re-read the comment in sidm2/sf2_editor_automation.py" % hits)
+
+
+@pytest.mark.skipif(not _CONFIG_INI.exists(), reason="bin/config.ini not present")
+def test_ctrl_l_edits_the_song_and_is_NOT_a_loop_playback_toggle():
+    """The trap this whole finding turns on.
+
+    If someone 'implements' toggle_loop with Ctrl+L, they ship a function that
+    permanently rewrites the orderlist loop point of whatever song is open.
+    """
+    keys = _key_bindings()
+    ctrl_l = [k for k in keys if "@l:control" in k.replace(" ", "")]
+    assert ctrl_l, "Ctrl+L is no longer bound -- the trap may be gone, re-check"
+    assert all("LoopPoint" in k for k in ctrl_l), ctrl_l
+    assert not any("Playback" in k or "ToggleLoop" in k for k in ctrl_l), ctrl_l
+
+
+@pytest.mark.skipif(not _CONFIG_INI.exists(), reason="bin/config.ini not present")
+def test_the_only_position_keys_START_PLAYBACK_rather_than_seeking():
+    """WIDENED 2026-09-05: the first version of this test searched for the
+    literal word "seek" and nothing else, so it would have passed while a
+    real positioning binding sat in the file under another name -- and one
+    does. Key.ScreenEdit.GotoMarker contains no "seek" and moves the edit
+    cursor. A test that greps for a WORD cannot answer a question about a
+    CAPABILITY; enumerate the movement bindings instead.
+    """
+    keys = _key_bindings()
+    play = [k for k in keys if "Key.ScreenEdit.Play" in k]
+    assert len(play) >= 4, play
+    seek = [k for k in keys if "seek" in k.lower()]
+    assert not seek, "a seek binding appeared: %s" % seek
+
+    # every binding that navigates ANYWHERE, by name rather than by the one
+    # word the old test happened to pick.
+    goto = sorted(k.split("=")[0].strip() for k in keys if "Goto" in k)
+    assert goto == ["Key.ScreenEdit.GotoMarker"], (
+        "the set of Goto* bindings changed to %s -- if one of them addresses "
+        "a ROW or a POSITION rather than a user-placed MARKER, then "
+        "set_position() became implementable and the comment in "
+        "sf2_editor_automation.py is now wrong." % goto)
+
+
+def test_the_three_stubs_still_refuse_rather_than_guessing():
+    """They must return False, not a plausible-looking success.
+
+    `is_editor_running` is stubbed TRUE, which is the whole point: with it
+    False the methods return early on their own guard and this test passes
+    without ever entering the stub body. That is not hypothetical -- the first
+    version of this test did exactly that, and a mutation flipping set_volume's
+    body to `return True` still passed it. Forcing the guard open is what makes
+    the assertion about the STUB rather than about the guard.
+
+    No desktop is needed even so: all three return before touching pyautogui.
+    """
+    from sidm2.sf2_editor_automation import SF2EditorAutomation
+
+    auto = SF2EditorAutomation.__new__(SF2EditorAutomation)
+    auto.is_editor_running = lambda: True
+    auto.logger = type("L", (), {
+        "log_event": lambda self, *a, **k: None,
+        "log_action": lambda self, *a, **k: None,
+    })()
+    assert SF2EditorAutomation.set_position(auto, 10) is False
+    assert SF2EditorAutomation.set_volume(auto, 50) is False
+    assert SF2EditorAutomation.toggle_loop(auto, True) is False
+

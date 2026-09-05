@@ -127,3 +127,62 @@ def test_emit_parseable_sf2():
     sf2 = emit_driver11_sf2(song, sequences=seqs, orderlists=ols)
     info = SF2DriverInfo()
     assert parse_sf2_blocks(sf2, info) is not None    # valid SF2
+# ---------------------------------------------------------------------------
+# the two open B7 bits -- pinned as a CENSUS, because one of them is a claim
+# about absence and absence is what goes stale silently
+# ---------------------------------------------------------------------------
+
+def _rmz_corpus():
+    """Every SID/Fun_Fun file that decodes to a ROMUZAK sound bank."""
+    import glob
+    out = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "SID", "Fun_Fun", "*.sid"))):
+        try:
+            d, la = R.load_sid(f)
+            r = R.RMZ(d, la)
+        except Exception:                              # noqa: BLE001
+            continue
+        real = [s for s in r.sounds if s != (0xFF,) * 8]
+        if real:
+            out.append((os.path.basename(f), r, real))
+    return out
+
+
+@pytest.mark.skipif(not os.path.isdir(os.path.join(ROOT, "SID", "Fun_Fun")),
+                    reason="SID/Fun_Fun not available")
+def test_B7_bit5_FILTER_is_UNEXERCISED_by_this_corpus():
+    """THE CLAIM THIS PINS IS AN ABSENCE, which is why it needs a test.
+
+    build_instruments' docstring says bit5 is left undecoded because NO file
+    sets it -- 0 of 64 sounds. An absence is exactly the kind of statement that
+    rots without anyone noticing: add one ROMUZAK rip that uses the filter and
+    the docstring becomes wrong silently. If this test fails, the bit is now
+    exercised and the docstring must be rewritten, not the assertion relaxed.
+    """
+    corpus = _rmz_corpus()
+    assert len(corpus) == 2, [c[0] for c in corpus]
+    total = sum(len(real) for _, _, real in corpus)
+    assert total == 64, total
+    set5 = [(name, i) for name, _, real in corpus
+            for i, s in enumerate(real) if s[7] & 0x20]
+    assert set5 == [], (
+        "B7 bit5 (FILTER) is now SET somewhere -- it is no longer unexercised, "
+        "so decode it instead of leaving the docstring's count standing: %s" % set5)
+
+
+@pytest.mark.skipif(not os.path.isdir(os.path.join(ROOT, "SID", "Fun_Fun")),
+                    reason="SID/Fun_Fun not available")
+def test_B7_bit0_DRUM_IS_exercised_and_never_appears_without_bit3():
+    """The other direction, and the reason bit0 must NOT be modelled blind.
+
+    Four sounds set bit0, and every one of them also sets bit3 ($09), so this
+    corpus cannot attribute behaviour to either bit alone. Anyone decoding the
+    drum path has to decode both or state which one the evidence isolates.
+    """
+    corpus = _rmz_corpus()
+    drums = [(name, s[7]) for name, _, real in corpus
+             for s in real if s[7] & 0x01]
+    assert len(drums) == 4, drums
+    assert all(b7 & 0x08 for _, b7 in drums), (
+        "bit0 now appears WITHOUT bit3 -- the two are separable after all: %s"
+        % drums)

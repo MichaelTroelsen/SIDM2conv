@@ -186,9 +186,47 @@ def find_tempo(d):
 
 def build_instruments(rmz):
     """ROMUZAK 8-byte sound -> Driver 11 instrument + wave/pulse tables.
+
     B7 effect byte (like FC mctrl): bit1=ARP (semitones in the next sound row),
     bit4=SEEK (pulse-width ramps from 0 by B0/tick), bit6=waveform->pulse after 2
-    DUR. (bit0 DRUM + bit5 FILTER: TODO — need the drum table / trace-driven filter.)"""
+    DUR.
+
+    THE REMAINING BITS, MEASURED 2026-09-05 over the WHOLE ROMUZAK corpus rather
+    than argued about. SID/Fun_Fun holds 20 .sid files but only TWO decode to a
+    sound bank -- Delirious_9_tune_1 and Road_of_Excess_end -- and they share it
+    byte for byte (sound table $36F6, drum table $2D60, identical contents). So
+    n = 64 non-$FF sounds across 2 files, and every count below is out of that.
+    The distinct B7 values in the entire corpus are {$00, $09, $10, $40, $42}.
+
+      bit5 FILTER -- UNEXERCISED. Set on 0 of 64 sounds. There is nothing in
+        this corpus to decode it against, and modelling it blind would produce
+        exactly the 0==0 confident-100% shape fidelity_common.exercised() exists
+        to catch. Leave it undecoded until a file that sets it turns up; if one
+        does, this count is the thing to re-run first.
+
+      bit0 DRUM -- EXERCISED, and heavily. Set on 4 sounds (indices 2 and 4 in
+        both files, B7=$09 each). Voice 2 selects a drum sound 363 times in
+        Delirious_9 and 560 in Road_of_Excess; voice 1 24 and 14; voice 0 never.
+        So this is the percussion voice of both songs, not a corner case.
+        WHAT IS KNOWN ABOUT THE TABLE: $2D60 holds EIGHT little-endian pointers
+        ($2D7D $2D94 $2DA5 $2DB0 $2D70 $2DBB $2DD2 $2DEF) and the data begins
+        immediately after them at $2D70, in 4-byte rows -- the first two read
+        `81 C0 11 04` and `81 C0 11 02`, differing only in the last byte.
+        CORROBORATED BY A TRACE, not just by the bytes: siddump of
+        Delirious_9_tune_1 (-t30, 1500 frames) shows voice 2 carrying waveform
+        $81/$80 on 295 frames and $11/$10 on 130 -- and $81 and $11 are exactly
+        the two waveforms that first row names. NOT DECODED: what $C0 and the
+        trailing byte mean. The obvious reading (waveform, param) x2 with the
+        last byte a duration is a HYPOTHESIS and is deliberately not implemented
+        -- it needs a py65/zig64 trace of the player's own drum path, and this
+        repo does not ship a model on a plausible-sounding byte reading.
+
+      bit3 -- UNDOCUMENTED, and it is a THIRD open bit rather than part of the
+        two above. It is set on exactly the sounds that set bit0 ($09 = bit0 |
+        bit3) and on no others, so this corpus cannot separate them: any
+        behaviour attributed to bit0 here could belong to bit3. Whoever decodes
+        the drum path must decode both or say which one the evidence isolates.
+    """
     instr_rows, wave_table, pulse_table = [], [], []
     for idx, s in enumerate(rmz.sounds):
         b0, b1, b2, b3, b4, b5, b6, b7 = s

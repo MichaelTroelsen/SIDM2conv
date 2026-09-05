@@ -171,14 +171,23 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
             edit[io + 5 * 32 + i] = wave_dedup[wkey] & 0xFF
             continue
         start = wave_cursor
+        # THE BOUND IS CHECKED BEFORE THE WRITE IT GUARDS. This is TIDINESS, not
+        # a correctness fix, and it must not be read as one: the previous order
+        # (write, advance, then check) could not ship a truncated table either.
+        # `start + len(wp)` is exactly the post-increment `wave_cursor` the old
+        # check tested, so the two are arithmetically equivalent -- pinned by
+        # test_wave_overflow_check_is_equivalent_to_a_pre_write_check -- the
+        # spill landed in an in-memory bytearray, and the raise still precedes
+        # the drivers_src/romuzak/layout.inc write, so nothing was ever emitted.
+        # What changes is only that the guard now reads as a guard.
+        if start + len(wp) > 256:
+            raise ValueError(f"WAVE overflow: {start + len(wp)} rows > 256")
         for r, (c0, c1) in enumerate(wp):
             edit[wo + 0 * 256 + start + r] = c0 & 0xFF
             edit[wo + 1 * 256 + start + r] = program_jump_col(c0, c1, start)
         edit[io + 5 * 32 + i] = start & 0xFF
         wave_dedup[wkey] = start
         wave_cursor += len(wp)
-        if wave_cursor > 256:
-            raise ValueError(f"WAVE overflow: {wave_cursor} rows > 256")
 
     # FM: flat (no per-frame FM in B3). Pulse: PER-INSTRUMENT programs, deduplicated,
     # laid row-major into PULSETAB; IPULSE[k] = program k's start addr; the instrument

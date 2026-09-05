@@ -865,11 +865,30 @@ class SF2EditorAutomation:
             'note': 'Position seeking not yet implemented - requires UI automation'
         })
 
-        # TODO: Implement position seeking via menu or UI automation
-        # This would require:
-        # 1. Click on position slider/field
-        # 2. Enter position value
-        # 3. Confirm
+        # NOT IMPLEMENTABLE AS SPECIFIED -- SF2 II HAS NO POSITION CONTROL.
+        # Measured 2026-09-05 against bin/config.ini, the editor's own key map,
+        # then RE-MEASURED in a second pass that CORRECTED the first.
+        # Of its 105 `Key.*` bindings, exactly ONE moves anywhere by name:
+        #     Key.ScreenEdit.GotoMarker         = @g:control
+        # and it is still not a seek. A marker is a location the USER placed
+        # earlier, so it addresses a BOOKMARK rather than an arbitrary
+        # position, and it moves the EDIT CURSOR rather than the playback
+        # point -- it cannot express "go to position N". The first pass here
+        # wrote "none seeks", which overstated a verdict that is true anyway;
+        # the honest form is "the only positioning binding addresses markers,
+        # not positions". Kept as a correction rather than silently reworded,
+        # because the whole value of this comment is that it ENUMERATES.
+        # What else exists is PLAY FROM a position, not a seek to one:
+        #     Key.ScreenEdit.Play               = @f1
+        #     Key.ScreenEdit.PlayFromMarker     = @f2
+        #     Key.ScreenEdit.PlayFromLast       = @f2:shift
+        #     Key.ScreenEdit.PlayFromCursor     = @f2:control
+        # The old TODO here said "click on position slider/field, enter value,
+        # confirm". There is no slider and no field; SF2 II is a tracker, not a
+        # media player. The nearest real behaviour is: move the edit cursor to
+        # the row, then Ctrl+F2 -- which STARTS PLAYBACK rather than seeking,
+        # so it does not satisfy this method's contract.
+        # Re-scope this as `play_from_row(row)` if that is what a caller wants.
 
         return False
 
@@ -895,11 +914,18 @@ class SF2EditorAutomation:
             'note': 'Volume control not yet implemented - requires UI automation'
         })
 
-        # TODO: Implement volume control via menu or UI automation
-        # This would require:
-        # 1. Open settings/volume menu
-        # 2. Adjust volume slider
-        # 3. Confirm
+        # NOT IMPLEMENTABLE AS SPECIFIED -- SF2 II HAS NO RUNTIME VOLUME UI.
+        # Measured 2026-09-05: zero of the 105 `Key.*` bindings in
+        # bin/config.ini mention volume or gain, and the ONLY volume control in
+        # the whole config is
+        #     Sound.Output.Gain = 1.0   // Boost/lower volume.
+        # which is read at STARTUP. There is no settings menu to open and no
+        # slider to drag, so the old TODO describes a UI that does not exist.
+        # Changing the gain means editing bin/config.ini and RESTARTING the
+        # editor -- a different operation with a different signature (a float
+        # gain, not this method's 0-100 int), and one that persists a setting
+        # rather than adjusting a session. If a caller needs it, add
+        # `set_output_gain(gain: float)` and say in its name that it restarts.
 
         return False
 
@@ -923,10 +949,20 @@ class SF2EditorAutomation:
             'note': 'Loop control not yet implemented - requires UI automation'
         })
 
-        # TODO: Implement loop toggle via menu or keyboard shortcut
-        # Common patterns:
-        # - Menu: View -> Loop Playback
-        # - Keyboard: Ctrl+L or similar
+        # NOT IMPLEMENTABLE AS SPECIFIED -- AND Ctrl+L IS A TRAP.
+        # The old TODO guessed "Menu: View -> Loop Playback" or "Ctrl+L or
+        # similar". Ctrl+L IS bound in bin/config.ini, and it does something
+        # else entirely:
+        #     Key.ScreenEdit.SetOrderlistLoopPointAll = @l:control
+        #     Key.Track.SetOrderlistLoopPoint         = @l:shift:control
+        # Those set the orderlist LOOP POINT -- they EDIT THE SONG, permanently,
+        # in the file being worked on. Sending Ctrl+L to "toggle loop playback"
+        # would silently modify the user's music. That is why this returns False
+        # instead of taking the obvious guess.
+        # The nearest playback-loop concept is
+        #     Playback.StopEmulationIfDriverStops = 1
+        # which is also a startup config setting, not a toggle. SF2 II has no
+        # loop-playback on/off control; there is nothing to automate.
 
         return False
 

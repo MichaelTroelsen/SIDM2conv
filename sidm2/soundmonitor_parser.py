@@ -39,10 +39,45 @@ BAR data: a sequence of (ctrl, data) byte pairs, one pair per step (LENGTH steps
                  offset $28 -> "0C 00 0C 00..." = octave arp. The header record past
                  its 6 fixed bytes is a bank of these 8-byte chord tables.
 
-SOUND (instrument) table: 24-byte records at SOUND_BASE + instr*24: byte0=waveform
-(SID ctrl), byte1=AD, byte2=SR (confirmed vs siddump), remaining base fields TODO;
-bytes 16-23 = an optional extension block copied only if byte16 != 0xFF (role TODO --
-distinct from the row-header arp tables above).
+SOUND (instrument) table: 24-byte records at SOUND_BASE + instr*24.
+
+    byte 0   waveform (SID ctrl)         DECODED and USED
+    byte 1   AD                          DECODED and USED
+    byte 2   SR                          DECODED and USED  (confirmed vs siddump)
+    byte 4   PW base                     DECODED and USED, but only NAMED in the
+                                         builder: bin/build_soundmonitor_native_song.py's
+                                         `pulse_tie` comment says "SM's note-set
+                                         re-inits the PW base (rec[4]) on EVERY
+                                         note incl. legato".
+    byte 8   release waveform            DECODED and USED -- a REST writes it to
+                                         $D404 (the duration-positioned tail byte
+                                         that drives the RELEASE_WF split); see
+                                         `instrument()` in the builder and the
+                                         `rec[8] & 0x01` rest-gate test in
+                                         bin/soundmonitor_to_sf2.py.
+    bytes 3, 5, 6, 7, 9-15               READ BUT NEVER INTERPRETED
+    bytes 16-23  extension block, present only when byte16 != $FF
+                                         READ BUT NEVER INTERPRETED
+
+CENSUS, 2026-09-05, over the 37 Sound Monitor files `is_soundmonitor` accepts and
+their 592 non-empty instrument records: every one of bytes 3-15 varies and is
+non-zero on 35 to 483 records, so these are real data rather than padding, and
+byte16 is $FF on 470 of 592 -- so 122 records (21%) genuinely carry an extension
+block. The bytes are therefore NOT unused by the FORMAT; they are unused by US.
+
+AND DECODING THEM CANNOT MOVE THE PULSE OR FILTER COLUMNS, which is the reason
+this is recorded rather than pursued. bin/build_soundmonitor_native_song.py's own
+header says "Every note's per-frame freq / waveform / pulse / filter is CAPTURED
+from [the trace]", and it sets `hp_engine = 0` with the comment "SM pulse/vibrato
+come from captured programs". The builder does not synthesise pulse or filter
+from the instrument record at all, so a newly-decoded base field has nowhere to
+change those numbers from. Anything read out of bytes 3-15 would have to be
+wired into a modelled engine first -- a different and much larger change.
+
+The unread bytes are not inert in one respect: bin/soundmonitor_to_sf2.py uses the
+WHOLE 24-byte `rec` tuple as a content-dedup key, so they participate in
+instrument IDENTITY without being interpreted. A future decode that normalises
+any of them will merge slots that are currently distinct.
 
 Freq table: note index -> SID 16-bit freq, direct (not interleaved) split
 FREQ_LO=$C416 / FREQ_HI=$C3B7.

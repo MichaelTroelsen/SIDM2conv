@@ -142,3 +142,94 @@ def test_events_all_cluster_files_nonempty():
         lens = {v: len(ev[v]) for v in range(3)}
         assert lens[0] == lens[1] == lens[2] > 0, (name, lens)
         assert any(e[2] == "note" for v in range(3) for e in ev[v]), name
+
+
+# ---------------------------------------------------------------------------
+# WHICH INSTRUMENT BYTES ARE ACTUALLY USED -- the census behind the docstring.
+#
+# Measured 2026-09-05 over the 37 files is_soundmonitor accepts and their 592
+# non-empty records. Bytes 0/1/2 (wf, AD, SR), 4 (PW base) and 8 (release
+# waveform -> $D404) are decoded and used; 3, 5, 6, 7, 9-23 are read into the
+# record and never interpreted. byte16 is $FF on 470 of 592, so 122 records
+# (21%) carry a real extension block.
+#
+# These pin the CENSUS, not a decode: if a future change starts interpreting
+# one of the unread bytes the numbers move and someone has to update the
+# docstring deliberately rather than leaving it stale.
+# ---------------------------------------------------------------------------
+
+import glob as _glob
+
+
+def _sm_files():
+    from sidm2.soundmonitor_parser import is_soundmonitor
+    from sidm2.sid_parser import SIDParser
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = []
+    for p in sorted(_glob.glob(os.path.join(root, "SID", "**", "*.sid"),
+                               recursive=True)):
+        try:
+            sp = SIDParser(p)
+            h = sp.parse_header()
+            d, la = sp.get_c64_data(h)
+        except Exception:
+            continue
+        if is_soundmonitor(d, la, h):
+            out.append((d, la))
+    return out
+
+
+def _records():
+    from sidm2.soundmonitor_parser import SoundMonitorModule, SOUND_BASE
+    recs = []
+    for d, la in _sm_files():
+        m = SoundMonitorModule(d, la)
+        for i in range(16):
+            rec = [m._u8(SOUND_BASE + i * 24 + k) for k in range(24)]
+            if all(b == 0 for b in rec) or all(b == 0xFF for b in rec):
+                continue
+            recs.append(rec)
+    return recs
+
+
+def test_the_unread_base_bytes_carry_real_data_not_padding():
+    """They are unused by US, not by the FORMAT -- the distinction the
+    docstring turns on. Every byte 3..15 must vary across the corpus."""
+    recs = _records()
+    assert len(recs) > 300, "positive control: only %d records found" % len(recs)
+    for k in range(3, 16):
+        vals = {r[k] for r in recs}
+        assert len(vals) > 1, (
+            "byte %d is constant (%s) across %d records -- if it really is "
+            "padding the docstring should say so" % (k, vals, len(recs)))
+
+
+def test_byte16_is_the_extension_sentinel_and_a_fifth_of_records_have_one():
+    """`copied only if byte16 != 0xFF` -- and it is not a dead branch."""
+    recs = _records()
+    assert len(recs) > 300, "positive control: only %d records" % len(recs)
+    with_ext = [r for r in recs if r[16] != 0xFF]
+    frac = len(with_ext) / len(recs)
+    assert 0.05 < frac < 0.60, (
+        "%d of %d records carry an extension block (%.0f%%) -- the docstring "
+        "says about a fifth" % (len(with_ext), len(recs), 100 * frac))
+
+
+def test_the_builder_still_reads_only_bytes_0_1_2_and_8():
+    """The claim 'decoded-but-unused' is about OUR code, so pin OUR code.
+
+    If a builder starts reading another index, this fails and the docstring's
+    used/unused split has to be revisited rather than silently going stale.
+    """
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = os.path.join(root, "bin", "build_soundmonitor_native_song.py")
+    if not os.path.exists(src):
+        pytest.skip("builder absent")
+    with open(src, encoding="utf-8") as fh:
+        text = fh.read()
+    idx = {int(m) for m in re.findall(r"\brec\[(\d+)\]", text)}
+    assert idx, "no rec[N] reads found -- the probe stopped working"
+    assert idx <= {0, 1, 2, 4, 8}, (
+        "the builder now reads instrument byte(s) %s; the parser docstring "
+        "lists 0,1,2,4,8 as the used set" % sorted(idx - {0, 1, 2, 4, 8}))
