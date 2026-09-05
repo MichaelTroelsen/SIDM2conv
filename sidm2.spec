@@ -4,14 +4,30 @@
     pip install pyinstaller
     pyinstaller sidm2.spec          # -> dist/sid-to-sf2/sid-to-sf2.exe
 
-⚠️ THIS SPEC HAS NEVER BEEN BUILT. PyInstaller is not installed on the machine
-that wrote it (checked 2026-09-05: no pyinstaller, no nuitka, no cx_Freeze), so
-every line below is reasoned from the tree rather than confirmed by a build.
-Treat it as a starting point that still needs its first `pyinstaller sidm2.spec`
-before anyone claims SIDM2 ships a binary.
+✅ BUILT AND RUN, 2026-09-05, PyInstaller 6.22.2. `pyinstaller sidm2.spec`
+exits 0 and produces a 3.36 MB `sid-to-sf2.exe` in a 41 MB bundle, which
+converts SID/Angular.sid end to end. Everything below was reasoned from the
+tree before that build and is now confirmed by it -- no bundling change was
+needed to make the build succeed.
 
-⚠️ AND THE CODE IS NOT FROZEN-READY YET, which matters more than the missing
-packager because it fails at RUNTIME rather than at build time:
+⚠️ AND THE FROZEN-MODE DEFECT PREDICTED BELOW IS REAL AND MEASURED. Same binary,
+same arguments, same input, different working directory:
+
+    from a checkout root : driver LAXITY   -> 9,029 bytes, valid
+    from anywhere else   : driver DRIVER11 -> 7,408 bytes, and the log says
+                           'Instruments table (0x80) MISSING - file will be
+                           rejected!' followed by 'SF2 FILE VALIDATION FAILED'
+
+BOTH EXIT 0. The bad run reports success, so an exit-code check passes and the
+user gets a file SID Factory II refuses -- and native Laxity through Driver 11
+is the documented 1-8% path, so this is the bad conversion, not a variant of it.
+WORKAROUND, measured: `--driver laxity` from outside the checkout produces a
+BYTE-IDENTICAL file to the in-checkout run (md5 a46642f7...). Naming the driver
+skips auto-selection, so player-id.exe is never consulted; only auto-selection
+depends on the working directory.
+
+The mechanism is exactly the one described next, and it is NOT a packaging
+fault -- do not try to fix it by bundling differently:
 
   * NOTHING in the codebase consults `sys._MEIPASS` or `sys.frozen` -- zero
     matches across the whole tree. PyInstaller unpacks bundled data into

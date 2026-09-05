@@ -409,10 +409,39 @@ pip install pyinstaller
 pyinstaller sidm2.spec        # -> dist/sid-to-sf2/sid-to-sf2.exe
 ```
 
-⚠️ **It has never been built.** PyInstaller is not installed on the machine that
-wrote the spec (checked 2026-09-05), so the spec is reasoned from the tree
-rather than confirmed by a build. Do not describe SIDM2 as shipping a binary
-until someone has run the command above and converted a file with the result.
+✅ **It builds.** First built 2026-09-05 with PyInstaller 6.22.2: exit 0, a
+3.36 MB `sid-to-sf2.exe` inside a 41 MB bundle directory, and it converts a real
+file end to end.
+
+⚠️ **But you must run it from a SIDM2 checkout root, or it silently produces a
+broken file.** Measured on the same build, converting `SID/Angular.sid` twice
+with the same binary and the same arguments:
+
+| run from | driver chosen | result |
+|---|---|---|
+| a checkout root | `LAXITY` — "Laxity-specific driver for maximum accuracy" | 9,029 bytes, valid |
+| anywhere else | `DRIVER11`, player `Unknown` | 7,408 bytes, **`Instruments table (0x80) MISSING - file will be rejected!`** |
+
+**Both runs exit 0.** The second one prints `SF2 FILE VALIDATION FAILED` among
+its log lines and then reports success, so a script checking the exit code sees
+a clean conversion and gets a file SID Factory II will refuse. Per the accuracy
+matrix, native Laxity through Driver 11 is the 1–8% path — so this is not a
+cosmetic difference, it is the documented bad conversion.
+
+The cause is not the packaging. `sidm2/conversion_pipeline.py` resolves
+`player-id.exe` relative to `os.getcwd()` rather than to the bundle, and nothing
+in the tree consults `sys._MEIPASS`, so outside a checkout the identifier is
+never found and driver auto-selection falls back to its safe default. Until a
+frozen-mode path helper lands (tracked as
+`sidm2-has-no-frozen-mode-tool-resolution`), treat the binary as
+"portable executable, non-portable working directory".
+
+**The workaround is `--driver`, and it fully recovers the result** — measured,
+not assumed. Running the same binary from outside the checkout with
+`--driver laxity` produced a file **byte-identical** to the in-checkout run
+(md5 `a46642f7…`, 9,029 bytes) with no validation errors. Naming the driver
+skips auto-selection, so `player-id.exe` is never needed. Only auto-selection
+depends on the working directory; everything downstream of it does not.
 
 ### The external tools are NOT Python, so they are not "just imported"
 
