@@ -387,6 +387,15 @@ def build_song(shim, base_name, traces, span, emit=True):
         while t1 < span and fits(t0, align(min(t1 + STEP, span))):
             nxt = align(min(t1 + STEP, span))
             t1 = nxt if nxt > t1 else min(t1 + STEP, span)
+        # THE BASE WINDOW WAS NEVER PROBED -- see build_dmc_native_song.py,
+        # where this same hole crashed DMC_Demo_IV_tune_5 laying a part that
+        # fits() had never seen ('WAVE overflow: 288 rows > 256'). This is the
+        # DMC form verbatim, because this builder already has align() and fpt.
+        # A window that already fits is untouched, so the corpus rebuilds
+        # byte-identical.
+        while t1 - t0 > fpt and not fits(t0, t1):
+            shrunk = max(fpt, (t1 - t0) // 2)
+            t1 = max(align(t0 + shrunk), t0 + fpt)
         bounds.append((t0, t1))
         t0 = t1
     parts = []

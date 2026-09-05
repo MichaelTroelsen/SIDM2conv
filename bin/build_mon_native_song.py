@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 import sys
 
@@ -570,6 +571,7 @@ def _hr_rows(rows, hard_restart):
 
 _STAGE = ".staging"                 # suffix of an artifact written but not committed
 _PENDING = []                       # [(staged_path, final_path)] for THIS process
+_PENDING_OWNER = None               # the thread that staged what is in _PENDING
 _UNWOUND = False                    # an unhandled exception reached the interpreter
 _PART_RE = re.compile(r"^part (\d+)/(\d+)\b")
 
@@ -586,6 +588,50 @@ def _stages(label):
     return bool(m) and int(m.group(2)) > 1
 
 
+def _own_pending(op):
+    """One thread owns the staging set; a second thread touching it is REFUSED.
+
+    PUBLISHING IS PROCESS-GLOBAL, and that is a contract rather than an accident.
+    `_PENDING` is a module global and `commit_parts` publishes ALL of it, so two
+    songs staged concurrently in ONE process cross-publish: whichever finishes
+    first commits the other's half-written parts under its own name. That was
+    measured once, on a -j8 DMC sweep where `Spacegame_Music` tried to commit
+    `_abl_part01.sf2.staging`, and it did NOT reproduce -- which is exactly what
+    makes it dangerous rather than merely broken.
+
+    IT IS NOT REACHABLE FROM TRACKED CODE TODAY, checked rather than assumed:
+    every `bin/build_*_native_song.py` is a one-song CLI reading `sys.argv[1]`,
+    and every sweep parallelises with `subprocess.run`, so each build owns its
+    own interpreter and its own `_PENDING`. But NINE builders import this module,
+    and the defect is one `ThreadPoolExecutor.submit(BM....)` away. Until this
+    guard the only thing standing in the way was a COMMENT in one consumer
+    (`pyscript/hardtrack_native_rebuild.py`, "the builder's module-global staging
+    list `_PENDING` is per-process") -- a lesson written down rather than
+    enforced, which is the class of failure this repo keeps paying for.
+
+    WHAT IS ALLOWED: a whole build living inside ONE non-main thread. The rule is
+    one OWNER per staging set, not "main thread only" -- anchoring on the main
+    thread would refuse a legitimate single-worker caller while catching nothing
+    extra. What is refused is a second thread touching a set it did not stage,
+    loudly and at the moment it happens, instead of silently mispublishing
+    minutes later into a corpus nobody re-checks.
+    """
+    global _PENDING_OWNER
+    cur = threading.current_thread()
+    if not _PENDING:
+        # Nothing staged: `stage` takes ownership, anything else is a no-op.
+        _PENDING_OWNER = cur if op == "stage" else None
+        return
+    if _PENDING_OWNER is not None and _PENDING_OWNER is not cur:
+        raise RuntimeError(
+            "build_mon_native_song: refusing to %s a staging set owned by "
+            "another thread (%r staged %d entr%s; %r called). Publishing is "
+            "PROCESS-GLOBAL -- run one build per process (subprocess), never "
+            "two in threads."
+            % (op, _PENDING_OWNER.name, len(_PENDING),
+               "y" if len(_PENDING) == 1 else "ies", cur.name))
+
+
 def commit_parts():
     """Publish every staged artifact at once. Returns how many pairs moved.
 
@@ -593,20 +639,24 @@ def commit_parts():
     directory, so no artifact is ever half-written; what this adds on top is that
     the SET appears together or not at all.
     """
-    global _PENDING
+    global _PENDING, _PENDING_OWNER
+    _own_pending("commit")
     for tmp, final in _PENDING:
         os.replace(tmp, final)
     n = len(_PENDING)
     _PENDING = []
+    _PENDING_OWNER = None
     return n
 
 
 def _discard_pending():
-    global _PENDING
+    global _PENDING, _PENDING_OWNER
+    _own_pending("discard")
     for tmp, _ in _PENDING:
         with contextlib.suppress(OSError):
             os.remove(tmp)
     _PENDING = []
+    _PENDING_OWNER = None
 
 
 def _emit_excepthook(*exc):
@@ -661,8 +711,17 @@ def _finish_pending():
     `test_atexit_commits_on_a_clean_exit_and_discards_on_a_refusal[sys.exit(1)-False]`
     in `pyscript/test_native_build_atomicity.py`.
     """
+    global _PENDING_OWNER
     if not _PENDING:
         return
+    # OWNERSHIP IS OVER BY NOW, so drop it rather than let the guard refuse.
+    # atexit runs on the main thread AFTER the interpreter has joined every
+    # non-daemon thread, so whoever staged this set has finished and no second
+    # writer can exist. Leaving the owner set would make `_own_pending` raise
+    # here for a set staged by a worker -- publishing nothing, discarding
+    # nothing, and stranding .staging files on disk, which is strictly worse
+    # than the behaviour this guard was added to protect.
+    _PENDING_OWNER = None
     if _UNWOUND:
         # count the ARTIFACTS, not the entries: a part whose label carried no
         # span queues one entry, not two, so `len // 2` under-reports it
@@ -2646,6 +2705,7 @@ def emit_one(m, br, out_path, label):
     wrote_span = _write_span(out_path, label, dst=dst if staged else None)
     wrote_prov = _write_prov(out_path, dst=dst if staged else None)
     if staged:
+        _own_pending("stage")
         _PENDING.append((dst, out_path))
         if wrote_span:
             _PENDING.append((dst + ".span", out_path + ".span"))
@@ -2718,6 +2778,22 @@ def main():
                 t1 = min(t0 + STEP, span)
                 while t1 < span and fits(t0, min(t1 + STEP, span)):
                     t1 = min(t1 + STEP, span)
+                # THE BASE WINDOW WAS NEVER PROBED. `fits` above is consulted only to
+                # decide whether to GROW past the first STEP, so a part that never
+                # grows is emitted unchecked. That is the DMC crash cause, fixed there
+                # in 2bdbb71: DMC_Demo_IV_tune_5 packed 92 parts and died laying part 5
+                # with 'WAVE overflow: 288 rows > 256' on a window fits() had never
+                # seen. The probe and the real layout AGREE when both run, so the
+                # SPLIT is the fault, not the counter -- shrink until it lays out.
+                #
+                # A window that already fits is left EXACTLY as it was, which is why
+                # no song that builds today can change shape and the corpora rebuild
+                # byte-identical. The floor is one row: below that there is nothing
+                # left to split, and a window that still will not fit at one row is
+                # emitted as before rather than looping forever.
+                _floor = max(1, int(getattr(m, "frames_per_tick", 1) or 1))
+                while t1 - t0 > _floor and not fits(t0, t1):
+                    t1 = max(t0 + _floor, t0 + (t1 - t0) // 2)
                 bounds.append((t0, t1))
                 t0 = t1
             was30 = (span + 1499) // 1500

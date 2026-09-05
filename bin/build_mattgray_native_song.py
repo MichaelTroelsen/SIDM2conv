@@ -315,6 +315,22 @@ def build_song(shim, base_name, traces, span, emit=True):
         t1 = min(t0 + STEP, span)
         while t1 < span and fits(t0, min(t1 + STEP, span)):
             t1 = min(t1 + STEP, span)
+        # THE BASE WINDOW WAS NEVER PROBED. `fits` above is consulted only to
+        # decide whether to GROW past the first STEP, so a part that never
+        # grows is emitted unchecked. That is the DMC crash cause, fixed there
+        # in 2bdbb71: DMC_Demo_IV_tune_5 packed 92 parts and died laying part 5
+        # with 'WAVE overflow: 288 rows > 256' on a window fits() had never
+        # seen. The probe and the real layout AGREE when both run, so the
+        # SPLIT is the fault, not the counter -- shrink until it lays out.
+        #
+        # A window that already fits is left EXACTLY as it was, which is why
+        # no song that builds today can change shape and the corpora rebuild
+        # byte-identical. The floor is one row: below that there is nothing
+        # left to split, and a window that still will not fit at one row is
+        # emitted as before rather than looping forever.
+        _floor = max(1, int(getattr(shim, "frames_per_tick", 1) or 1))
+        while t1 - t0 > _floor and not fits(t0, t1):
+            t1 = max(t0 + _floor, t0 + (t1 - t0) // 2)
         bounds.append((t0, t1))
         t0 = t1
     print(f"  packed into {len(bounds)} adaptive part(s)")

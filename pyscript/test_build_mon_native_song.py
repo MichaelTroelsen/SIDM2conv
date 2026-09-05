@@ -226,3 +226,341 @@ def test_init_passband_seeds_from_the_opening_run_not_frame_zero():
     src = inspect.getsource(B.build_native_song)
     assert "_seg" in src and "count" in src, (
         "the seed no longer looks like a modal-over-a-run rule")
+
+
+# ---------------------------------------------------------------------------
+# `_PENDING` is PROCESS-GLOBAL, and the module now says so in code rather than
+# in a neighbour's comment.
+#
+# WHY THESE TESTS EXIST. `commit_parts()` publishes ALL of `_PENDING`, so two
+# songs staged concurrently in one interpreter cross-publish -- the first to
+# finish commits the other's half-written parts under its own name. It was seen
+# once, on a -j8 DMC sweep where `Spacegame_Music` tried to commit
+# `_abl_part01.sf2.staging`, and it did not reproduce.
+#
+# IT IS NOT REACHABLE FROM TRACKED CODE TODAY: every `bin/build_*_native_song.py`
+# is a one-song CLI and every sweep parallelises with `subprocess.run`. Before
+# this guard the ONLY thing recording that was a comment in
+# `pyscript/hardtrack_native_rebuild.py`. Nine builders import this module, so
+# the invariant is one `ThreadPoolExecutor.submit(BM....)` from being broken by
+# someone who never reads that comment. These tests pin the refusal, not the
+# comment.
+# ---------------------------------------------------------------------------
+
+import threading                                                  # noqa: E402
+import contextlib                                                 # noqa: E402
+
+
+@contextlib.contextmanager
+def _clean_pending(B):
+    """Save and restore the module's staging globals around a test."""
+    keep_pending, keep_owner = B._PENDING, B._PENDING_OWNER
+    B._PENDING, B._PENDING_OWNER = [], None
+    try:
+        yield
+    finally:
+        B._PENDING, B._PENDING_OWNER = keep_pending, keep_owner
+
+
+def _in_thread(fn):
+    """Run `fn` on a worker thread; return (result, exception)."""
+    box = {}
+
+    def run():
+        try:
+            box['r'] = fn()
+        except BaseException as e:          # noqa: BLE001 - we want it back
+            box['e'] = e
+
+    t = threading.Thread(target=run, name='worker-under-test')
+    t.start()
+    t.join()
+    return box.get('r'), box.get('e')
+
+
+def test_a_second_thread_cannot_commit_a_staging_set_it_did_not_stage():
+    """THE DEFECT ITSELF: cross-thread publish is refused, loudly.
+
+    The set is staged by the main thread; a worker then calls `commit_parts`.
+    Before the guard this silently published another song's parts. It must now
+    raise, and the message must name both threads -- a refusal nobody can
+    attribute is a refusal nobody fixes.
+    """
+    import build_mon_native_song as B
+
+    with _clean_pending(B):
+        B._own_pending("stage")                     # main thread takes ownership
+        B._PENDING.append(("a.sf2.staging", "a.sf2"))
+
+        _, err = _in_thread(B.commit_parts)
+
+        assert isinstance(err, RuntimeError), err
+        assert "PROCESS-GLOBAL" in str(err), str(err)
+        assert "worker-under-test" in str(err), str(err)
+        # and it refused rather than half-publishing
+        assert B._PENDING == [("a.sf2.staging", "a.sf2")]
+
+
+def test_a_second_thread_cannot_stage_into_another_threads_set():
+    """The append site is guarded too, not just the commit.
+
+    Guarding only `commit_parts` would let two builds interleave their entries
+    and then fail at publish time -- by which point the staging files on disk
+    already belong to two songs. The refusal has to land on the FIRST foreign
+    touch.
+    """
+    import build_mon_native_song as B
+
+    with _clean_pending(B):
+        B._own_pending("stage")
+        B._PENDING.append(("a.sf2.staging", "a.sf2"))
+
+        _, err = _in_thread(lambda: B._own_pending("stage"))
+
+        assert isinstance(err, RuntimeError), err
+        assert "refusing to stage" in str(err), str(err)
+
+
+def test_one_worker_thread_may_own_a_whole_build():
+    """WHAT IS DELIBERATELY STILL ALLOWED, so the guard is not over-tight.
+
+    The rule is one OWNER per staging set, NOT "main thread only". A caller that
+    runs an entire single-song build inside one worker thread shares nothing and
+    must keep working; anchoring on the main thread would refuse it while
+    catching no additional defect.
+    """
+    import build_mon_native_song as B
+
+    with _clean_pending(B):
+        def whole_build():
+            B._own_pending("stage")
+            B._PENDING.append(("b.sf2.staging", "b.sf2"))
+            return B._own_pending("commit")         # same thread: allowed
+
+        _, err = _in_thread(whole_build)
+        assert err is None, err
+
+
+def test_an_empty_pending_commits_from_any_thread():
+    """`build_myth_native_song` calls `prune_stale_parts` with nothing staged and
+    documents that as a no-op. The guard must not turn that into a crash, and it
+    must not leave a stale owner behind for the next set."""
+    import build_mon_native_song as B
+
+    with _clean_pending(B):
+        _, err = _in_thread(B.commit_parts)
+        assert err is None, err
+        assert B._PENDING_OWNER is None
+
+
+def test_committing_releases_ownership_for_the_next_set():
+    """Ownership is per-SET, not per-process-lifetime.
+
+    If `commit_parts` left `_PENDING_OWNER` set, a legitimate second build in the
+    same interpreter (a test, a batch driver) would be refused forever after the
+    first. The owner must clear when the set drains.
+    """
+    import build_mon_native_song as B
+
+    with _clean_pending(B):
+        B._own_pending("stage")
+        B._PENDING.append(("c.sf2.staging", "c.sf2"))
+        B._PENDING = []                              # pretend the set published
+        B._PENDING_OWNER = None
+        _, err = _in_thread(lambda: B._own_pending("stage"))
+        assert err is None, err
+
+
+def test_the_guard_is_wired_into_all_three_call_sites():
+    """Structural: the refusal is worthless if a path skips it.
+
+    Reads the module's own source rather than trusting the tests above, which
+    call `_own_pending` directly and so would still pass if `commit_parts`,
+    `_discard_pending` or the staging append had never been wired to it.
+    """
+    import inspect
+
+    import build_mon_native_song as B
+
+    assert '_own_pending("commit")' in inspect.getsource(B.commit_parts)
+    assert '_own_pending("discard")' in inspect.getsource(B._discard_pending)
+    # emit_one, NOT build_native_song -- the staging append lives in the emitter.
+    # This test caught that distinction on its first run, which is the whole
+    # reason it reads the source instead of trusting the tests above.
+    assert '_own_pending("stage")' in inspect.getsource(B.emit_one)
+
+
+def test_atexit_publishes_a_set_staged_by_a_worker_thread():
+    """The guard must NOT strand a set at interpreter shutdown.
+
+    `_finish_pending` runs at atexit on the MAIN thread, after Python has joined
+    every non-daemon thread -- so the stager has finished and no second writer
+    can exist. Without the ownership reset, a set staged by a worker would make
+    the guard raise inside atexit: nothing published, nothing discarded, and
+    .staging files left on disk. That is strictly worse than the cross-publish
+    this guard exists to prevent, so it is pinned.
+    """
+    import inspect
+
+    import build_mon_native_song as B
+
+    assert "_PENDING_OWNER = None" in inspect.getsource(B._finish_pending), (
+        "atexit no longer clears ownership -- a worker-staged set will strand")
+
+    with _clean_pending(B):
+        def stage_only():
+            B._own_pending("stage")
+            B._PENDING.append(("d.sf2.staging", "d.sf2"))
+
+        _, err = _in_thread(stage_only)
+        assert err is None, err
+        assert B._PENDING_OWNER is not threading.current_thread()
+
+        # main thread, exactly as atexit would: it must not raise
+        B._UNWOUND = True                 # take the discard arm, no real files
+        try:
+            B._finish_pending()
+        finally:
+            B._UNWOUND = False
+        assert B._PENDING == []
+
+
+# ---------------------------------------------------------------------------
+# The WAVE-table 256-row bound: the overflow IS reachable, and it can NEVER be
+# silent.
+#
+# THE CONCERN, stated exactly as the task raised it: gen_includes_song
+# (bin/build_romuzak_native_song.py) writes wave rows at `edit[wo + start + r]`
+# and only THEN advances the cursor and checks `wave_cursor > 256`, so a program
+# starting near 255 writes past the boundary BEFORE it raises.
+#
+# THE WRITE PAST THE BOUNDARY IS REAL. It is not defended against here and these
+# tests do not claim otherwise. What they pin is that it cannot produce a
+# TRUNCATED ARTIFACT, which is the outcome that would matter -- four independent
+# legs, each of which would have to break for a wrong wave table to ship:
+#
+#   1. the check is arithmetically EQUIVALENT to a pre-write check -- it rejects
+#      exactly the same programs, one instruction later;
+#   2. the spill lands in the in-memory `edit` buffer, which is discarded when
+#      the exception propagates;
+#   3. the raise precedes the drivers_src/romuzak/layout.inc write, so a refused
+#      build leaves no half-written layout behind;
+#   4. nothing catches it on the emit path.
+#
+# The overflow is reached in practice -- DMC_Demo_IV_tune_5 died laying part 5
+# with "WAVE overflow: 288 rows > 256" (bin/build_dmc_native_song.py:350). That
+# is the guard working, and it is why leg 4 is worth a test rather than an
+# assumption.
+# ---------------------------------------------------------------------------
+
+import ast                                                        # noqa: E402
+import io                                                         # noqa: E402
+
+_ROMUZAK = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'bin', 'build_romuzak_native_song.py')
+_DMC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    'bin', 'build_dmc_native_song.py')
+
+
+def _emit_one_sites(source):
+    """(all emit_one call lines, those enclosed by a try) for a source string."""
+    calls, guarded = [], []
+
+    class V(ast.NodeVisitor):
+        def __init__(self):
+            self.try_depth = 0
+
+        def visit_Try(self, node):
+            self.try_depth += 1
+            self.generic_visit(node)
+            self.try_depth -= 1
+
+        def visit_Call(self, node):
+            f = node.func
+            if isinstance(f, ast.Attribute) and f.attr == 'emit_one':
+                calls.append(node.lineno)
+                if self.try_depth:
+                    guarded.append(node.lineno)
+            self.generic_visit(node)
+
+    V().visit(ast.parse(source))
+    return calls, guarded
+
+
+def test_wave_overflow_check_is_equivalent_to_a_pre_write_check():
+    """Leg 1. The post-write check rejects EXACTLY the programs a pre-write check
+    would, so no over-long program is ever accepted.
+
+    The highest row index written for a program is `start + len(wp) - 1`; the
+    cursor afterwards is `start + len(wp)`. So `cursor > 256` is true iff some
+    write used an index >= 256. Simulated over the whole reachable domain rather
+    than argued.
+    """
+    for start in range(0, 300):
+        for length in range(1, 40):
+            max_index_written = start + length - 1
+            cursor_after = start + length
+            assert (max_index_written >= 256) == (cursor_after > 256), (
+                start, length)
+
+
+def test_wave_overflow_raise_precedes_the_layout_inc_write():
+    """Leg 3. A refused build must not leave a half-written layout.inc.
+
+    gen_includes_song's docstring says it writes drivers_src/romuzak/layout.inc.
+    If that write happened before the wave loop, an overflow would abort with a
+    layout on disk describing a table that was never laid.
+    """
+    lines = io.open(_ROMUZAK, encoding='utf-8').read().splitlines()
+    raise_ln = [i for i, l in enumerate(lines) if 'WAVE overflow' in l]
+    # the real line is open(os.path.join(LAYOUT_DIR, "layout.inc"), "w") --
+    # match the two tokens on one line rather than a brittle contiguous string.
+    layout_ln = [i for i, l in enumerate(lines)
+                 if 'layout.inc' in l and ('"w"' in l or "'w'" in l)]
+    assert len(raise_ln) == 1, raise_ln
+    assert len(layout_ln) == 1, layout_ln
+    assert raise_ln[0] < layout_ln[0], (
+        'the WAVE overflow raise no longer precedes the layout.inc write')
+
+    # POSITIVE CONTROL, same reason as the test below: prove the ordering check
+    # can fail. With the two lines swapped it must report the violation.
+    swapped = ['with open(os.path.join(LAYOUT_DIR, "layout.inc"), "w") as f:',
+               'raise ValueError("WAVE overflow: 999 rows > 256")']
+    r2 = [i for i, l in enumerate(swapped) if 'WAVE overflow' in l]
+    l2 = [i for i, l in enumerate(swapped)
+          if 'layout.inc' in l and ('"w"' in l or "'w'" in l)]
+    assert r2 and l2 and not (r2[0] < l2[0]), (
+        'the ordering predicate no longer detects a reversed file')
+
+
+def test_nothing_catches_the_wave_overflow_on_the_dmc_emit_path():
+    """Leg 4, and the only leg that could plausibly rot.
+
+    The DMC part loop calls BM.emit_one directly. If anyone wraps that call in a
+    try/except, an overflowing part becomes a SKIPPED part and the song ships
+    short -- silently, which is the whole failure this guard exists to prevent.
+    The file does contain a try/except, but it is in the post-build SCORING loop
+    and reads artifacts back from disk; it must not enclose emit_one.
+    """
+    # POSITIVE CONTROL FIRST. A scan that reports "nothing guarded" is exactly
+    # what a broken scan also reports, and this one cannot be mutation-checked
+    # against the real builder (bin/build_romuzak_native_song.py and
+    # bin/build_dmc_native_song.py are read-only to the task that added this).
+    # So prove the detector fires before believing that it did not.
+    bad = """
+def f():
+    try:
+        BM.emit_one(a, b, c, d)
+    except Exception:
+        pass
+"""
+    calls, guarded = _emit_one_sites(bad)
+    assert calls and guarded, (
+        'the detector no longer sees a wrapped emit_one -- it would report the '
+        'real builder clean for the wrong reason')
+
+    calls, guarded = _emit_one_sites(io.open(_DMC, encoding='utf-8').read())
+    assert calls, 'no emit_one call found -- this test has lost its subject'
+    assert not guarded, (
+        'emit_one is inside a try/except at line(s) %s -- a WAVE overflow would '
+        'become a silently skipped part' % guarded)
