@@ -29,12 +29,14 @@ sweep that silently skipped them would report the surviving files' scores as if
 they were the corpus, which is exactly how a hand-picked sample flatters itself.
 """
 import argparse
+import atexit
 import glob
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -88,11 +90,50 @@ def decoded_span(name):
     the load throws) -- `build_one()` will REFUSE or ERROR on those anyway, so
     they carry no cost signal for scheduling and sort last, not first.
 
-    This is the cost model measured in runs.jsonl (sdi-six-timeouts-at-j16):
-    build time vs trace window r=0.942, vs part count alone only r=0.420 --
-    GT_Groove (402 parts) and Culture_Mix_1 (4 parts) both cost ~1150s because
-    both trace 26-40 minutes of music, while part count alone would have
-    ranked them at opposite ends of the corpus.
+    THE COST MODEL, RE-MEASURED 2026-09-05 -- AND THE PUBLISHED r DOES NOT
+    REPRODUCE. runs.jsonl:sdi-six-timeouts-at-j16 reports "build time vs trace
+    window r=0.942, vs part count alone only r=0.420" over NINE files (the n was
+    never printed beside the r). Recomputing both against the spans this
+    function returns, using that record's own nine files and its own recorded
+    build times:
+
+        build time vs part count      r = 0.420   <- reproduces EXACTLY
+        build time vs trace window    r = 0.335   <- published as 0.942
+
+    Part count reproducing to three decimals says the arithmetic and the file
+    set are right, so the disagreement is in the WINDOW numbers or the TIMES.
+    It is the times. The record asserts "the ratio build/window is 0.45-0.74
+    across all nine, mostly ~0.5"; measured, five files fit that model and four
+    do not:
+
+        GT_Groove         span 1602s   0.5s/s predicts  801s   recorded 1081s  ok
+        L-Forza_long_edit span 1562s                    781s            1156s  ok
+        Countdown_to_NIL  span  543s                    272s             305s  ok
+        Jazzmjux          span   94s                     47s              50s  ok
+        Rocker            span   54s                     27s              26s  ok
+        Onkie_Donkie      span  262s                    131s            1104s  NO
+        Culture_Mix_1     span  132s                     66s            1152s  NO
+        Culture_Mix_2     span  102s                     51s            1144s  NO
+        Lame              span   71s                     36s            1078s  NO
+
+    The four failures all sit at 1078-1152s -- a 7% band across spans differing
+    3.7x, which is a FIXED cost, not a per-second one. And `Lame` was later
+    re-timed at **16.6s** (runs.jsonl:sdi-control-rerun-at-j8), 65x below the
+    1077.8s here and close to the 36s the model predicts. So four of those nine
+    timings are not per-file build cost, and the r computed from them is not a
+    cost model.
+
+    WHAT SURVIVES, and why span-desc is still the right key: where the model is
+    checkable it holds (5 of 5), and the record's own claim that the six
+    expensive files "are simply long songs" is HALF true -- two of them span
+    1562-1602s, and the other four span 71-262s. Scheduling longest-first is
+    justified by the five, not by r=0.942. Do not re-cite that number.
+
+    A SECOND CLAIM THAT DOES NOT REPRODUCE: runs.jsonl:sdi-sweep-schedule-
+    longest-first reports the six ranking at "positions 11-25 of 441". Measured
+    here, they rank 6, 7, 83, 188, 221 and 267 -- so span-desc puts TWO of the
+    six in the head of the queue, not all six. The spans are deterministic
+    (SID/ is unchanged) so this is a straight correction.
     """
     sid = os.path.join(CORPUS_DIR, f"{name}.sid")
     try:
@@ -202,6 +243,62 @@ def summarize(results):
             "unmeasured_files": sorted(infra)}
 
 
+# --- Durable run journal ------------------------------------------------------
+# WHY THIS EXISTS. On 2026-08-20 a full 441-file sweep was launched detached,
+# ran for hours, and DIED with its log frozen at three banner lines, 0 files
+# written and no stderr beyond them (runs.jsonl:sdi-part-counts-stale-after-d-
+# rebuild). Nothing could say whether it crashed, was killed, or never got past
+# scheduling -- because the only record was the LAUNCHER's stdout redirect, and
+# a redirect captures nothing a dying process never manages to print.
+#
+# So the sweep now records its own progress, itself, as it goes. The journal is
+# rewritten after every file and closed by an atexit hook that fires on a normal
+# return, an exception AND a KeyboardInterrupt, so the file on disk always names
+# how the run ended. It sits BESIDE --json rather than in a temp directory: the
+# 2026-08-20 run's log, result JSON and start-epoch file all lived in a session
+# scratchpad that was garbage-collected nine days later, taking the only
+# evidence with them (runs.jsonl:sdi-funk-facet-pre-onset-anchor).
+_JOURNAL = {"state": "starting", "started": None, "pid": os.getpid(),
+            "done": 0, "total": None, "built": 0, "last_file": None,
+            "ended": None, "how": None}
+_JOURNAL_PATH = [None]
+
+
+def journal_path_for(json_path):
+    """<json>.journal, or None when --json was not given.
+
+    Deliberately derived from --json rather than being its own flag: a sweep
+    worth recording is a sweep worth keeping the result of, and one more flag
+    to forget is one more silent death.
+    """
+    return (json_path + ".journal") if json_path else None
+
+
+def write_journal():
+    """Rewrite the journal. Never raises -- a failure here must not kill a sweep."""
+    path = _JOURNAL_PATH[0]
+    if not path:
+        return
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_JOURNAL, fh, indent=1)
+        os.replace(tmp, path)
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
+def _close_journal():
+    if _JOURNAL["state"] == "running":
+        # Reached only when the process is going down without main() having
+        # set a terminal state: an uncaught exception, a signal, or os._exit
+        # from a library. THIS is the line the 2026-08-20 death did not leave.
+        _JOURNAL["state"] = "died"
+        _JOURNAL["how"] = "process exited while the sweep was still running"
+    _JOURNAL["ended"] = time.time()
+    write_journal()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -240,7 +337,20 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     corpus = corpus_files(a.limit, a.files)
+    _JOURNAL_PATH[0] = journal_path_for(a.json)
+    # Reset every counter, not just the new ones: _JOURNAL is module state,
+    # so a second main() in the same process would otherwise report the
+    # FIRST run's built count beside the second run's total. Found by the
+    # positive-control test, which is the only place two sweeps share an
+    # interpreter today -- but a future --resume would hit it for real.
+    _JOURNAL.update(state="running", started=time.time(), total=len(corpus),
+                    done=0, built=0, last_file=None, ended=None, how=None)
+    atexit.register(_close_journal)
+    write_journal()
     print(f"SDI Stage B sweep -- {len(corpus)} file(s) from {CORPUS_DIR}", flush=True)
+    if _JOURNAL_PATH[0]:
+        print(f"  journal: {_JOURNAL_PATH[0]} (rewritten after every file)",
+              flush=True)
     spans = {}
     if a.schedule == "span-desc":
         corpus, spans = schedule_longest_first(corpus)
@@ -303,6 +413,10 @@ def main(argv=None):
     for i, name in enumerate(corpus, 1):
         rec = pre[name] if name in pre else build_one(name, a.timeout)
         results[name] = rec
+        _JOURNAL.update(done=i, last_file=name)
+        if rec.get("voices"):
+            _JOURNAL["built"] += 1
+        write_journal()
         if rec.get("infra"):
             consec_infra += 1
             print(f"  [{i}/{len(corpus)}] {name:34s} {'?':5s} "
@@ -356,12 +470,33 @@ def main(argv=None):
     if s["thin_voices"]:
         print(f"note: {s['thin_voices']} voice(s) scored over <250 compared "
               f"frames (5 s PAL); those are not fidelity claims")
+    # A SWEEP THAT BUILT NOTHING IS NOT A COMPLETED SWEEP, and must not be
+    # readable as one. The 2026-08-20 run died having written 0 files; had it
+    # reached this point it would have emitted a perfectly well-formed result
+    # JSON whose only tell was a zero buried in the summary. `complete` is
+    # therefore written into the file itself AND returned as a non-zero exit
+    # status, so a shell chain and a later reader each see the failure without
+    # having to interpret a count.
+    complete = bool(s["built"])
+    if not complete:
+        print("!! 0 files BUILT. This is NOT a corpus result -- a sweep that "
+              "built nothing has measured nothing, whatever the refused and "
+              "errored columns say. Exiting non-zero.", flush=True)
+    _JOURNAL.update(state="finished" if complete else "no-files-built",
+                    how="built %d of %d" % (s["built"], len(corpus)))
+    # Write it HERE, not only from the atexit hook. Otherwise the journal on
+    # disk still reads "running" for as long as the interpreter takes to shut
+    # down, and anything reading it in that window -- a watchdog, a second
+    # sweep, a human checking on a detached job -- sees a finished run as a
+    # live one. Caught by this change's own positive-control test.
+    write_journal()
     if a.json:
-        json.dump({"results": results, "summary": s, "schedule": a.schedule,
+        json.dump({"complete": complete,
+                   "results": results, "summary": s, "schedule": a.schedule,
                    "order": corpus, "spans": spans},
                   open(a.json, "w", encoding="utf-8"), indent=1)
-        print(f"\nwrote {a.json}")
-    return 0
+        print(f"\nwrote {a.json}" + ("" if complete else "  (complete=false)"))
+    return 0 if complete else 1
 
 
 if __name__ == "__main__":

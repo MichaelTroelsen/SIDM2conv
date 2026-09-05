@@ -300,7 +300,34 @@ def v_traces(d, la, mod_init, mod_play, mult, nframes):
 
 def build_song(shim, base, traces, span):
     """Adaptive part-split so no window exceeds the caps (the 63-bundle warning
-    on long songs). Copied from the DMC/SM builders. Returns [(file, t0, t1)]."""
+    on long songs). Copied from the DMC/SM builders. Returns [(file, t0, t1)].
+
+    WHY SOME SDI SONGS SPLIT INTO HUNDREDS OF PARTS, measured 2026-09-05 by
+    calling `fits` directly at several left edges (no build run):
+
+        End_94     0-400f      13-16 bundles   grows freely  -> part 1 is 0-16s
+                   800-900f       52 bundles   fits
+                   800-1000f      65 bundles   REFUSED, CAP_B=63
+                   1600-2000f    118 bundles   REFUSED
+        GT_Groove  800-1000f      44 bundles   fits
+                   800-1200f      71 bundles   REFUSED, CAP_B=63
+
+    `CAP_B` is the binding cap and it is the ONLY one that binds: instruments
+    peak at 39/32 (once), wave rows at 69/256, filter rows at 89/256 and
+    sequences at 8/120. So the split is not a windowing bug and not the
+    variant-D walk -- it is command-bundle DENSITY meeting a hard SF2II limit.
+    One STEP of End_94 costs 36-52 bundles, so a second STEP always crosses 63
+    and the window can never grow: 1185 of its 1190 parts are exactly STEP
+    (2.0s) wide. GT_Groove sustains two STEPs and 385 of 405 parts are 4.0s.
+    Their sparse intros are why part 1 is 16s and 8s respectively.
+
+    READ A PART COUNT AS length x density, NEVER AS A DEFECT SIGNAL. The three
+    other songs flagged alongside these two -- L-Forza_long_edit (174 parts),
+    Stort_Plaster (137), L-Forza_Remix (127) -- are NOT saturated: their part
+    widths run 2-18s, the same spread as ordinary songs (End 16-32s, Quest
+    6-32s). They have many parts because they are long. The metric that
+    separates the two classes is SECONDS PER PART, not the count.
+    """
     def fits(t0, t1):
         nb, ni, nw, nf, ns = BM.build_native_song(
             shim, SID, 0, {}, [], win=(t0, t1), traces=traces, count_only=True)

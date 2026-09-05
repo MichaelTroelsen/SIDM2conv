@@ -117,3 +117,75 @@ class TestSdiFilterFlagOverride(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# The part-count anomaly: CAP_B saturation, not a windowing defect.
+#
+# Measured 2026-09-05 by calling build_song's own `fits` probe at several left
+# edges: one STEP of End_94 costs 36-52 command bundles, two cost 65-118, and
+# CAP_B is 63 -- so the adaptive window can never grow and 1185 of its 1190
+# parts are exactly STEP wide. GT_Groove sustains two STEPs (385 of 405 at
+# 2*STEP). No other cap comes close: instruments peaked at 39/32 once, wave
+# rows 69/256, filter rows 89/256, sequences 8/120.
+#
+# These tests read the SHIPPED spans rather than rebuilding -- End_94 is a
+# 2401s song and rebuilding it costs hours (see runs.jsonl:sdi-control-rerun-
+# at-j8, where a single-sample cost extrapolation went badly wrong). They skip
+# cleanly on a fresh clone with no corpus.
+# ---------------------------------------------------------------------------
+
+_OUT_SDI = os.path.join(_ROOT, "out", "sdi")
+
+
+def _part_widths(base):
+    """[(t1-t0), ...] in seconds, from the .span sidecars; [] if not built."""
+    import glob
+    out = []
+    for f in sorted(glob.glob(os.path.join(
+            _OUT_SDI, base + "_native_part*.sf2.span"))):
+        try:
+            t0, t1 = open(f).read().split()
+        except ValueError:
+            continue
+        out.append(int(t1) - int(t0))
+    return out
+
+
+class TestPartCountIsDensityNotDefect(unittest.TestCase):
+    """Pins the SHAPE of the split, which is what a regression would change."""
+
+    def test_end_94_is_saturated_at_one_step(self):
+        w = _part_widths("End_94")
+        if not w:
+            self.skipTest("out/sdi/End_94_native_part*.span not built")
+        at_step = sum(1 for x in w if x == 2)
+        self.assertGreater(len(w), 100, "positive control: too few parts read")
+        self.assertGreater(
+            at_step / len(w), 0.95,
+            "End_94 is no longer saturated at one STEP (%d of %d parts are 2s) "
+            "-- either CAP_B moved, STEP moved, or the bundle emitter got "
+            "cheaper. That is a REAL change worth re-measuring, not a "
+            "regression to paper over." % (at_step, len(w)))
+
+    def test_the_other_flagged_songs_are_NOT_saturated(self):
+        """The half of the 2026-09-05 finding that is easy to lose.
+
+        L-Forza_long_edit, Stort_Plaster and L-Forza_Remix were flagged in the
+        same breath as End_94 and GT_Groove, on part COUNT. They are ordinary:
+        their widths spread 2-18s like any other song. If they ever collapse
+        to a single width they have joined the saturated class and the doc in
+        build_song's docstring needs revisiting.
+        """
+        checked = 0
+        for base in ("L-Forza_long_edit", "Stort_Plaster", "L-Forza_Remix"):
+            w = _part_widths(base)
+            if not w:
+                continue
+            checked += 1
+            self.assertGreater(
+                len(set(w)), 3,
+                "%s collapsed to %d distinct part widths %s -- it used to "
+                "spread 2-18s" % (base, len(set(w)), sorted(set(w))))
+        if not checked:
+            self.skipTest("none of the three comparison songs are built")

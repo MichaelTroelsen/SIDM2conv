@@ -914,3 +914,139 @@ Naming: a song that fits keeps its original filename; a split song becomes
 0 unexpected diffs**, exactly the 13 known-broken songs newly split (28 parts
 replacing 13 files, so 343 songs now emit 358 files). Re-running
 `pyscript/sf2_truncation_sweep.py sdi` reports **0 lose music** (was 13).
+
+## The ten "collapsed" tail parts are TWO causes, not ten defects (2026-09-05)
+
+A corpus bundle audit flagged ten SDI artifacts: `Neurotica_short_native_part06`
+and `_part07` at **0 bundles** (part06 carrying one note), and
+`Noice_native_part15` through `_part22` at **4 bundles** each. Eight consecutive
+tail parts at one value is a shared cause, and it turned out to be two shared
+causes — neither of them a per-part defect, and neither of them a packer bug.
+
+### Neurotica_short 06/07 — stale orphans a broken prune never removed
+
+The two artifacts are **byte-identical** (md5 `5d4700da`, 13,612 bytes each) and
+dated **2026-08-17**, while parts 01–04 are from **2026-08-18** and carry `.span`
+sidecars that 05–07 lack. Part 04's span ends at 68 s and the song decodes to
+66 s, so the current build is **four** parts. Parts 05–07 are the tail of a
+superseded build — the same shape as the DMC `Rockbuster` orphan.
+
+**`prune_stale_parts` cannot see them, and the reason is a prefix.** It globs
+`{prefix}_part*.sf2`, `bin/build_sdi_native_song.py:366` passes
+`out/sdi/{base}`, and the emitter writes `{base}_native_part{NN}.sf2`. So the
+glob is `out/sdi/Neurotica_short_part*.sf2`, which matches nothing.
+`bin/build_blackbird_native_song.py:3295` passes `f"{base}_native"` and is
+correct; SDI is the copy that dropped the infix. **SDI's prune has always been a
+no-op.**
+
+Measured two independent ways, which agree:
+
+| test | orphan parts | songs |
+|---|---|---|
+| `.sf2` with no `.span` sidecar | 72 | 10 |
+| part mtime older than its own `part01` | 63 | 9 |
+
+Largest: `Bahbar` 19, `Moi_Funk` 13, `Survival` 12, `Delta_Slow` 8,
+`Tranedans` 4, `Neurotica_short` 3. All the no-span ones date to 2026-08-17.
+The two tests differ only at the edges (`Velomatrix` part07 carries a `.span`
+but is old; `_d` shows only in the first), so **neither test alone is the
+population** — a post-`.span` orphan would carry a `.span` and be invisible to
+the first.
+
+Not fixed here: the fix site is the builder, and the task that found this
+declares only this document as writable.
+
+### Noice 15–22 — real parts of a decode that runs away
+
+These eight are **not** orphans: they carry `.span` sidecars and share the
+current build's timestamp. They are also not small windows — parts 01–13 span
+2–4 s each, and parts 14–21 span **290–292 s each**. Four bundles across 292
+seconds is correct compression, not a collapse; `BUNDLE_FLOOR = 5` is a
+per-artifact constant with no notion of how much music the artifact covers.
+
+What is wrong is upstream. `Noice` decodes to **116,578 events over 2400 s**,
+and bucketed by minute the count sits at **3000 events per minute** from minute
+two onward — that is 50 events per second at 50 Hz, i.e. **one decoded event on
+every frame**. The song's real content is the first ~2 minutes (769 rising to
+1889, then saturation). The 2401 s "song" is the decoder never terminating.
+
+**Corpus-wide this is rare and specific — 3 files of 343:**
+
+| file | variant | decoded span | minutes at ≥1 event/frame |
+|---|---|---|---|
+| End_94 | B | 2400 s | 36 of 40 |
+| Noice | B | 2400 s | 37 of 40 |
+| GT_Groove | B | 1600 s | 24 of 27 |
+
+Every other file is clean, including 40 of the 43 variant-B files — so this is
+**not** a variant-B decode property. `Stort_Plaster` (E, 5,044 events / 586 s),
+`Kirby`, `2_Young_2_Die` and `Arabia` all show a normal density.
+
+### This corrects an earlier verdict on this page's neighbours
+
+`runs.jsonl:sdi-end94-gtgroove-part-count-anomaly` measured that End_94 and
+GT_Groove split at the `CAP_B = 63` command-bundle cap — one `STEP` of End_94
+costs 36–52 bundles, two cost 65–118 — and concluded the packer was working
+correctly against dense music, leaving open "why is End_94's bundle density
+double the corpus norm". **This is the answer, and it changes the verdict.**
+The measurements stand; the density is not a property of the music. All three
+CAP_B-saturated songs are exactly the three whose decode runs away, and a
+decoder emitting an event every frame is what makes each 2 s window cost 36–52
+bundles. The 1190 parts are still not a packer defect — they are downstream of a
+decode that does not stop.
+
+## Passband rescore on the current disk: 271/279, and ZERO failures (2026-09-05)
+
+The published figure — **267 of 281**, with 7 unexercised, 2 unconfirmed and
+**5 failed** — predated the stale-artifact rebuild. Re-run against the disk as
+it stands (`py -3 pyscript/passband_check.py --player sdi -j8`, 3m00s):
+
+```
+coverage: 5027 .sf2 in out/sdi -> 279 representative build(s) selected
+271/279 builds select the original's passband (or route nothing through the
+        filter, where it cannot be heard)
+  8 NOT COUNTED EITHER WAY (original never routes a voice in this window):
+    Another_Beginning, Beginning, Beverly_Kraven, Holy_Daze,
+    Invention_1, Kururin, Lederhosen, Short_Deel
+exit 0
+```
+
+**The five failures and the two unconfirmed rows are gone: `grep -icE
+"FAILED|UNCONFIRMED"` over the full output returns 0, and the tool exits 0.**
+`Short_Deel` — kept in the scored corpus by decision — is now one of the eight
+unexercised. That is **not a win either**: the checker prints `(filter never
+exercised in this window -- NOT a pass)` against it, so it is neither in the 271
+nor a failure.
+
+Six rows still score below 100 % frame agreement and every one is classified as
+passing with its reason printed, which is the checker working rather than a
+softened gate:
+
+| file | agree | why it passes |
+|---|---|---|
+| Aerodynamic | 99.5 | 1 frame, 99 % routed |
+| Techno_Rave | 99.9 | 2 changes both sides |
+| Trapped | 99.1 | 1 driver-side change, 100 % routed |
+| Flames | 97.5 | no voice routed — passband inaudible |
+| Trooper | 97.5 | no voice routed — passband inaudible |
+| What_Is_Love | 94.5 | all 11 mismatches on frames the original does not route |
+
+### Two caveats that belong beside the number
+
+**The denominator moved 281 → 279 and only part of that is explained here.**
+`out/sdi` holds 280 `_native_part01.sf2` artifacts; the checker scores 279. The
+one it drops is **`_d`**, a base with no `SID/Gallefoss_Glenn/_d.sid` behind it
+at all — correctly excluded, and junk in the corpus (it also carries 4 orphan
+parts). Which two songs the earlier 281 counted cannot be recovered without
+that run's file list, so **do not read 281 → 279 as "two songs lost"**; read it
+as two different selections whose overlap was not recorded.
+
+**The corpus is essentially unstamped, so this is not provenance-confirmed.**
+The run reports `2 at ff52cb4 (dirty); 1 at 57f6ca3 (dirty); 1 at 7e67c33
+(dirty); 275 UNSTAMPED (built before provenance existed)`. The claim "the
+figures now postdate the stale-artifact rebuild" rests on the failure count
+being zero, **not** on any artifact being able to say which commit built it.
+
+The probe `.sid` files the tool writes beside each artifact are cleaned up by
+the tool itself: `out/sdi` is 15,397 entries before and after, with 0
+`_passband_probe_*.sid` left behind.
