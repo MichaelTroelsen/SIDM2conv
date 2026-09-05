@@ -348,3 +348,91 @@ def test_the_instrument_offset_is_the_same_bug_73780fa_fixed_for_seq_ptrs():
     assert outside > 10, (
         "load + $0A6B now lands inside the data on nearly every file (%d "
         "outside) -- re-measure" % outside)
+
+
+# ---------------------------------------------------------------------------
+# The SF2II orderlist panel cannot confirm a locate, and this pins WHY.
+#
+# The converter writes a Driver-11-shaped orderlist STUB into every emitted
+# Laxity SF2 -- transpose $A0 with sequences 0/1/2 -- because the Laxity driver
+# plays from the embedded NP21 payload and the editor only needs enough of an
+# orderlist to open the file. Measured 2026-09-05, that stub is byte-identical
+# on Angular, Cascade and Cycles. So an SF2II panel showing `00 01 02` is
+# showing the stub, not the song, and it reads the same on every file.
+#
+# The test below is the half that can be checked without converting anything:
+# no file's REAL orderlist starts 00/01/02, so the stub can never accidentally
+# agree with a correct locate. That makes "the editor disagrees with our
+# locate" worthless as evidence -- it disagrees with all 14, including Angular,
+# whose 01/02/05 is independently proven. Delete this pin only alongside the
+# LAXITY.md section it backs.
+# ---------------------------------------------------------------------------
+
+_ORDERLIST_FILES = [
+    "Angular", "Omniphunk", "Stinsens_Last_Night_of_89", "Balance", "Beast",
+    "Cascade", "Chaser", "Colorama", "Cycles", "Delicate", "Dreams", "Dreamy",
+    "Phoenix_Code_End_Tune", "Unboxed_Ending_8580",
+]
+
+_SF2_ORDERLIST_STUB = (0x00, 0x01, 0x02)
+
+
+def _first_entries(name):
+    """(voice0, voice1, voice2) first orderlist numbers, or None if refused."""
+    from sidm2.laxity_parser import read_orderlist_numbers
+
+    path = ROOT / "SID" / (name + ".sid")
+    if not path.exists():
+        return "missing"
+    p = SIDParser(str(path))
+    data, load = p.get_c64_data(p.parse_header())
+    loc = locate_seq_ptr_table(data, load)
+    if loc is None:
+        return None
+    nums = read_orderlist_numbers(data, load, loc[0], loc[1])
+    if nums is None:
+        return None
+    return tuple(v[0] if v else None for v in nums)
+
+
+def test_no_real_orderlist_starts_with_the_sf2_stub_00_01_02():
+    """The editor's panel value is unreachable by any correct locate.
+
+    POSITIVE CONTROL FIRST: at least ten files must actually produce a reading.
+    Without it this passes vacuously the moment the locate stops working --
+    "no file equals 00 01 02" is trivially true of an empty set, and that is
+    exactly the shape (`score_pct` returning None over zero frames) this repo
+    has shipped a confident wrong number from before.
+    """
+    read = {}
+    for name in _ORDERLIST_FILES:
+        got = _first_entries(name)
+        if got in (None, "missing"):
+            continue
+        read[name] = got
+
+    assert len(read) >= 10, (
+        "positive control failed: only %d of %d files produced an orderlist "
+        "reading, so the assertion below would be vacuous"
+        % (len(read), len(_ORDERLIST_FILES)))
+
+    same = {n: v for n, v in read.items() if v == _SF2_ORDERLIST_STUB}
+    assert not same, (
+        "%s start with the SF2 stub 00/01/02 -- if that is genuinely the "
+        "song's orderlist the editor panel becomes ambiguous for that file, "
+        "and the LAXITY.md claim that a panel reading is never evidence needs "
+        "revisiting" % sorted(same))
+
+
+def test_angulars_proven_orderlist_is_the_one_the_panel_contradicts():
+    """The single file with independent ground truth, pinned as 01/02/05.
+
+    docs/players/LAXITY.md derives these from the payload bytes `87 01`,
+    `93 02`, `87 05`. A 2026-09-05 SF2II capture of a converted Angular showed
+    `00 01 02` instead. Both cannot describe the same object, and this test
+    fixes which one the parser reports -- so if the locate ever drifts toward
+    the stub, it fails here rather than being read as the editor agreeing.
+    """
+    if not ANGULAR.exists():
+        pytest.skip("SID/Angular.sid not present")
+    assert _first_entries("Angular") == (0x01, 0x02, 0x05)

@@ -33,6 +33,89 @@ class SF2TableLocation:
     data: bytes
 
 
+def unpack_packed_sequence(data, offset):
+    """Decode ONE packed Driver 11 sequence -> ([SequenceEvent], offset_after_$7F).
+
+    THE STREAM IS VARIABLE-LENGTH AND SELF-DESCRIBING, NOT FIXED TRIPLES. This
+    replaced a walk that read (instrument, command, note) as a fixed 3-byte
+    group and advanced by 3. That walk is wrong about the format, and the
+    disproof is SF2 II's own file: reading its sequence region as triples
+    yields 0 of 7 legal instrument bytes (pinned in
+    pyscript/test_driver11_section_injectors.py). The real grammar, from the
+    editor source via pyscript/sf2_viewer_core.unpack_sequence:
+
+        $C0-$FF  command      then the next byte continues the row
+        $A0-$BF  instrument   then the next byte continues the row
+        $80-$9F  duration     bits 0-3 = ticks, bit 4 = tie; then the note
+        $00-$7E  note         terminates the row
+        $7F      end of sequence
+        $E1      padding in the Laxity offset table -- skipped, never a command
+
+    Each field is OPTIONAL and they appear in that order, so a row is one to
+    four bytes. `docs/reference/SF2_FORMAT_SPEC.md` describing a 3-column
+    (instrument, command, note) row is not a contradiction: that is the
+    EDITOR's unpacked view, and this is the on-disk stream.
+
+    DURATION IS EXPANDED, NOT CARRIED, and that is deliberate. `SequenceEvent`
+    has no duration field, and adding one would have been the wrong fix: the
+    editor's own unpacker turns a duration of N into N following sustain rows
+    ($7E, or $00 when the note is a gate-off), so expanding here produces the
+    SAME event stream rather than a differently-shaped one that every consumer
+    would then have to learn about. `sidm2/models.py` keeps its three fields.
+
+    Instrument and command RESET to $80 ("no change") after the row that set
+    them; duration PERSISTS across rows. Both behaviours are mirrored from
+    `unpack_sequence` rather than reasoned about -- a test pins the two against
+    each other on real bytes.
+    """
+    events = []
+    cur_instr = 0x80
+    cur_cmd = 0x80
+    cur_dur = 0
+    n = len(data)
+    while offset < n:
+        value = data[offset]
+        offset += 1
+
+        if value == 0xE1:                       # offset-table padding
+            continue
+        if value == 0x7F:                       # end of sequence
+            events.append(SequenceEvent(instrument=0x80, command=0x80, note=0x7F))
+            break
+
+        if value >= 0xC0:
+            cur_cmd = value
+            if offset >= n:
+                break
+            value = data[offset]
+            offset += 1
+        if 0xA0 <= value < 0xC0:
+            cur_instr = value
+            if offset >= n:
+                break
+            value = data[offset]
+            offset += 1
+        if 0x80 <= value < 0xA0:
+            cur_dur = value & 0x0F
+            if offset >= n:
+                break
+            value = data[offset]
+            offset += 1
+
+        note = value
+        events.append(SequenceEvent(instrument=cur_instr, command=cur_cmd,
+                                    note=note))
+        cur_instr = 0x80
+        cur_cmd = 0x80
+
+        for _ in range(cur_dur):
+            events.append(SequenceEvent(
+                instrument=0x80, command=0x80,
+                note=0x7E if note != 0x00 else 0x00))
+
+    return events, offset
+
+
 class SF2PlayerParser:
     """Parser for SID Factory II player SID files.
 
@@ -400,26 +483,8 @@ class SF2PlayerParser:
                 logger.warning(f"Ran out of data at sequence {file_position} (index {sparse_idx})")
                 break
 
-            sequence = []
             seq_start = offset
-
-            while offset < len(sf2_data) - 2:
-                instr = sf2_data[offset]
-                cmd = sf2_data[offset + 1]
-                note = sf2_data[offset + 2]
-                offset += 3
-
-                # Preserve persistence encoding (keep 0x80 markers as-is)
-                event = SequenceEvent(
-                    instrument=instr,
-                    command=cmd,
-                    note=note
-                )
-                sequence.append(event)
-
-                # End of sequence marker
-                if note == 0x7F:
-                    break
+            sequence, offset = unpack_packed_sequence(sf2_data, offset)
 
             if sequence:
                 extracted_sequences[sparse_idx] = sequence

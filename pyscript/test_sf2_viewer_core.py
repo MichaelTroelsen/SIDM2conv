@@ -857,3 +857,129 @@ def test_the_fallback_readers_recover_a_MINORITY_of_referenced_sequences():
         "this file now draws %d rows; the fallback may have improved -- "
         "re-run the 120-file sample before trusting the numbers above" % drawn)
 
+
+
+# ---------------------------------------------------------------------------
+# WHY Dreamy's SF2 DECODES DIFFERENTLY FROM ITS OWN SID -- the third residual.
+#
+# Measured 2026-09-05. The SEQUENCE TABLE agrees on both sides; what differs is
+# the ORDERLIST POINTER the cross-check reads:
+#
+#   SID/Dreamy.sid        ch_seq_ptr $189B/$189E   seq table $1C8E N=16
+#                         orderlist numbers 1..15  -- all < 16, cross-check PASSES
+#                         -> 16 sequences, 421 bytes
+#   SF2/Dreamy.sf2 payload ch_seq_ptr $18D4/$18D7  seq table $1C8E N=16
+#                         orderlist numbers include 24,27,31,41,59,64,96
+#                         -- >= 16, cross-check DECLINES
+#                         -> falls back to the offset-table heuristic,
+#                            3 "sequences", 1452 bytes
+#
+# So the decline is the GUARD WORKING, not a bug in it: _sequences_from_table
+# refuses a table whose own orderlists name sequences it does not contain,
+# exactly as its docstring says. The defect is upstream -- `ch_seq_ptr` is the
+# player's RUNTIME current-sequence pointer, and in an SF2-wrapped payload it
+# sits at a different address ($18D4 vs $189B, +$39) holding values that are
+# not this song's orderlists.
+#
+# This is the same FAMILY as Stinsens (which locates ZERO candidates and falls
+# to the same heuristic) but a different route to it, and both are distinct
+# from Blue, whose locate is clean and whose gap is a legitimate shape
+# difference. Three residuals, three mechanisms.
+#
+# The fix site is sidm2/laxity_parser.py, which the task that measured this
+# declares read-only -- hence a pin here rather than a change there.
+# ---------------------------------------------------------------------------
+
+def _dreamy_paths():
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return (os.path.join(root, "SID", "Dreamy.sid"),
+            os.path.join(root, "SF2", "Dreamy.sf2"))
+
+
+def _locate_pair(data, load):
+    from sidm2.laxity_parser import (locate_seq_ptr_table, locate_seq_table,
+                                     read_orderlist_numbers)
+    ptr = locate_seq_ptr_table(data, load)
+    tbl = locate_seq_table(data, load)
+    nums = read_orderlist_numbers(data, load, ptr[0], ptr[1]) if ptr else None
+    return ptr, tbl, nums
+
+
+def test_dreamys_sf2_and_sid_agree_on_the_TABLE_and_differ_on_the_POINTER():
+    """The measurement the attribution rests on.
+
+    If these ever stop differing the residual is gone and this test should be
+    deleted; if the TABLE starts differing too, the attribution is wrong and
+    needs redoing rather than patching.
+    """
+    import os
+    from sidm2.sid_parser import SIDParser
+
+    sid_path, sf2_path = _dreamy_paths()
+    if not (os.path.exists(sid_path) and os.path.exists(sf2_path)):
+        pytest.skip("Dreamy.sid / Dreamy.sf2 not both present")
+
+    sp = SIDParser(sid_path)
+    d, la = sp.get_c64_data(sp.parse_header())
+    s_ptr, s_tbl, s_nums = _locate_pair(d, la)
+
+    blob = open(sf2_path, "rb").read()
+    la2 = int.from_bytes(blob[:2], "little")
+    f_ptr, f_tbl, f_nums = _locate_pair(blob[2:], la2)
+
+    assert s_ptr and f_ptr, (s_ptr, f_ptr)
+    assert s_tbl and f_tbl, (s_tbl, f_tbl)
+    # the TABLE agrees -- this is what makes it a pointer problem, not a table one
+    assert s_tbl[0] == f_tbl[0], (hex(s_tbl[0]), hex(f_tbl[0]))
+    assert s_tbl[1] == f_tbl[1], (s_tbl[1], f_tbl[1])
+    # the POINTER does not
+    assert s_ptr != f_ptr, "the SF2 payload's ch_seq_ptr now matches the SID's"
+
+
+def test_the_sf2s_orderlist_numbers_are_out_of_range_and_the_sids_are_not():
+    """Which is precisely why the cross-check declines one and accepts the other."""
+    import os
+    from sidm2.sid_parser import SIDParser
+
+    sid_path, sf2_path = _dreamy_paths()
+    if not (os.path.exists(sid_path) and os.path.exists(sf2_path)):
+        pytest.skip("Dreamy.sid / Dreamy.sf2 not both present")
+
+    sp = SIDParser(sid_path)
+    d, la = sp.get_c64_data(sp.parse_header())
+    _, s_tbl, s_nums = _locate_pair(d, la)
+    blob = open(sf2_path, "rb").read()
+    la2 = int.from_bytes(blob[:2], "little")
+    _, f_tbl, f_nums = _locate_pair(blob[2:], la2)
+
+    assert s_nums and f_nums, (s_nums, f_nums)
+    n = s_tbl[1]
+    s_out = sorted({x for v in s_nums for x in v if x >= n})
+    f_out = sorted({x for v in f_nums for x in v if x >= n})
+    assert not s_out, "the SID's orderlists now name out-of-range sequences %s" % s_out
+    assert f_out, "the SF2 payload's orderlists are now all in range -- residual gone"
+
+
+def test_dreamys_sf2_falls_back_while_its_sid_does_not():
+    """The consequence, end to end: same song, two decodes, different readers."""
+    import os
+    from sidm2.laxity_parser import LaxityParser
+    from sidm2.sid_parser import SIDParser
+
+    sid_path, sf2_path = _dreamy_paths()
+    if not (os.path.exists(sid_path) and os.path.exists(sf2_path)):
+        pytest.skip("Dreamy.sid / Dreamy.sf2 not both present")
+
+    sp = SIDParser(sid_path)
+    d, la = sp.get_c64_data(sp.parse_header())
+    sid_res = LaxityParser(d, la).parse()
+
+    blob = open(sf2_path, "rb").read()
+    la2 = int.from_bytes(blob[:2], "little")
+    sf2_res = LaxityParser(blob[2:], la2).parse()
+
+    assert len(sid_res.sequences) == 16, len(sid_res.sequences)
+    assert len(sf2_res.sequences) != 16, (
+        "the SF2 payload now decodes to 16 sequences too -- the residual is "
+        "closed and this whole block should go")

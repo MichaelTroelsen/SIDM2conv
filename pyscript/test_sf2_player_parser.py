@@ -102,3 +102,230 @@ def test_the_editors_own_file_is_refused_rather_than_yielding_235_sequences():
     assert load_addr == 0x0D7E, "reference file's load address moved"
     with pytest.raises(InvalidInputError):
         _extract(data, load_addr)
+
+
+# ---------------------------------------------------------------------------
+# THE PACKED-STREAM DECODE, pinned against the editor's OWN unpacker.
+#
+# sf2_player_parser used to walk the sequence region as fixed 3-byte
+# (instrument, command, note) groups. The on-disk Driver 11 stream is
+# variable-length and self-describing, and SF2 II's own file is the disproof:
+# read as triples it yields 0 of 7 legal instrument bytes.
+#
+# The reference bytes below are VERBATIM from bin/music/Driver 11 Test -
+# Arpeggio.sf2 at raw offset 0x19AE (address $272A, load $0D7E) -- SF2 II's own
+# shipped file, which no analysis of ours produced. They are inlined rather than
+# read from disk so these tests run on any clone and cannot go stale against a
+# moved offset; pyscript/test_driver11_section_injectors.py separately pins that
+# the file still carries them AT that offset.
+#
+# The assertion is EQUIVALENCE with pyscript/sf2_viewer_core.unpack_sequence,
+# not a hand-written expectation. That matters: a hand-written expectation is
+# just this decoder's output copied down, and would pass for any grammar I
+# happened to implement. unpack_sequence is documented from the editor source
+# and predates this change, so agreeing with it is evidence.
+# ---------------------------------------------------------------------------
+
+_EDITOR_SEQUENCE = bytes([
+    0xC1, 0xA0, 0x80, 0x30, 0x30, 0x00, 0xC2, 0x81, 0x30, 0x30, 0xC3, 0x80,
+    0x2E, 0x00, 0x2E, 0x2E, 0x00, 0xC4, 0x2E, 0x00, 0x81, 0x2E, 0x7F,
+])
+
+
+def _viewer_unpack(blob):
+    """pyscript/sf2_viewer_core.unpack_sequence, as (instrument, command, note)."""
+    import sf2_viewer_core
+    return [(e["instrument"], e["command"], e["note"])
+            for e in sf2_viewer_core.unpack_sequence(blob)]
+
+
+def test_the_decode_matches_the_editors_own_unpacker_event_for_event():
+    """THE TEST THIS CHANGE EXISTS FOR.
+
+    Same bytes, two independently-written decoders, identical event stream.
+    """
+    from sidm2.sf2_player_parser import unpack_packed_sequence
+
+    got, offset = unpack_packed_sequence(_EDITOR_SEQUENCE, 0)
+    ours = [(e.instrument, e.command, e.note) for e in got]
+    theirs = _viewer_unpack(_EDITOR_SEQUENCE)
+
+    # unpack_sequence stops AT the end marker and does not emit it; ours emits
+    # it so the caller can see a terminated sequence. Compare the common part
+    # and assert the terminator separately rather than hiding the difference.
+    assert ours[-1] == (0x80, 0x80, 0x7F), ours[-1]
+    assert ours[:-1] == theirs, (
+        "decoders disagree:\n  ours   %s\n  viewer %s" % (ours[:-1], theirs))
+    assert offset == len(_EDITOR_SEQUENCE), offset
+
+
+def test_the_old_fixed_triple_walk_would_NOT_have_matched():
+    """The positive control: without it, the test above proves nothing.
+
+    If the two decoders agreed on this blob no matter what, agreement would be
+    a property of the input rather than of the fix. Reading the same bytes as
+    fixed triples gives a different length AND illegal instrument bytes, which
+    is exactly the defect that motivated the change.
+    """
+    triples = [(_EDITOR_SEQUENCE[i], _EDITOR_SEQUENCE[i + 1], _EDITOR_SEQUENCE[i + 2])
+               for i in range(0, len(_EDITOR_SEQUENCE) - 2, 3)]
+    legal_instr = [t for t in triples if 0xA0 <= t[0] <= 0xBF]
+    assert not legal_instr, (
+        "the triple reading suddenly yields legal instrument bytes %s -- the "
+        "premise of this change needs re-checking" % legal_instr)
+    assert len(triples) != len(_viewer_unpack(_EDITOR_SEQUENCE))
+
+
+def test_duration_is_EXPANDED_into_sustain_rows_not_dropped():
+    """`$81` = duration 1, so its note must be followed by one $7E sustain.
+
+    SequenceEvent has no duration field and this change deliberately did not
+    add one -- the editor's unpacker expands duration the same way, so the two
+    streams stay comparable. If someone later adds the field and stops
+    expanding, this fails and the equivalence test above fails with it.
+    """
+    from sidm2.sf2_player_parser import unpack_packed_sequence
+
+    got, _ = unpack_packed_sequence(bytes([0xA0, 0x81, 0x30, 0x7F]), 0)
+    notes = [e.note for e in got]
+    assert notes == [0x30, 0x7E, 0x7F], notes
+    assert got[0].instrument == 0xA0
+    assert got[1].instrument == 0x80, "a sustain row must not repeat the instrument"
+
+
+def test_a_gate_off_expands_to_gate_off_rows_not_sustains():
+    """Note $00 with a duration sustains as $00, not $7E -- mirrored from
+    unpack_sequence, where the sustain value is conditional on the note."""
+    from sidm2.sf2_player_parser import unpack_packed_sequence
+
+    got, _ = unpack_packed_sequence(bytes([0x82, 0x00, 0x7F]), 0)
+    assert [e.note for e in got] == [0x00, 0x00, 0x00, 0x7F], [e.note for e in got]
+
+
+def test_the_decoder_reports_where_the_next_sequence_starts():
+    """Sequences are stored back to back, so a wrong end offset silently
+    shifts every later sequence. Two concatenated sequences must decode
+    independently."""
+    from sidm2.sf2_player_parser import unpack_packed_sequence
+
+    blob = bytes([0xA0, 0x30, 0x7F]) + bytes([0xA1, 0x40, 0x7F])
+    first, off = unpack_packed_sequence(blob, 0)
+    assert off == 3, off
+    second, off2 = unpack_packed_sequence(blob, off)
+    assert off2 == 6, off2
+    assert [e.note for e in first] == [0x30, 0x7F]
+    assert [e.note for e in second] == [0x40, 0x7F]
+    assert second[0].instrument == 0xA1
+
+
+# ---------------------------------------------------------------------------
+# CHARACTERISATION AGAINST THE EDITOR'S OWN SHIPPED EXPORTS (bin/music/*.sf2).
+#
+# Traced 2026-09-05, this module had 118 of 713 lines executed by its own test
+# file, and only TWO functions had any body coverage -- unpack_packed_sequence
+# and _extract_sequences_from_sf2. Every other function showed one line: its
+# `def`. That included the whole public entry path.
+#
+# These pin WHAT IS, not what should be. They use `_parse_sf2_tables`, which
+# takes SF2 bytes directly and so can run on real material -- unlike `extract()`,
+# which needs an SF2-EXPORTED SID, and there are ZERO of those in the 1,524-file
+# SID/ corpus (runs.jsonl:sf2-exported-100pct-is-by-construction-never-measured).
+# That is why the entry path stays uncovered here and is not an oversight.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path                                  # noqa: E402
+
+_MUSIC = _Path(__file__).resolve().parent.parent / "bin" / "music"
+_D11 = _MUSIC / "Driver 11 Test - Arpeggio.sf2"
+
+
+def _tables(path):
+    from sidm2.sf2_player_parser import SF2PlayerParser
+    inst = SF2PlayerParser.__new__(SF2PlayerParser)
+    blob = path.read_bytes()
+    load = int.from_bytes(blob[:2], "little")
+    return SF2PlayerParser._parse_sf2_tables(inst, blob, load), load
+
+
+@pytest.mark.skipif(not _D11.exists(), reason="bin/music/Driver 11 Test - Arpeggio.sf2 absent")
+def test_a_real_driver11_export_yields_its_nine_tables():
+    """The baseline the fixed-triples work needed and did not have.
+
+    Recorded from SF2 II's own shipped file so a future change to table
+    discovery has something to differ from. The counts are geometry, not
+    content -- three of these four files carry different music.
+    """
+    tables, load = _tables(_D11)
+    assert load == 0x0D7E, hex(load)
+    assert set(tables) == {"Commands", "Instruments", "Wave", "Pulse", "Filter",
+                           "Arpeggio", "Tempo", "HR", "Init"}, sorted(tables)
+    assert tables["Instruments"]["columns"] == 6
+    assert tables["Instruments"]["rows"] == 32
+    assert tables["Wave"]["columns"] == 2 and tables["Wave"]["rows"] == 256
+    assert tables["Filter"]["columns"] == 3 and tables["Filter"]["rows"] == 256
+    assert tables["HR"]["rows"] == 16
+
+
+@pytest.mark.skipif(not _MUSIC.is_dir(), reason="bin/music absent")
+def test_all_four_driver11_exports_share_ONE_table_geometry():
+    """This is the measurable content of the docs' 'by construction' claim.
+
+    docs/players/DRIVER11.md argues SF2-exported files convert at 100% because
+    'it already uses Driver 11's structure'. The checkable part of that is that
+    the structure is FIXED per driver, and here it is: four different songs,
+    one geometry.
+    """
+    files = sorted(_MUSIC.glob("Driver 11 Test - *.sf2"))
+    assert len(files) == 4, [f.name for f in files]
+    geoms = set()
+    for f in files:
+        t, load = _tables(f)
+        assert load == 0x0D7E, (f.name, hex(load))
+        # POSITIVE CONTROL, PER FILE. Without it this test passes when the
+        # parse returns NOTHING: four empty geometries are trivially identical,
+        # so `len(geoms) == 1` holds for the completely broken case. A mutation
+        # stubbing the parse to {} passed this test until this line was added.
+        assert len(t) == 9, "%s parsed to %d tables, expected 9" % (f.name, len(t))
+        geoms.add(tuple(sorted((k, v["address"], v["columns"], v["rows"])
+                               for k, v in t.items())))
+    assert len(geoms) == 1, "the four Driver 11 exports no longer agree"
+
+
+@pytest.mark.skipif(not _MUSIC.is_dir(), reason="bin/music absent")
+def test_table_geometry_is_PER_DRIVER_so_one_constant_cannot_serve_all():
+    """Why a hardcoded table offset is the wrong shape for this parser.
+
+    Across the 11 shipped exports there are SIX distinct geometries, and table
+    COUNT alone runs 4..9 -- Driver 11 has nine (with Arpeggio and HR), Drivers
+    12/13/15/16 have four. `sidm2/sf2_packer.py` carries fixed
+    SEQUENCE/INSTRUMENT/WAVE/PULSE/FILTER offsets; this test records that such
+    constants describe at most one driver.
+
+    POSITIVE CONTROL FIRST: if _parse_sf2_tables returned nothing the
+    'six geometries' count would be meaningless.
+    """
+    files = sorted(_MUSIC.glob("*.sf2"))
+    assert len(files) >= 10, [f.name for f in files]
+    geoms, counts = set(), []
+    for f in files:
+        t, _ = _tables(f)
+        assert t, "%s parsed to NO tables -- control failed" % f.name
+        counts.append(len(t))
+        geoms.add(tuple(sorted((k, v["address"], v["columns"], v["rows"])
+                               for k, v in t.items())))
+    assert min(counts) == 4 and max(counts) == 9, sorted(set(counts))
+    assert len(geoms) == 6, (
+        "%d distinct table geometries across %d exports, was 6" % (len(geoms), len(files)))
+
+
+@pytest.mark.skipif(not _MUSIC.is_dir(), reason="bin/music absent")
+def test_only_driver11_loads_at_0d7e_the_rest_load_at_0dfe():
+    """Recorded because $0D7E is the load address every $0903-derived offset
+    goes negative against, and it is NOT universal even among these 11."""
+    by_load = {}
+    for f in sorted(_MUSIC.glob("*.sf2")):
+        load = int.from_bytes(f.read_bytes()[:2], "little")
+        by_load.setdefault(load, []).append(f.name)
+    assert set(by_load) == {0x0D7E, 0x0DFE}, {hex(k): v for k, v in by_load.items()}
+    assert all(n.startswith("Driver 11 ") for n in by_load[0x0D7E]), by_load[0x0D7E]
+    assert not any(n.startswith("Driver 11 ") for n in by_load[0x0DFE]), by_load[0x0DFE]
