@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import os
+import tempfile
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -262,10 +263,37 @@ def run_siddump(path, args):
     check the exit code, don't just parse stderr") — this path simply never had
     it, while four SCORERS guard emptiness and none of the three builders did.
 
-    `rc == 0` with empty stdout is deliberately left alone: that is a tune that
-    writes nothing, which `passband_check` and `validate_filter_accuracy` read
-    as *unexercised* rather than broken, and conflating the two would trade one
-    silent wrong answer for another.
+    `rc == 0` with empty stdout is deliberately left alone -- THE BEHAVIOUR
+    STANDS AND THE REASON IT USED TO GIVE DOES NOT. This paragraph said the
+    empty case is "a tune that writes nothing", read as *unexercised* rather
+    than broken. Measured 2026-09-05, that is not what an unexercised tune
+    looks like, and the empty case does not appear to be reachable at all:
+
+        22 files at -t8 (the four known-undriveable rips plus a seeded random
+        sample of 18)          ->  rc=0, 400 rows, ~44,402 bytes, EVERY ONE.
+                                   rc==0 with empty stdout: 0 of 22.
+        -t0                    ->  rc=0, 400 bytes (header, no data rows)
+        -a9 (subtune past end) ->  rc=0, full 44,402-byte trace
+        a SID TRUNCATED to 200 ->  rc=0, full 44,402-byte trace
+        garbage bytes          ->  rc=1, RAISES (the guard above)
+        missing file           ->  rc=1, RAISES
+
+    siddump force-displays every register on its first row, so a valid input
+    always produces output; an invalid one exits non-zero. So the guard above
+    covers the failure, and empty-with-rc-0 is a case nobody has produced.
+
+    WHAT THE UNEXERCISED AND THE UNDRIVEABLE ACTUALLY LOOK LIKE is a
+    FULL-LENGTH trace carrying nothing -- and so does a CORRUPT file:
+
+        truncated-to-200-bytes SID -> 400 frames, bundles {0:1, 1:1, 2:1},
+                                      0 note onsets on every voice
+        SID/Angular.sid            -> 400 frames, bundles {0:52, 1:27, 2:167},
+                                      onsets [44, 53, 52]
+
+    That is `dead_trace()`'s case, not this one. So the carve-out is kept
+    because raising here would guard a case that does not occur while doing
+    nothing about the case that does; if empty-with-rc-0 ever IS observed it is
+    a NEW failure mode and should be investigated rather than folded in here.
 
     A hung siddump is the same class of failure as a bad exit code — silently
     blocking a corpus build forever — so this also enforces a `timeout=`,
@@ -985,6 +1013,21 @@ def bundle_collapse(build_path, floor=BUNDLE_FLOOR):
     None is NOT False. An artifact that will not parse is UNSCREENED, and the
     audit this feeds exists precisely because unmeasured and measured-clean
     were being conflated.
+
+    AND False IS NOT "THIS BUILD IS FINE". This is the boolean an outside caller
+    reaches for, so the limit belongs here and not only on bundle_diversity()
+    underneath it: the measure is COMPLETELY BLIND to a one-voice-dead trace.
+    A control with voice 1 frozen for the whole song scores 24 bundles, exactly
+    the certified Balloon_part01, because losing one voice removes only rows the
+    other two still produce. Pinned by
+    test_bundle_diversity_is_BLIND_to_a_one_voice_dead_trace.
+
+    That half cannot be recovered from the artifact AT ALL -- SF2Parser exposes
+    no orderlists, so there is no sequence->voice map, and every DMC
+    SequenceEntry carries instrument=0x80 ("no change"). Voice identity exists
+    only upstream, in the trace the builder consumed, which is why the per-voice
+    screen is trace_voice_bundles() and must run BEFORE the build rather than
+    on its output.
     """
     m = bundle_diversity(build_path)
     if m is None:
@@ -1051,6 +1094,62 @@ def trace_voice_diversity(path, args):
     return trace_voice_bundles(siddump_frames_full(path, args))
 
 
+def dead_trace(frames, onsets=None):
+    """Did siddump trace ANYTHING? Returns a reason string, or None.
+
+    THE GAP THIS FILLS. `run_siddump` raises on a non-zero exit and deliberately
+    lets `rc == 0` with EMPTY stdout through, because that is a tune which
+    writes nothing and readers treat it as *unexercised* rather than broken.
+    Neither guard sees the third case: rc == 0, a FULL-LENGTH trace, and
+    nothing in it. Measured 2026-09-05 at -t20 (1,000 frames each):
+
+        SID/LFT/Foerklaedd_Gud_eta.sid          {0:1, 1:1, 2:1}   onsets [0,0,0]
+        SID/Gray_Matt/Always_on_My_Mind.sid     {0:1, 1:1, 2:1}   onsets [0,0,0]
+        SID/Gray_Matt/Jukebox_64_Part_2.sid     {0:1, 1:1, 2:1}   onsets [0,0,0]
+        SID/Gallefoss_Glenn/Arabical.sid        {0:1, 1:1, 2:5}   onsets [0,0,0]
+        -- against live controls --
+        SID/Angular.sid                       {0:52, 1:27, 2:312} onsets [110,130,110]
+        SID/Gallefoss_Glenn/Kirby.sid         {0:61, 1:20, 2:25}  onsets [105,121,108]
+
+    Two shapes, which is why there are two tests below: three files are constant
+    on ALL THREE voices, and `Arabical` has a voice that moves while NOTHING
+    ever gates. `voice_collapse`'s docstring already names both and their cause
+    -- siddump cannot drive an LFT rip or a Matt Gray RSID at all -- but it
+    deliberately returns indices rather than a verdict. This is the verdict for
+    its cause 3 only: nothing was traced, so nothing was measured.
+
+    THIS IS NOT A DEFECT VERDICT AND MUST NOT BE READ AS ONE. A genuinely
+    silent window -- a long intro, a short `-t` over a slow opening -- produces
+    the same signature, and this function cannot tell that from an undrivable
+    rip. What it licenses is REFUSING TO SCORE, exactly as `score_pct` returns
+    None over zero frames rather than 100.0. A caller that turns it into
+    "the build is broken" has made the error this docstring exists to prevent.
+
+    AN EMPTY TRACE RETURNS None, NOT a reason. That is the carve-out
+    `run_siddump` documents: empty output is the unexercised tune, already
+    handled, and collapsing the two would trade one silent wrong answer for
+    another. None here means UNMEASURABLE, the same as `trace_voice_bundles`
+    and `bundle_diversity` -- it is not "alive".
+
+    `onsets` is optional and takes `siddump_note_onsets()` output; pass it when
+    you have it, because it catches the `Arabical` shape that bundle counts
+    alone miss.
+    """
+    b = trace_voice_bundles(frames)
+    if b is None:                      # empty trace -- unmeasurable, see above
+        return None
+    if max(b.values()) <= 1:
+        return ("all %d voices constant over %d frames (%s) -- siddump ran but "
+                "traced nothing" % (len(b), len(frames), b))
+    if onsets is not None:
+        total = sum(len(onsets.get(v, ())) for v in range(3))
+        if total == 0:
+            return ("0 note onsets on every voice over %d frames (bundles %s) "
+                    "-- nothing ever gated, so nothing was measured"
+                    % (len(frames), b))
+    return None
+
+
 def voice_collapse(frames, floor=VOICE_BUNDLE_FLOOR):
     """Voices that carried NO INFORMATION. NOT a defect verdict on its own.
 
@@ -1083,6 +1182,45 @@ def voice_collapse(frames, floor=VOICE_BUNDLE_FLOOR):
     if b is None:
         return None
     return sorted(vi for vi, n in b.items() if n <= floor)
+
+
+def artifact_trace(build_path, args):
+    """siddump frames for a BUILT .sf2, rendered through a throwaway PSID.
+
+    The per-voice screen needs the build's own trace, and an .sf2 is not
+    playable -- it has to be wrapped as a PSID first. This is the same wrap
+    pyscript/passband_check.py does, with one deliberate difference: the probe
+    goes to a TEMPORARY DIRECTORY, not beside the artifact. passband_check
+    writes out/<player>/_passband_probe_<stem>.sid and removes it in a finally
+    whose os.remove is wrapped in `except OSError: pass`, so a kill mid-siddump
+    leaves a stray .sid inside a corpus directory. A tempdir cannot litter the
+    corpus at all, and it means a caller does not need write access to out/.
+
+    Returns siddump_frames_full() output, or None if the artifact will not
+    parse or wrap -- None is UNMEASURABLE, never an empty trace, because an
+    empty trace reads as a dead build and this failure is not that.
+    """
+    try:
+        from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
+        sf2 = open(build_path, "rb").read()
+        info = SF2DriverInfo()
+        sla = parse_sf2_blocks(sf2, info)
+    except Exception:                                  # noqa: BLE001
+        return None
+    tmp = tempfile.mkdtemp(prefix="artifact_trace_")
+    probe = os.path.join(tmp, "probe.sid")
+    try:
+        with open(probe, "wb") as fh:
+            fh.write(psid_wrap(sf2[2:], sla, 0x1000, 0x1003))
+        return siddump_frames_full(probe, args)
+    except Exception:                                  # noqa: BLE001
+        return None
+    finally:
+        for path in (probe, tmp):
+            try:
+                os.remove(path) if path is probe else os.rmdir(path)
+            except OSError:
+                pass
 
 
 def voice_collapse_vs(ref_frames, new_frames, floor=VOICE_BUNDLE_FLOOR):

@@ -135,6 +135,14 @@ def _probe_dmc(path):
     return {"load": la, "notes": sum(len(v) for v in voices)}
 
 
+# The SDI frequency table is 96 entries (`sidm2/sdi_parser.py:36`). A decoded
+# song cannot sound more distinct pitches than the table has notes, so a count
+# above it is proof the walk left the note data -- a FORMAT bound, not a
+# threshold fitted to a sample. The corpus's own maximum is 92.
+SDI_FREQ_TABLE_NOTES = 96
+SDI_MAX_PITCHES = SDI_FREQ_TABLE_NOTES - 1
+
+
 def _probe_sdi(path):
     """`is_sdi_play3` is weaker than it looks OFF ITS OWN CORPUS, so this adds
     the one runaway-walk check that is measured to be safe.
@@ -156,23 +164,48 @@ def _probe_sdi(path):
     other. Four of the 20 Shogoon claims do, including Dickshake_main at an
     exact [668, 668, 668].
 
-    This catches 4 of the 20 -- partial recall, and the other 16 stay wrongly
-    confident. It is shipped because it is measured to cost nothing on the real
-    corpus, not because it closes the problem.
+    A SECOND SHAPE TEST, on the format's own bound rather than a fitted
+    threshold: the SDI frequency table holds **96 notes** (`sdi_parser.py:36`,
+    "FREQ hi table + lo table, 96 notes"), so a song cannot sound more than 96
+    distinct pitches. Measured over the same two populations, distinct pitch
+    counts run 8..92 across all 160 real files and reach 102, 105 and 109 on
+    three Shogoon claims. 92 and 102 sit either side of the format bound, so
+    `> 95` costs nothing on the corpus and is not a number chosen to fit it.
+
+    THE OBVIOUS SHARPER VERSION IS REFUTED, recorded so nobody re-derives it.
+    "Reject any file emitting a note OUTSIDE 0..95" sounds strictly better and
+    is unusable: **36 of the 160 real files do it**, up to 47.97% of their notes
+    (`Noice`), because three corpus songs are themselves runaway walks.
+    Thresholding that RATE at >=1% rejects **20 real files** to catch 5 foreign
+    ones. Distinct-pitch COUNT survives where out-of-range RATE does not,
+    because a real song's few stray values are few DISTINCT values.
+
+    Together the two shape tests catch 6 of the 20 (`Strange` trips both), up
+    from 4, at zero measured cost -- partial recall, and the other 14 stay
+    wrongly confident. Shipped because measured to cost nothing on the real
+    corpus, not because they close the problem.
     """
     from sidm2.sdi_parser import load_sid, SDIModule, is_sdi_play3
     d, la, h = load_sid(path)
     if not is_sdi_play3(d, la, h):
         raise ValueError("not an SDI play+3 rip")
     m = SDIModule(d, la)
-    n = [sum(1 for e in m.decode_voice(v) if e.kind in ("note", "tie", "glide"))
-         for v in range(3)]
+    voices = [list(m.decode_voice(v)) for v in range(3)]
+    n = [sum(1 for e in v if e.kind in ("note", "tie", "glide")) for v in voices]
     if min(n) and (max(n) - min(n)) <= 0.02 * max(n):
         raise ValueError(
             "all three voices decode to within 2%% of each other %s -- a "
             "runaway walk, not a song (no file in the 160-file SDI corpus "
             "does this)" % n)
-    return {"load": la, "tables": getattr(m, "lay", None), "notes": n}
+    pitches = {e.note for v in voices for e in v
+               if e.kind in ("note", "tie", "glide") and e.note is not None}
+    if len(pitches) > SDI_MAX_PITCHES:
+        raise ValueError(
+            "%d distinct pitches -- the SDI freq table holds only %d notes, so "
+            "this walk is reading bytes that are not notes (the 160-file SDI "
+            "corpus tops out at 92)" % (len(pitches), SDI_FREQ_TABLE_NOTES))
+    return {"load": la, "tables": getattr(m, "lay", None), "notes": n,
+            "pitches": len(pitches)}
 
 
 def _probe_mon(path):

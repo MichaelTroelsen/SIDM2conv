@@ -1146,3 +1146,247 @@ def test_the_per_voice_measure_on_a_REAL_trace_not_a_synthetic_one():
             for v, f in fr]
     assert trace_voice_bundles(dead) == {0: 60, 1: 1, 2: 14}
     assert voice_collapse_vs(fr, dead) == [1]
+def test_the_blindness_is_stated_on_the_SCREEN_not_only_on_the_measure():
+    """bundle_collapse() is the boolean an outside caller reaches for.
+
+    THE AUDIT THIS PINS. bundle_diversity(), trace_voice_bundles() and
+    pyscript/corpus_bundle_audit.py all carried the one-voice-dead caveat
+    already; bundle_collapse() -- the function they are reached THROUGH -- did
+    not, and its docstring discussed only None-vs-False. A reader stopping
+    there would take False for "this build is fine", which is exactly the
+    conflation the None-vs-False paragraph beneath it exists to prevent, one
+    level up.
+
+    Asserting on prose is unusual and deliberate: the fact is not expressible
+    as behaviour (bundle_collapse CANNOT detect the case -- that is the point),
+    so the only thing a test can protect is that the limit stays written down
+    next to the answer it qualifies.
+    """
+    import inspect
+    from sidm2.fidelity_common import bundle_collapse, trace_voice_bundles
+    doc = inspect.getdoc(bundle_collapse) or ""
+    assert "BLIND to a one-voice-dead trace" in doc
+    assert "trace_voice_bundles" in doc, (
+        "the screen must name the measure that CAN see the missing half")
+    assert "instrument=0x80" in doc, (
+        "why the artifact cannot answer it must survive, not just that it cannot")
+    # and the measure it points at has to exist under that name
+    assert callable(trace_voice_bundles)
+
+
+# ---------------------------------------------------------------------------
+# dead_trace: rc == 0, FULL-LENGTH output, and nothing in it.
+#
+# run_siddump raises on a bad exit and deliberately passes rc==0-with-empty-
+# stdout (the unexercised tune). Neither sees a trace that ran fine and traced
+# nothing. Measured at -t20 = 1,000 frames: three files are constant on all
+# three voices, and Arabical has a voice that MOVES while nothing ever gates --
+# two shapes, hence two detections.
+#
+# The unit tests below are synthetic so they cost nothing; the corpus tests are
+# marked slow-ish and skip when the SIDs are absent. Both are needed: the
+# synthetic ones pin the CONTRACT, the corpus ones pin that it still fires on
+# the real files the finding came from.
+# ---------------------------------------------------------------------------
+
+
+def _dt_frames(per_voice_bundles):
+    """Synthetic siddump_frames_full output: n distinct (wf,adsr,pul) per voice."""
+    out = []
+    for i in range(20):
+        st = {}
+        for v, n in enumerate(per_voice_bundles):
+            k = i % n
+            st[v] = {'freq': 1000, 'wf': 0x41 + k, 'pul': 0x800, 'adsr': 0x00F0}
+        out.append((st, {'cutoff': 0, 'filtctl': 0, 'volmode': 0}))
+    return out
+
+
+def test_an_EMPTY_trace_is_None_not_dead():
+    """The carve-out run_siddump documents: empty output is the UNEXERCISED
+    tune, already handled, and collapsing the two trades one silent wrong
+    answer for another. None means unmeasurable, never 'alive'."""
+    from sidm2.fidelity_common import dead_trace
+    assert dead_trace([]) is None
+
+
+def test_all_voices_constant_is_reported_dead():
+    from sidm2.fidelity_common import dead_trace
+    r = dead_trace(_dt_frames([1, 1, 1]))
+    assert r and "traced nothing" in r, r
+
+
+def test_ONE_moving_voice_is_enough_to_not_be_all_constant():
+    """The boundary. Arabical is {0:1, 1:1, 2:5}, so the all-constant test
+    alone does NOT catch it -- which is why the onset test exists."""
+    from sidm2.fidelity_common import dead_trace
+    assert dead_trace(_dt_frames([1, 1, 5])) is None
+
+
+def test_zero_onsets_everywhere_is_dead_even_when_a_voice_moves():
+    """The Arabical shape, caught by the second detection."""
+    from sidm2.fidelity_common import dead_trace
+    r = dead_trace(_dt_frames([1, 1, 5]), onsets={0: [], 1: [], 2: []})
+    assert r and "0 note onsets" in r, r
+
+
+def test_a_LIVE_trace_is_None_with_onsets_supplied():
+    """POSITIVE CONTROL. Without it every assertion above is satisfied by a
+    function that returns a reason unconditionally."""
+    from sidm2.fidelity_common import dead_trace
+    live = _dt_frames([52, 27, 312 % 20 or 7])
+    assert dead_trace(live, onsets={0: [1, 2], 1: [3], 2: [4]}) is None
+
+
+@pytest.mark.parametrize("rel", [
+    "SID/LFT/Foerklaedd_Gud_eta.sid",
+    "SID/Gray_Matt/Always_on_My_Mind.sid",
+    "SID/Gray_Matt/Jukebox_64_Part_2.sid",
+])
+def test_the_real_all_constant_files_are_caught(rel):
+    """The three files the finding came from, traced for real."""
+    import os
+    from sidm2.fidelity_common import dead_trace, siddump_frames_full
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, rel.replace("/", os.sep))
+    if not os.path.exists(path):
+        pytest.skip("%s not present" % rel)
+    frames = siddump_frames_full(path, ['-a0', '-t20'])
+    assert len(frames) > 500, "control: only %d frames traced" % len(frames)
+    r = dead_trace(frames)
+    assert r and "traced nothing" in r, (rel, r)
+
+
+def test_the_real_arabical_needs_the_onset_arm():
+    """Arabical is {0:1, 1:1, 2:5}: bundles alone do NOT catch it."""
+    import os
+    from sidm2.fidelity_common import (dead_trace, siddump_frames_full,
+                                       siddump_note_onsets)
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "SID", "Gallefoss_Glenn", "Arabical.sid")
+    if not os.path.exists(path):
+        pytest.skip("Arabical.sid not present")
+    frames = siddump_frames_full(path, ['-a0', '-t20'])
+    assert len(frames) > 500, "control: only %d frames traced" % len(frames)
+    assert dead_trace(frames) is None, "bundles alone should NOT catch Arabical"
+    onsets = siddump_note_onsets(path, ['-a0', '-t20'])
+    r = dead_trace(frames, onsets=onsets)
+    assert r and "0 note onsets" in r, r
+
+
+def test_a_real_LIVE_file_is_not_flagged():
+    """The corpus-side positive control -- Angular traces 52/27/312 bundles."""
+    import os
+    from sidm2.fidelity_common import (dead_trace, siddump_frames_full,
+                                       siddump_note_onsets)
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "SID", "Angular.sid")
+    if not os.path.exists(path):
+        pytest.skip("Angular.sid not present")
+    frames = siddump_frames_full(path, ['-a0', '-t20'])
+    onsets = siddump_note_onsets(path, ['-a0', '-t20'])
+    assert dead_trace(frames, onsets=onsets) is None
+
+
+# ---------------------------------------------------------------------------
+# THE rc==0-WITH-EMPTY-STDOUT CARVE-OUT: kept, for a corrected reason.
+#
+# run_siddump's docstring used to justify passing empty output through as "a
+# tune that writes nothing", read as unexercised. Measured 2026-09-05 that is
+# not what unexercised looks like, and empty output was not reachable from any
+# input tried: 22 files (including the four known-undriveable rips) all
+# returned rc=0 with a full 400-row trace, as did -t0, an out-of-range subtune,
+# and a SID truncated to 200 bytes. Only garbage bytes and a missing file
+# failed, and those RAISE.
+#
+# What unexercised, undriveable AND corrupt all look like is a FULL-LENGTH
+# trace carrying nothing -- dead_trace()'s case. These tests pin the boundary
+# so the carve-out is not "fixed" by making run_siddump raise on empty, which
+# would guard a case that does not occur.
+# ---------------------------------------------------------------------------
+
+
+def _root():
+    import os
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def test_run_siddump_does_NOT_raise_on_an_empty_result():
+    """The carve-out itself, pinned at the contract level.
+
+    Stubbed rather than driven from a file, precisely because no input has been
+    found that produces this -- so the only way to test the branch is to make
+    subprocess.run return it. If someone adds a raise here, this fails and they
+    have to read the docstring's measurement first.
+    """
+    import subprocess
+    from sidm2 import fidelity_common as FC
+
+    class _R:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    real = subprocess.run
+    subprocess.run = lambda *a, **k: _R()
+    try:
+        assert FC.run_siddump("whatever.sid", ['-a0', '-t8']) == ""
+    finally:
+        subprocess.run = real
+
+
+def test_a_nonzero_exit_still_raises_the_control_for_the_test_above():
+    """Without this, 'does not raise on empty' would also pass for a
+    run_siddump that never raises at all."""
+    import subprocess
+    import pytest as _pytest
+    from sidm2 import fidelity_common as FC
+
+    class _R:
+        returncode = 1
+        stdout = ""
+        stderr = "boom"
+
+    real = subprocess.run
+    subprocess.run = lambda *a, **k: _R()
+    try:
+        with _pytest.raises(RuntimeError):
+            FC.run_siddump("whatever.sid", ['-a0', '-t8'])
+    finally:
+        subprocess.run = real
+
+
+def test_a_CORRUPT_sid_traces_full_length_and_dead_not_empty():
+    """The measurement the corrected docstring rests on.
+
+    A SID truncated to 200 bytes still returns rc=0 and a full-length trace, so
+    corruption does NOT arrive as empty stdout -- it arrives as a dead trace,
+    which is dead_trace()'s job. If siddump ever starts returning empty for
+    this, the carve-out's reasoning needs revisiting and this test says so.
+    """
+    import os
+    import shutil
+    import tempfile
+    from sidm2.fidelity_common import (dead_trace, siddump_frames_full,
+                                       siddump_note_onsets)
+
+    src = os.path.join(_root(), "SID", "Angular.sid")
+    if not os.path.exists(src):
+        pytest.skip("SID/Angular.sid not present")
+    tmp = tempfile.mkdtemp()
+    try:
+        bad = os.path.join(tmp, "truncated.sid")
+        shutil.copy(src, bad)
+        with open(bad, "rb") as fh:
+            head = fh.read(200)
+        with open(bad, "wb") as fh:
+            fh.write(head)
+
+        frames = siddump_frames_full(bad, ['-a0', '-t8'])
+        assert len(frames) > 100, "control: corrupt file traced only %d frames" % len(frames)
+        onsets = siddump_note_onsets(bad, ['-a0', '-t8'])
+        reason = dead_trace(frames, onsets=onsets)
+        assert reason, "a truncated SID should read as a dead trace"
+        assert "traced nothing" in reason, reason
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

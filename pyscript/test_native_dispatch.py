@@ -499,14 +499,19 @@ def test_hardtrack_accepts_are_untouched_by_the_sdi_change():
 def test_sixteen_shogoon_sdi_claims_are_uncorroborated_and_that_is_pinned():
     """The module is ADVISORY, and this is the measured size of it.
 
-    `_probe_sdi` accepts 20 SID/Shogoon files; the shipped runaway-walk check
-    rejects 4; the remaining 16 are accepted with nothing supporting them.
-    ELEVEN corroboration designs have been refuted against these two
-    populations -- six address-shaped, five decoded-result-shaped -- and the
-    module docstring lists them so none is retried.
+    NOW FOURTEEN, WAS SIXTEEN (2026-09-05). `_probe_sdi` accepts 20 SID/Shogoon
+    files; the runaway-walk check rejects 4 and the distinct-pitch bound rejects
+    3 more (`Strange` trips both), leaving 14 accepted with nothing supporting
+    them. The name is kept so the history of this number stays greppable --
+    renaming it to `fourteen` would hide that it moved.
+
+    ELEVEN corroboration designs had been refuted against these two populations
+    -- six address-shaped, five decoded-result-shaped -- and the pitch bound is
+    the first to survive, because it is the FORMAT's bound (a 96-note freq
+    table) rather than a threshold fitted to the sample.
 
     This test exists so the number cannot drift silently. If a future change
-    corroborates some of the 16, this fails and the docstring gets updated with
+    corroborates some of the 14, this fails and the docstring gets updated with
     the new count; if it starts refusing REAL files, the sibling
     `test_the_runaway_check_costs_the_real_sdi_corpus_nothing` fails instead.
     Both directions are covered, which is the point.
@@ -516,10 +521,13 @@ def test_sixteen_shogoon_sdi_claims_are_uncorroborated_and_that_is_pinned():
     for p in sorted(_glob.glob(os.path.join(_SHOGOON, "*.sid"))):
         ok, _ = ND.probe("sdi", p)
         (accepted if ok else refused).append(os.path.basename(p))
-    assert len(accepted) == 16, (len(accepted), accepted)
-    # the 4 the shape check catches are named, so a change of WHICH is visible
+    assert len(accepted) == 14, (len(accepted), accepted)
+    # the 6 the two shape checks catch are named, so a change of WHICH is
+    # visible: 4 from the flat-voice runaway test, plus Kredki and
+    # Technological_Snow from the distinct-pitch bound (Strange trips both).
     caught = {"Dickshake_end.sid", "Dickshake_main.sid",
-              "I_Always_Use_Always.sid", "Strange.sid"}
+              "I_Always_Use_Always.sid", "Strange.sid",
+              "Kredki.sid", "Technological_Snow.sid"}
     assert caught <= set(refused), sorted(caught - set(refused))
 
 
@@ -636,3 +644,64 @@ def test_the_two_families_sharing_shogoon_do_not_overlap():
     sd = {os.path.basename(p) for p in paths if ND.probe("sdi", p)[0]}
     assert ht and sd, "one side claims nothing -- the disjointness is vacuous"
     assert ht & sd == set(), sorted(ht & sd)
+
+
+# ---------------------------------------------------------------------------
+# _probe_sdi's SECOND shape test: the distinct-pitch bound.
+#
+# `is_sdi_play3` is weak off its own corpus -- it claims 20 SID/Shogoon files
+# that are HardTrack/DMC/Music_Assembler, and the flat-voice runaway test caught
+# only 4. The distinct-pitch bound catches 3 more (2 not already caught), taking
+# foreign claims 20 -> 14 with the three pinned counts unmoved.
+#
+# WHY IT IS A FORMAT BOUND AND NOT A FITTED THRESHOLD: the SDI freq table holds
+# 96 notes (sdi_parser.py:36), the 160-file real corpus tops out at 92 distinct
+# pitches, and the three files this rejects sit at 102/105/109. The bound falls
+# between the two populations because the FORMAT puts it there.
+#
+# AND WHY THE SHARPER VERSION IS NOT USED: rejecting any file that emits a note
+# outside 0..95 is unusable -- 36 of the 160 real files do it, up to 47.97% of
+# their notes (Noice), because three corpus songs are themselves runaway walks.
+# These tests use single real files rather than the corpus so the suite stays
+# fast; the corpus-scale counts are in runs.jsonl.
+# ---------------------------------------------------------------------------
+
+_GAL = os.path.join(ROOT, "SID", "Gallefoss_Glenn")
+_SHO = os.path.join(ROOT, "SID", "Shogoon")
+
+
+def test_the_pitch_bound_is_the_freq_table_size_not_a_tuned_number():
+    """If someone re-tunes this to fit a sample, the link to the format breaks.
+
+    96 is the table size; the accept bound is one below it. Both are asserted
+    so a future edit has to state which of the two it means to change.
+    """
+    assert ND.SDI_FREQ_TABLE_NOTES == 96
+    assert ND.SDI_MAX_PITCHES == ND.SDI_FREQ_TABLE_NOTES - 1 == 95
+
+
+@pytest.mark.parametrize("name", ["Kredki", "Technological_Snow"])
+def test_a_foreign_file_over_the_pitch_bound_is_REFUSED(name):
+    """The two files this change newly rejects (Strange already tripped the
+    flat-voice test, so it is not evidence for THIS bound)."""
+    path = os.path.join(_SHO, name + ".sid")
+    if not os.path.exists(path):
+        pytest.skip("SID/Shogoon/%s.sid not present" % name)
+    with pytest.raises(ValueError) as e:
+        ND._probe_sdi(path)
+    assert "distinct pitches" in str(e.value), str(e.value)
+
+
+def test_POSITIVE_CONTROL_the_corpus_file_nearest_the_bound_still_passes():
+    """GT_Groove has 92 distinct pitches -- the most of all 160 real files, and
+    three below the bound. It is the file a slightly tighter threshold would
+    break first, so it is the one worth pinning: without this, `> 95` could be
+    tightened to `> 80` and every test above would still pass while a fifth of
+    the real corpus started being refused.
+    """
+    path = os.path.join(_GAL, "GT_Groove.sid")
+    if not os.path.exists(path):
+        pytest.skip("SID/Gallefoss_Glenn/GT_Groove.sid not present")
+    got = ND._probe_sdi(path)
+    assert got["pitches"] == 92, got["pitches"]
+    assert got["pitches"] <= ND.SDI_MAX_PITCHES
