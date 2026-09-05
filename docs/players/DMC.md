@@ -846,6 +846,60 @@ songs. Re-using `BUNDLE_FLOOR` per part would sit next to its own false
 positives, so extending the screen needs a floor measured on parts — not the
 existing constant applied to a new population.
 
+## `Happy_Jingle_part02` is EMPTY — the span over-ran the song by 31.6x (2026-09-05)
+
+The corpus audit flagged `out/dmc/Happy_Jingle_part02.sf2` at **2 bundles over
+105 notes**, below `BUNDLE_FLOOR = 5`. It is neither a bundle collapse nor a
+"genuinely tiny part": **the part contains no music at all.**
+
+| | value |
+|---|---|
+| real song length (from the trace) | **7.6 s** — 380 frames, **6 note-ons total** (3 / 2 / 1) |
+| `Happy_Jingle_part01.sf2.span` | `0 7` — the whole song |
+| `Happy_Jingle_part02.sf2.span` | `7 240` — **starts after the song ends** |
+| part02 rendered | **0 gate runs on all three voices** |
+
+`part01` carries the song faithfully — every original run reproduces at a
+−2-frame offset (`(8,85)→(6,83)`, `(104,181)→(102,179)`, `(200,361)→(198,359)`,
+v2 `(2,349)→(0,347)`) — so nothing is lost. `part02` is a spurious artifact
+covering 232 seconds of silence.
+
+**The cause is the SPAN, not the trace.** `bin/build_dmc_native_song.py` takes
+the song length from the DECODE, not from the trace:
+
+    span = span_ticks * fpt + phase,  span_ticks = max(sum(n.ticks ...))
+    over decode_song(m, tick_budget=4000)
+
+Measured on this file: `span_ticks` is **exactly 4000** — the decode hit its
+budget rather than reaching an end — with `fpt=3`, `phase=2`, giving
+`4000*3 + 2 = 12002` frames = **240 s**, which is `part02.span`'s end to the
+second. Against a 7.6 s song that is a **31.6× over-run**. The decode emitted
+**1789 / 1899 / 50 events** for a song with 3 / 2 / 1 note-ons, i.e. it walked a
+loop until the budget ran out. `span_ticks == tick_budget` exactly is the same
+tell already recorded above for the three false-locate files — here it does not
+mean a bad locate, it means an **unterminated walk on a short looping song**.
+
+**This is a counterexample to the empty-trace screen's scope argument.** That
+section reasons that a dead trace "structurally cannot produce a multi-part
+build", because with no content every count stays under its cap and the window
+grows to `span`. That holds — but it assumes `span` is the song. When `span`
+over-runs, a HEALTHY trace still yields a multi-part build whose trailing parts
+are empty, so the emptiness lands exactly where the one-part screen does not
+look. Same symptom, different cause, and outside the tracked
+`bundle-screen-is-blind-to-a-partially-empty-trace` too: nothing here is
+partially empty except the window.
+
+⚠️ **The sampled part-floor of "min 6, 0 parts at or below 5" is a SAMPLING
+ARTIFACT.** It came from 60 of 6,692 parts. The full audit scanned all 6,790 and
+flagged **14** at or below the floor — `Rockbuster` 0/3302, `Neurotica_short`
+part06 and part07 at 0/1, `Happy_Jingle_part02` 2/105, `_abl_part15` 4/1116 and
+`Noice_native_part15..22` at 4 each. Parts below 5 exist; the sample missed them.
+
+**Not fixed here.** Deciding what to do — bound `span` by the trace's last
+gate-off, or prune trailing parts that render silent — changes the part
+splitter, which is shared by nine builder modules, so it needs its own task with
+the corpora in `touches`. Tracked as `dmc-span-should-be-bounded-by-the-trace`.
+
 ## Open issues / TODO
 
 - **Per-voice legato onset undercount — SOLVED by the full-song A/B (`DMC_LEGATO_AB`,

@@ -99,6 +99,184 @@ batch-convert-laxity.bat                                     # whole corpus
 
 ---
 
+## `out/Beginning.sf2` is silent because it is a STALE DRIVER 11 BUILD (2026-09-05)
+
+**Attribution, not a defect in this driver.** `out/Beginning.sf2` renders
+completely dead, and the cause is the limit stated directly above: it is a
+**Driver 11** build of a **native Laxity** file, which is the 1–8% pairing.
+The converter at HEAD does not make this mistake — a fresh conversion of the
+same source is byte-for-byte correct on onsets.
+
+| | measured |
+|---|---|
+| `player-id.exe SID/Laxity/Beginning.sid` | **`Vibrants/Laxity`** → routes to the Laxity driver |
+| driver string inside `out/Beginning.sf2` | `" 11.00 - T"` → **Driver 11** |
+| driver string inside `out/Beginning_v2.sf2` | `" 11.00 - T"` → **also Driver 11** |
+| gate-on frames, original, first 400 | **389** |
+| gate-on frames, `out/Beginning.sf2` | **0** |
+| gate-on frames, fresh conversion | **389** |
+
+A fresh conversion reproduces the original's note onsets **exactly** — voice 1
+25/25, voice 2 2/2, voice 3 2/2, offset `0` on every one, zero frames of drift.
+And the converter says so itself while doing it:
+
+```
+Player Type:     Vibrants/Laxity
+Selected Driver: LAXITY (sf2driver_laxity_00.prg)
+Reason:          Laxity-specific driver for maximum accuracy
+Alternative:     Driver 11 (1-8% accuracy - not recommended)
+```
+
+So the two `out/Beginning*.sf2` artifacts predate correct auto-selection (or were
+built with an explicit `--driver driver11`). **Rebuilding them fixes it**; nothing
+in `laxity_parser.py` or `laxity_converter.py` needs changing, and the 99.93%
+row is not implicated.
+
+### Two measurement traps this cost, both worth knowing
+
+⚠️ **A Laxity-driver SF2 is entered at `$1003`, NOT at `$10A1`.** CLAUDE.md's
+Essential Constants list `PLAY=0x10A1`, and that is the play address of the
+**native NP21 player inside the original SID** — not of the SF2 artifact, which
+is an SF2 driver entered like any other. Probing a correct Laxity build at
+`$10A1` returns **0 gate-on frames** and reads exactly like a dead conversion.
+This mistake was made in both directions while diagnosing this file.
+
+⚠️ **The symptom is "silent from frame 0", not "silent after ~0.25 s".** The
+opening transient in the staged WAV is the driver's init writing registers; no
+note ever gates. A description built from the audio envelope alone puts the
+failure a quarter-second later than it is, and points diagnosis at a decay
+mechanism that does not exist.
+
+## `$80–$9F` is a DURATION byte: `(b & $0F) + 1` frames, bit 4 a separate flag (2026-09-05)
+
+**Settled against the player's own 6502 code**, not against another module in
+this repo — three readings of this byte range coexisted here and all three were
+in-repo, which is what made them unresolvable from the inside.
+
+Ground truth: `drivers/laxity/laxity_player_disassembly.asm` (SIDwinder
+disassembly of *Stinsen's Last Night of '89*, a native NP21 rip). The sequence
+byte reader:
+
+```
+    bpl Label_12          ; bit 7 clear -> not a duration byte at all
+Label_10:
+    cmp #$90
+    bcc Label_11
+    inc DataBlock_6 + $100,X    ; bit 4 set -> bump a SEPARATE flag
+Label_11:
+    and #$0F                    ; duration = LOW NIBBLE
+    sta DataBlock_6 + $FD,X
+    iny
+    lda (ZP_0),Y                ; then fetch the note
+```
+
+and the counter it feeds:
+
+```
+    dec DataBlock_6 + $EE,X
+    bpl Label_16          ; advance the row only when it goes NEGATIVE
+```
+
+`dec` + `bpl` means a stored `n` survives `n` decrements and advances on the
+`n+1`th. So:
+
+> **duration = `(byte & $0F) + 1` frames — 1..16 for `$80`..`$8F`.
+> Bit 4 is NOT part of the count; it sets a separate flag.**
+
+### All three readings in this repo were wrong, each differently
+
+| where | reading | verdict |
+|---|---|---|
+| `sidm2/sequence_translator.py:233` | `(b & $1F) + 1` → 1..32 | **wrong mask** — folds bit 4 into the count; the `+1` is right |
+| `pyscript/sf2_viewer_core.py` `unpack_sequence` | `b & $0F`, bit 4 = tie | **right mask and right bit-4 split — but no `+1`**, so every duration is one frame short |
+| `CLAUDE.md` Laxity constants | `$80 = GATE_OFF` | **wrong for the sequence stream** — `$80` is a duration byte whose nibble is 0, i.e. one frame |
+
+⚠️ **The `$100,X` flag is not purely a "tie".** The same location is incremented
+at line 140 when the NOTE byte is `$00` or `$7E`. So it is a shared
+gate/continue flag that bit 4 is one input to, and calling it `tie` in a decoder
+is a simplification that happens to work rather than the player's own model.
+
+### Why the code was NOT changed when this was established
+
+The mask difference is **not inert**. Measured over the 6 `SID/Laxity/*.sid`
+files whose sequence table locates: **1,708 duration bytes, of which 232 (13.6%)
+have bit 4 set** — exactly the population on which `$1F` and `$0F` disagree. So
+switching `sequence_translator.py` to the correct mask changes the decoded
+duration of roughly one event in seven.
+
+`sidm2/sequence_translator.py` is imported by `sidm2/laxity_analyzer.py`, which
+owns the two-stage path behind the published **99.93–100%** native-Laxity
+figure. A mask change there can move that number, and confirming it does not
+requires a corpus-scale accuracy re-measurement — not the two single files a
+decoder task normally declares. Fixing `unpack_sequence`'s missing `+1` is
+equally non-inert in the other direction: `abpage.row_schedule` multiplies
+duration by tempo, so every row's frame position shifts.
+
+**Both fixes are correct and neither is safe to ship unverified.** They want a
+task that declares the converter corpus and re-measures the headline figure on
+both arms.
+
+## The instrument table is NOT at a fixed offset — and the validated search is not a drop-in (2026-09-05)
+
+**`LaxityParser._extract_instruments()` reads `load_address + $0A6B`** (i.e.
+`$1A6B` for a `$1000` load). Measured against `instrument_map`'s own validated
+search over 14 `SID/Laxity/*.sid` files:
+
+> **the offset `$0A6B` is not among the ranked candidates on ANY of the 14.**
+> The search located a top candidate on **14 of 14**, each explaining 100% of
+> that file's observed envelopes.
+
+The located offsets are genuinely per-file, which is why no constant can work:
+
+```
+$0475  $047A  $0492  $04F9  $061B  $0708  $07A6
+$0823  $08FD  $0A2B  $0A97  $0AB3  $0E31  $0F07
+```
+
+Note the load addresses vary too — `Alibi.sid` loads at `$4000`, `Aids_Trouble`
+puts its table at `$AE31` — so this is not a fixed *address* problem that a
+load-relative offset already solves. It is per-song table placement, the same
+shape `PATTERNS.md` records for every other player in this repo.
+
+This supersedes the earlier framing that asked which of two candidates
+(`$1A6B` or `lo_base+$4F`) is right. **Neither is**; there is no two-way choice.
+
+### Why the search was NOT wired in
+
+`instrument_map.locate_instrument_table(data, observed, ...)` ranks layouts by
+how many **observed ADSRs** they explain — `observed` comes from note onsets in
+a RENDERED TRACE (`siddump_frames_full` → `onsets_with_registers`).
+
+`LaxityParser.__init__(self, data: bytes, load_address: int)` takes bytes and
+nothing else, and the module imports only `logging`, `typing` and `dataclasses`
+— **it cannot render anything.** So the validated search is not a drop-in
+replacement for the constant: wiring it in means giving `LaxityParser` a trace,
+which changes its constructor contract and reaches every call site
+(`laxity_analyzer.py:491`, `sf2_viewer_core.py:1556` and `:1797`, plus the
+tests).
+
+That is a real change with a real design question behind it — should a byte
+decoder depend on a renderer? — and it is not one to make as a side effect of
+correcting a constant.
+
+### What the constant currently costs, so the priority is honest
+
+It is NOT behind the 99.93–100% figure. `laxity_analyzer.extract_music_data()`
+builds its own instruments via `extract_instruments()` /
+`instrument_extraction.extract_laxity_instruments`, not from
+`laxity_data.instruments`. What the parser's instruments actually feed:
+
+- `driver11_section_injectors.py:97-100`, i.e. the **Laxity → Driver 11** path,
+  which is separately documented at **1–8%** and not recommended for native
+  files;
+- `laxity_analyzer.py:525-531`, where the parser's first instrument record is
+  used as a **search seed** to report `extraction_addresses['instruments']`. A
+  wrong seed makes that report wrong or empty — a reporting defect, not a
+  fidelity one.
+
+⚠️ `table_extraction.py:1518` already says the hardcoded `$1A6B` fallback is
+"wrong for many". This section is the measurement behind that sentence.
+
 ## Sequence numbering: the editor's 01/02/05 vs the analyzer's 0/1/2
 
 Measured on `SF2/Angular.sf2` (2026-08-29, HEAD `fa19503`), against the payload

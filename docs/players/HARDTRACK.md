@@ -1957,6 +1957,211 @@ never as pass/fail.
 
 ---
 
+## `Shogoon-Rave` voice 1 is not LATE — the duration is consumed ONE NOTE EARLY
+
+**Attributed exactly, 2026-09-04. `offset[k] = gap[k] − 3`, on 151 of 151
+onsets, zero exceptions.** `gap[k]` is the ORIGINAL's own onset gap *starting*
+at note k, and −3 is the render lead this doc already documents. So each note
+lands where the original's **next** note begins: the sequencer holds note k for
+the duration belonging to note k+1.
+
+Measured inside part 1's own 24 s span (from its `.span` sidecar — at 30 s the
+onset counts do not even match, 253 vs 208, and any order-based alignment is
+meaningless). Voice 1 is count-matched 152 == 152 there.
+
+The decisive test is on the gap SEQUENCE, not its histogram:
+
+```
+identity          gg[i] == og[i]      107/151   70.9%
+shift LEFT by 1   gg[i] == og[i+1]    150/151   99.3%   <-- the mechanism
+shift RIGHT by 1  gg[i] == og[i-1]    111/151   73.5%
+shift LEFT by 2   gg[i] == og[i+2]    106/151   70.2%
+```
+
+The single miss is index 0: the original's first gap is **4** frames, the only
+one in the file that is not a multiple of the 5-frame row grid. Ours has none.
+
+**Three earlier readings of this defect were wrong, and each was wrong in an
+instructive way.**
+
+1. *"A consistent +2 across essentially the whole part."* It is +2 for onsets
+   1–64 only (0.08–6.38 s). From 65 it is +17 for sixteen onsets, then
+   alternates +7/+2 for the remaining 71 across 45 runs. Anyone starting from a
+   constant delay looks for a fixed lead and finds nothing.
+2. *"`lateness = gap − 5`."* It fits all three offset clusters in the abstract
+   (5→+2, 10→+7, 20→+17) and scores **0/151** when tested per note. The right
+   constant is −3, and the right gap is the one *after* the note, not before.
+   A rule that explains the histogram and not the sequence is not the mechanism.
+3. *"Mis-ordered durations — the right multiset in the wrong order."* True as
+   far as it goes, and it stops one step short. 24 of the 44 differing positions
+   are exact adjacent transpositions, which is simply what a one-place shift
+   looks like where the source alternates 5, 10, 5, 10. The multiset agrees
+   because a shift permutes; it is not an ordering defect, it is an off-by-one.
+
+**What this is NOT.** It is not `Fun_Factory`'s defect: that was an isolated
+voice-1 waveform test-bit blip re-arming `_arm_filter`, a single event. This is
+a systematic index error across every note of the voice, in the opposite
+direction.
+
+**Reproducing it**, and the next attempt should start here rather than from the
+onset offsets — those are a *derived* quantity, and reading them first is
+exactly what made this look like a timing bug for three cycles:
+
+```
+og[i] = orig onset[i+1] − onset[i]      # inside the part's own .span
+gg[i] = ours onset[i+1] − onset[i]
+assert gg[i] == og[i+1]                 # 150/151
+assert (ours[k] − orig[k]) == og[k] − 3 # 151/151
+```
+
+**Not fixed here.** The fix belongs in whatever assigns per-note durations for
+the HardTrack sequencer walk, and this task carried no writable path to it.
+
+---
+
+
+## The one-note-early duration is CORPUS-WIDE — 26 of 30, not one file (2026-09-04)
+
+**The section above attributed the law on `Shogoon-Rave`. Re-measured across
+every built HardTrack song, the same law holds with the same constant and zero
+exceptions on 26 of the 30 files where the question is answerable at all.** It
+is a property of the sequencer walk, not a quirk of one tune.
+
+```
+offset[k] == og[k] - 3      exactly, no exceptions, C = -3 on every one of the 26
+```
+
+`og[k]` is the ORIGINAL's own voice-1 onset gap *starting* at note k; `-3` is
+the render lead. C was not assumed — it was swept over -12..+12 per file, and
+the best fit came back `-3` on all 26 independently.
+
+| verdict | n | songs |
+|---|---|---|
+| **one-note-early (law exact)** | **26** | Altered_States_Tune_1, Astoria_7_tune_2, Domagareflexow, For_Astoria_6, Fun_Factory, Griffin_Score, Hopscotch, Illmatic_end, Intrigue, Jazz_and_Weird_Tekno, Jazzloor, Love_tune_5, Muminki_Rooooolz, Muza_Do_Dema, Ritual_II_tune_1, Ritual_II_tune_2, Rune-T_Noter, Shogoon-Rave, Something_to_Eat, Takisobie, Teekkno, Timsoft_Intro, Trance, Walk_to_Soul, What_Can_I_Say_Crap, Zakplus |
+| clean (gap identity 95.5-97.8%) | 3 | Arizona_Dream, Sling, Tribute_to_Laxity |
+| too few onsets to call | 1 | Altered_States_Tune_2 (n=6, 5 gaps) |
+| **UNCOMPARABLE — counts differ** | 3 | If_I_Was_a_Rich_Man, Love_tune_2, Love_tune_3 |
+
+Per-file gap-shift rate (`gg[i] == og[i+1]`) is **100.0%** on all 26. The three
+clean files invert exactly as they should: shift 17.8-33.3%, identity 95.5-97.8%.
+
+### THE PREVIOUS COUNT OF THIS DEFECT — "30 of 33 clean at a uniform -3" — IS WITHDRAWN
+
+It came from a nearest-frame greedy matcher, the failure `docs/ROADMAP.md` E3
+already documents: *a matcher with a window wider than the note spacing pairs an
+onset with its neighbour*. That attempt caught the problem on one file and
+withdrew that file's number, but left the other 30 standing as "clean". They were
+not clean; the matcher was hiding a defect present on almost all of them. **A
+greedy matcher does not merely add noise — it manufactures agreement**, because
+pairing each built onset with whichever original onset is nearest is close to a
+definition of "aligned".
+
+Nothing here uses a matcher. Onsets are index-paired, and index pairing is only
+run where the COUNTS MATCH — which is why three files are reported as
+UNCOMPARABLE rather than as findings. On a count mismatch, index pairing desyncs
+after the first missing note and yields a scatter of multiples of the row grid
+that reads like many independent early events and is one cascading misalignment.
+
+### The task's own framing is backwards, and so was the title of the section above
+
+This is filed as "voice 1 fires a note-on EARLIER than the original". It does
+not. The clean files sit at `-3`, the render lead. The 26 defective files sit at
+`og[k] - 3`, which is **later** than that on every gap longer than three frames.
+Voice 1 is LATE, and it is late because the duration is consumed one note early:
+note k is held for the length belonging to note k+1, so the next onset arrives
+where the original's note k+2 would have started.
+
+### What this does NOT say
+
+It does not say 26 songs are audibly wrong. `og[k] - 3` on a 4-frame gap is
+`+1` — one frame, inaudible. The magnitude is the ORIGINAL's own gap, so the
+error is small in dense passages and large in sparse ones (`Domagareflexow` and
+`Ritual_II_tune_1` reach +141, `Ritual_II_tune_2` +189). Rank by gap length, not
+by file count, before deciding what to fix first.
+
+It also measures **voice 1 only**, over **part 1 only**, each inside its own
+`.span` window. Voices 2 and 3 were not scanned and no claim is made about them.
+
+### Reproduce
+
+`sidm2.fidelity_common.siddump_note_onsets(path, ['-a0', '-t<span>'])`, voice
+index 0, original from `SID/Shogoon/<song>.sid` and ours from
+`out/hardtrack_native/<song>_part01.sid`, window from
+`out/hardtrack_native/<song>_part01.sf2.span`. Compare gap SEQUENCES first; the
+onset offsets are a running sum and look like a timing bug rather than the index
+error they are.
+
+## The voice-1 count mismatch is a WINDOW EDGE — and 32 of 33 songs are clean at -3 (2026-09-05)
+
+**Measured over part 1 of every built song, inside its own `.span`, index-paired,
+voice 1: 32 of 33 align with the original at a CONSTANT -3 across 1,763 onsets,
+with zero deviation. One song diverges.** The two sections above are withdrawn
+below.
+
+### The count mismatch: 12 songs, not 3 — and every one is an edge effect
+
+| | n | detail |
+|---|---|---|
+| counts MATCH | 21 | |
+| counts differ by **+1** | 11 | Astoria_7_tune_2, Fun_Factory, Hopscotch, Jazzloor, Love_tune_3, Muminki_Rooooolz, Muza_Do_Dema, Ritual_II_tune_1, Rune-T_Noter, Shogoon-Rave, Trance |
+| counts differ by **-1** | 1 | Intrigue |
+
+Every difference is exactly one onset and **every one sits at the END of the
+window, never in the interior** — tested by asking whether the surplus onset
+falls past the shorter list's last entry, not by eye.
+
+The cause is the render lead. The build starts 3 frames early
+(`orig_first=3, built_first=0` on 11 of the 12), so inside a fixed window it has
+three extra frames of runway at the far end and catches an onset the original's
+window does not — or, for `Intrigue`, the reverse. **Drop that one edge onset and
+the remaining onsets align at exactly -3 on all 11.** `Shogoon-Rave` pairs 151
+onsets that way, `Muminki_Rooooolz` 155.
+
+So these songs are not UNCOMPARABLE and they are not defective: they are clean
+songs measured through a window whose two sides do not start at the same frame.
+
+### `Intrigue` is the ONLY real voice-1 defect in the corpus
+
+It is the sole `-1`, and the sole song whose common prefix is not constant
+(6 distinct offsets: -3, 9, 15, 21, 117). Located exactly:
+
+```
+aligned at -3 for the first 43 onsets, then:
+  orig  ... 1323, 1347, 1923, 2043, 2067, ...
+  built ... 1320, 1344,  ---, 2040, 2064, ...
+```
+
+The original gates a note at frame **1923** that the build never plays, opening a
+120-frame hole; every later onset then pairs with its neighbour and the offsets
+scatter. That is one missing note, not a timing law.
+
+### WITHDRAWN: "26 law-exact / 3 clean / 3 UNCOMPARABLE"
+
+That table, and the `offset[k] == og[k] - 3` law above it, do not reproduce
+against the shipped artifacts. Measured on the SAME bytes (artifacts stamped
+2026-09-04 16:50-16:51; `bin/build_hardtrack_native_song.py` and
+`sidm2/hardtrack_parser.py` unmodified since), the law is 0-of-157 gaps on
+`Ritual_II_tune_2` and 0% whole-song on `Teekkno`, while part 1 of both is clean
+at -3. The three songs named UNCOMPARABLE include two — `If_I_Was_a_Rich_Man`
+(62/62) and `Love_tune_2` (47/47) — whose counts MATCH exactly, and it misses 11
+songs that do differ.
+
+The decode path is independently correct, which is why no fix was applied:
+`voice_events`' note-on frames sit at a constant -2 from the original across gaps
+of 192/156/18/120 on `Ritual_II_tune_2`, and the shim's cumulative ticks
+reproduce the original's onsets to the frame (3, 195, 387, 579, 771, 927, 999).
+A one-note-early duration consumption would make both track `og[k]`; neither
+moves.
+
+⚠️ **What cannot be settled here is WHY the earlier measurement produced the
+law**, because its script was not kept. That is the durable lesson: this repo
+tracks `pyscript/soundmonitor_sweep.py` and the Blackbird sweep so their corpus
+numbers are reproducible from a clean clone, and this measurement was not given
+the same treatment. The numbers above come from a scratchpad script that is
+likewise NOT tracked — `pyscript/` was not writable by the task that produced
+them — so they carry the same weakness until someone lands the sweep as a
+tracked file.
+
 ## Next steps
 
 1. ~~**Resolve the parser residual**~~ — done: the wave program's arpeggio column

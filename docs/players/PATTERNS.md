@@ -755,6 +755,55 @@ one of them removing 7 shipped parts.
 
 ---
 
+### F15. A screen can name a table the format does not have
+
+**Symptom.** A distribution with an unexplained spike, sitting one step above
+the screen's own refusal threshold. `bundle_diversity` (`sidm2/fidelity_common.py`)
+scored **1,569 of 6,790** artifacts at *exactly* 6 bundles against a
+`BUNDLE_FLOOR` of 5 — a fifth of the corpus one row above being refused.
+
+**Detection.** Do not ask whether the number is too low; ask what the number is
+made OF. Every 6 has the identical shape, 100 of 100 sampled:
+
+```
+Wave2: 6 distinct   Filter3: 0 distinct   Filter4: 0 distinct
+```
+
+Then check the shape against the format. `bundle_diversity` sums distinct
+non-zero rows over `_PROGRAM_TABLES = ("Wave", "Pulse", "Filter")`, and its
+docstring says "wave/pulse/filter program tables" — but across 210 artifacts
+spanning all six corpora, **not one `per_table` ever contains a Pulse entry**.
+The reason is not a naming mismatch or a locate failure: the SF2 descriptor set
+is `Instruments, Commands, Wave, Filter(3), Filter(4), Tempo(6), Tempo(7),
+HR(5), Arpeggio(8)`. **There is no Pulse table in the format.** The measure
+names a table that cannot exist, so the `"Pulse"` entry has never contributed
+anything and never could.
+
+**The finding, in two halves.**
+
+1. *The spike is REAL, not saturation.* The measure has no ceiling at 6 — the
+   same corpora produce 6 through 68+. It is a genuine property of one builder's
+   output, concentrated in SDI (90 of 300 sampled, 30%) with a little DMC (10 of
+   300), and **entirely absent** from fc, soundmonitor, mon and hardtrack_native
+   (0 of 574, scanned in full). 30% x 5,039 + 3% x 1,177 accounts for the whole
+   1,569.
+2. *The screen is narrower than it reads.* It is a WAVE-ONLY measure on this
+   corpus in practice, because both Filter tables are all-zero on exactly the
+   population in question. A 6 therefore means "six distinct wave rows and no
+   filter programs at all" — and the entire one-row margin over the floor rests
+   on the wave table.
+
+**Fix / exploit.** Say what the screen actually covers rather than what it was
+meant to. `"Pulse"` should come out of `_PROGRAM_TABLES` (or be shown to exist
+under some other name first), and the docstring should stop claiming pulse
+coverage — a screen advertising three table families while reading two is the
+same shape as the `$D418`-scored-by-nothing class in F9: the blind spot is in
+the description, so nobody goes looking. This does **not** change any number
+already measured: the term was always zero.
+
+**Players seen in.** SDI overwhelmingly, DMC slightly; measured absent in FC,
+Sound Monitor, MoN and HardTrack. The measure itself is shared by all of them.
+
 ## Adding an entry
 One screenful max: symptom → detection → exploit/fix → players seen in.
 If a technique is rediscovered in a new arc, add the sighting here *in the

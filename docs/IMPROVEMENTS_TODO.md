@@ -42,9 +42,33 @@ shortcuts, tooltips, or a dark-mode toggle in `pyscript/conversion_cockpit_gui.p
 `pyscript/cockpit_styles.py`)
 
 **Tasks**:
-- [ ] Add keyboard shortcuts (Ctrl+O, Ctrl+S, F5, Esc)
-- [ ] Add tooltips to all controls
-- [ ] Add dark mode option
+- [x] Add keyboard shortcuts (Ctrl+O, Ctrl+S, F5, Esc) — **DONE 2026-09-04**.
+  `conversion_cockpit_gui.SHORTCUTS` declares them as data (plus Ctrl+D for the
+  theme), and `_install_shortcuts` RAISES at startup if a binding names a method
+  that does not exist — a key bound to a missing handler otherwise still
+  swallows the keypress and does nothing at all.
+- [x] Add dark mode option — **DONE 2026-09-04**. `cockpit_styles.DarkColorScheme`
+  plus `set_dark_mode()` / `active_scheme()`; both stylesheet builders now take
+  the palette as a parameter instead of naming `ColorScheme` directly, which is
+  what made a second palette possible. The choice persists in QSettings
+  (`ui/dark_mode`) and Ctrl+D toggles it. A test asserts the dark palette defines
+  EVERY colour the light one does — a hand-maintained mirror goes stale silently,
+  and in dark mode the symptom is an AttributeError in one widget at runtime.
+- [~] Add tooltips to ~~all~~ **the configuration controls** — **SCOPED, not
+  completed as written.** `cockpit_styles.TOOLTIPS` declares the text as data and
+  `ConfigPanel.apply_tooltips()` applies it, covering the four controls whose
+  meaning is not evident from their label (the three mode radios and the driver
+  combo). "All controls" is STRUCK: across ~2,570 lines there are buttons reading
+  "Start" and "Stop" whose tooltip could only restate the label, and a tooltip
+  that repeats its own button is noise rather than help. Adding one mechanically
+  everywhere would satisfy the wording and make the UI worse. If a specific
+  control is unclear in use, add its key to `TOOLTIPS` — a control with no entry
+  is findable by reading one dict rather than auditing a constructor.
+
+**Tested by**: `pyscript/test_conversion_cockpit_gui.py` (10 tests) — the first
+test of either GUI module under any name. All run without a QApplication; they
+prove the data behind the three features is complete and wired, not that the
+window looks right. That still needs a display and a person (DOC-1).
 
 ---
 

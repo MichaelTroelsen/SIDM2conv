@@ -399,6 +399,60 @@ python -m pytest pyscript/test_sidwinder.py -v
 
 ---
 
+## Standalone binary — what it would bundle, and what stays on your machine
+
+`sidm2.spec` (repo root) is a PyInstaller spec for a console `sid-to-sf2`
+binary:
+
+```
+pip install pyinstaller
+pyinstaller sidm2.spec        # -> dist/sid-to-sf2/sid-to-sf2.exe
+```
+
+⚠️ **It has never been built.** PyInstaller is not installed on the machine that
+wrote the spec (checked 2026-09-05), so the spec is reasoned from the tree
+rather than confirmed by a build. Do not describe SIDM2 as shipping a binary
+until someone has run the command above and converted a file with the result.
+
+### The external tools are NOT Python, so they are not "just imported"
+
+SIDM2 shells out to several helper executables. A frozen binary can carry some
+of them and cannot carry the rest, and the difference decides whether a feature
+works or fails at runtime:
+
+| tool | where it lives | in a binary |
+|---|---|---|
+| `player-id.exe` | `tools/`, tracked | **bundled** — driver auto-selection needs it |
+| `siddump.exe` | `tools/`, tracked | bundled |
+| `SIDwinder.exe` | `tools/`, tracked | bundled |
+| `SIDdecompiler.exe` | `tools/`, tracked | bundled |
+| `sidm2-sid-trace.exe` | `tools/`, tracked | bundled |
+| `sidplayfp` | `tools/sidplayfp/`, 9 tracked files | bundled (exe + its data files) |
+| **VICE** (`vsid.exe`) | a separate install, e.g. `C:\winvice\bin` | **NOT bundled** — stays on your machine |
+| **SID Factory II** (`SIDFactoryII.exe`) | a separate install / `bin/` | **NOT bundled** |
+
+So audio export via VICE, and anything that drives the SID Factory II editor,
+still require those programs to be installed and findable **even when running
+the binary**. Everything in the first six rows travels with it.
+
+### Two things must be fixed before the binary can work
+
+These are code changes, not packaging options, and a build made without them
+produces an executable that starts fine and then fails on its first conversion:
+
+1. **Nothing in the codebase looks in `sys._MEIPASS`.** PyInstaller unpacks
+   bundled data there; code that does not consult it cannot see the `tools/`
+   directory it just shipped. There are currently **zero** references to
+   `sys._MEIPASS` or `sys.frozen` anywhere in the tree.
+2. **One tool path is resolved from the working directory.**
+   `sidm2/conversion_pipeline.py:339` builds
+   `os.path.join(os.getcwd(), 'tools', 'player-id.exe')`, so the lookup depends
+   on where the user happens to be standing rather than on where the program
+   is. Run the binary from your Music folder and driver auto-selection breaks.
+
+The fix for both is one helper that prefers `sys._MEIPASS` when frozen and
+falls back to the repo layout otherwise, used everywhere a tool path is built.
+
 ## Quick Reference Card
 
 ### Essential Commands
