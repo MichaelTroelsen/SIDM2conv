@@ -1690,6 +1690,20 @@ class SF2Parser:
         unrelated investigation, and that number was very nearly used as
         evidence about what the file contained.
 
+
+        THE GUARD IS RIGHT AND THE FALLBACKS ARE NOT (decided 2026-09-05).
+        Refusing here is correct -- the decodes really are impossible -- but
+        what takes over is measurably inadequate. Over a 120-file random
+        sample of the refused population (3,561 .sf2 scanned), 99% have an
+        orderlist referencing a sequence the fallback never produced, and
+        across the sample the fallbacks supply 305 sequences against 613
+        referenced-but-missing -- about a third of what is asked for. They do
+        not return fewer rows of the same song; they locate a DIFFERENT set of
+        bodies (produced-but-unreferenced ids reach 126, while referenced ids
+        are a contiguous run from 0/1 in 98% of files). So 88% of refused
+        artifacts draw nothing, and that is a decode-quality defect downstream
+        of this refusal, NOT a reason to loosen it. See
+        test_the_fallback_readers_recover_a_MINORITY_of_referenced_sequences.
         Returns True when the decode is possible. Otherwise clears `sequences`,
         records the reason on `sequence_refusals`, and returns False so the
         dispatch falls through to the next reader exactly as it does for any

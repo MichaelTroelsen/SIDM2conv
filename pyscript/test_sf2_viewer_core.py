@@ -778,3 +778,82 @@ def test_STILL_DECODES_is_not_the_same_measurement_as_DRAWS_ROWS():
     assert drawn == 0, (
         "this file now draws %d rows -- the decodes/draws divergence this test "
         "pins has changed; re-measure the 310/282 split" % drawn)
+
+
+def test_the_fallback_readers_recover_a_MINORITY_of_referenced_sequences():
+    """THE DECISION: the fallbacks are INADEQUATE for the refused population.
+
+    The sibling test above pins that 282 of 310 guard-refused artifacts draw
+    zero rows. It deliberately left open which of two things that means:
+    drawing nothing is HONEST (the refused decode was impossible, so there was
+    nothing true to draw), or the FALLBACK readers are inadequate. This settles
+    it, and the answer is the second.
+
+    MEASURED 2026-09-05 over a random sample of the same corpus -- 3,561 .sf2
+    scanned under out/ and SF2/, 120 refused (3.4%, consistent with the recorded
+    310/8,716):
+
+        draw ZERO rows                                     106  (88%)
+        orderlist references a sequence NOT produced       119  (99%)
+        fallback produced ids NOTHING references            48  (40%)
+        referenced-but-missing ids / produced ids       613 / 305
+
+    So the fallback recovers about a THIRD of the sequences the orderlist asks
+    for. It does not draw fewer rows of the same song; it recovers a DIFFERENT
+    set of bodies.
+
+    THE ORDERLIST IS NOT ITSELF NOISE, which is the alternative that would make
+    "missing" meaningless, and it was tested rather than assumed: 118 of the 120
+    files (98%) have a referenced sequence set that is a CONTIGUOUS RUN starting
+    at 0 or 1, referenced-but-missing ids max out at 26 with 96% at or below 16,
+    while produced-but-unreferenced ids reach 126 with only 43% at or below 16.
+    Dense low ids asked for, scattered high ids found: the orderlist is
+    trustworthy and the fallback is locating the wrong bodies.
+
+    THE GUARD IS NOT AT FAULT AND MUST NOT BE LOOSENED. On this file the refused
+    decode claimed 21,068 entries from 18,043 bytes -- arithmetically
+    impossible. The fallback that takes over then produces a possible decode
+    (2,710 entries) that is simply the wrong one.
+
+    NOT PORTABLE, AND THAT IS A FINDING: zero refused artifacts live under SF2/,
+    and out/ is gitignored (.gitignore:157). The entire refused population is
+    build output, so this test skips on a clean clone and there is no tracked
+    file that exhibits the defect.
+    """
+    f = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "out", "sdi", "2_Young_2_Die_native_part01.sf2")
+    if not os.path.exists(f):
+        pytest.skip("out/sdi/2_Young_2_Die_native_part01.sf2 absent")
+
+    import contextlib
+    import io as _io
+    import logging
+    from pathlib import Path
+
+    logging.disable(logging.CRITICAL)
+    try:
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            import abpage
+            sched = abpage.row_schedule(Path(f))
+    finally:
+        logging.disable(logging.NOTSET)
+
+    missing = sorted({m["seq"] for m in (sched.get("missing_sequences") or [])})
+    drawn = sum(len(t) for t in (sched.get("tracks") or []))
+
+    # The orderlist asks for a dense low run; the fallback did not supply it.
+    assert missing, (
+        "the orderlist now resolves every sequence it references -- the "
+        "fallback-inadequacy this test records has changed; re-run the sample")
+    assert len(missing) >= 5, (
+        "expected the orderlist to reference several sequences the fallback "
+        "never produced; got %r" % (missing,))
+    assert max(missing) <= 32, (
+        "referenced-but-missing ids should be DENSE AND LOW (a real orderlist); "
+        "got %r -- if these are scattered/high the orderlist itself is suspect "
+        "and the conclusion above must be re-derived" % (missing,))
+    assert drawn == 0, (
+        "this file now draws %d rows; the fallback may have improved -- "
+        "re-run the 120-file sample before trusting the numbers above" % drawn)
+
