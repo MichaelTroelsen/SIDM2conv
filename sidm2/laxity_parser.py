@@ -114,6 +114,101 @@ def locate_seq_ptr_table(data: bytes, load_address: int):
     return scored[0][1], scored[0][2]
 
 
+def locate_seq_table(data: bytes, load_address: int, min_n=4, max_n=64):
+    """(table_addr, N, ptrs) for the split lo[N]/hi[N] SEQUENCE table, or None.
+
+    PORTED VERBATIM from pyscript/sf2_viewer_core.py's
+    SF2Parser.laxity_locate_seq_table (81e4e94), which is where this shape was
+    first measured -- 22 locate / 25 refuse / 0 tie over the 47 Laxity SF2s.
+    It is repeated here rather than imported because sidm2/ is the lower layer:
+    the viewer already imports this module, so importing back would be a cycle.
+    The two copies should converge on THIS one; see
+    laxity-locate-seq-table-exists-in-two-copies.
+
+    WHY A SEARCH AND NOT A CONSTANT. The table sits immediately below the
+    orderlists on Angular ($1B1C, N=14) but not on Stinsen, whose three
+    orderlists are $100 apart -- so "just past the last orderlist" is an
+    Angular-shaped guess, and this area has been wrong twice already by
+    generalising from one file.
+
+    THE SHAPE IS SELF-VERIFYING, which is what makes an exhaustive scan safe:
+    the bodies start immediately after the table, so entry 0 MUST equal
+    table + 2N. With "every entry inside the image" and "entries strictly
+    ascending" that is strong enough to be unique, and this REFUSES on a tie
+    rather than picking -- a wrong table would silently renumber every
+    sequence.
+
+    Measured here over SID/Laxity/*.sid (286 files): 21 locate, 265 refuse,
+    worst single-file scan 0.004s.
+    """
+    n = len(data)
+    lim = load_address + n
+    hits = []
+    for off in range(0, n - 2 * min_n):
+        # bodies begin at table + 2N, so lo[0] pins N modulo 128
+        delta = (data[off] - (load_address + off)) & 0xFF
+        if delta & 1:
+            continue
+        for cand in range(delta >> 1, max_n + 1, 128):
+            if cand < min_n or off + 2 * cand >= n:
+                break
+            tbl = load_address + off
+            if data[off + cand] != ((tbl + 2 * cand) >> 8) & 0xFF:
+                continue
+            ptrs = [data[off + i] | (data[off + cand + i] << 8) for i in range(cand)]
+            if ptrs[0] != tbl + 2 * cand:
+                continue
+            if not all(load_address <= p < lim for p in ptrs):
+                continue
+            if not all(ptrs[i] < ptrs[i + 1] for i in range(cand - 1)):
+                continue
+            hits.append((tbl, cand, ptrs))
+    if len(hits) != 1:
+        logger.debug("locate_seq_table: %d candidates -- refusing", len(hits))
+        return None
+    return hits[0]
+
+
+def read_orderlist_numbers(data: bytes, load_address: int, lo_base: int,
+                           hi_base: int, max_len=256):
+    """The three per-voice orderlists as SEQUENCE NUMBERS, or None if unreadable.
+
+    ch_seq_ptr points at an ORDERLIST: a byte stream terminated by $FF whose
+    entries are sequence numbers, with TRANSPOSE bytes interleaved. Bit 7 is
+    the discriminator -- measured over the 21 SID/Laxity files whose sequence
+    table locates: dropping bit-7-set bytes takes the out-of-range entry count
+    from 361 to 213, and every one of the 213 that remains comes from a single
+    file (Rudolph_in_the_Kitchen), not from a scatter across the corpus.
+
+    Angular's voice 0 reads `87 01 01 01 01 01 01 08 08 08 08 08 08 FF`: $87 is
+    the transpose, then twelve sequence numbers. Voice 2 is
+    `87 05 06 03 04 03 07 0A 0A 0B 0C 0B 0D`. The numbers index the sequence
+    table DIRECTLY (0-based) -- confirmed against the editor, where sequence 07
+    rows 7..14 are T3's 'A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4'.
+    """
+    lim = load_address + len(data)
+    out = []
+    for voice in range(3):
+        try:
+            addr = (data[lo_base - load_address + voice]
+                    | (data[hi_base - load_address + voice] << 8))
+        except IndexError:
+            return None
+        if not load_address <= addr < lim:
+            return None
+        numbers = []
+        pos = addr
+        seen = 0
+        while pos < lim and data[pos - load_address] != 0xFF and seen < max_len:
+            byte = data[pos - load_address]
+            if not byte & 0x80:          # bit 7 set -> transpose, not a number
+                numbers.append(byte)
+            pos += 1
+            seen += 1
+        out.append(numbers)
+    return out
+
+
 @dataclass
 class LaxityData:
     """Extracted data from Laxity player"""
@@ -182,6 +277,32 @@ class LaxityParser:
         """
         sequences = []
         orderlists = [[], [], []]  # 3 voices
+
+        # STAGE 1: THE REAL SEQUENCE TABLE, if this file has a locatable one.
+        #
+        # ch_seq_ptr does NOT point at sequences -- it points at ORDERLISTS, and
+        # the two have different grammars and different terminators. An orderlist
+        # ends on $FF; _extract_sequence_at_address below terminates on $7F, so it
+        # runs straight past the end and keeps going. That is where Angular's
+        # 197/174/139 "events" came from, and why scripts/test_converter.py has
+        # been printing "Sequence 0 too long (429 events)" as a warning rather
+        # than an error. Those counts are not a row count of anything.
+        #
+        # The real sequences live in a split lo[N]/hi[N] pointer table located by
+        # locate_seq_table(). Bodies are cut at the NEXT POINTER, so their lengths
+        # are STRUCTURAL rather than scanned -- which is the whole reason this
+        # stage is worth having: the $7F scan below is unbounded and the table is
+        # not. Derivation and ground truth: docs/players/LAXITY.md (34ed351).
+        #
+        # WHEN IT REFUSES, NOTHING CHANGES. 265 of the 286 files in SID/Laxity/
+        # yield no unique table and fall through to the reader below, byte for
+        # byte as before. This stage only ever ADDS a better answer; it never
+        # replaces a working one with a worse one.
+        located = locate_seq_table(self.data, self.load_address)
+        if located is not None:
+            real = self._sequences_from_table(*located)
+            if real is not None:
+                return real
 
         # ch_seq_ptr stored as two separate 3-byte arrays:
         #   lo bytes at load+$0A1C: [ch0_lo, ch1_lo, ch2_lo]
@@ -277,6 +398,68 @@ class LaxityParser:
                     logger.debug(f"Voice {voice}: using shared sequence 0")
 
         return sequences, orderlists
+
+    def _sequences_from_table(self, tbl: int, count: int, ptrs):
+        """(sequences, orderlists) from a located sequence table, or None to decline.
+
+        THE ORDERLISTS ARE A CROSS-CHECK, NOT JUST AN OUTPUT. A located table
+        says how many sequences exist; the orderlists say which numbers the song
+        actually plays. If a voice names a sequence the table does not contain,
+        the table is not the whole table and everything built on it would be
+        silently wrong -- so this declines and lets the older reader answer.
+        That fires on exactly one file in SID/Laxity/ (286 files, 21 locates):
+        Rudolph_in_the_Kitchen names sequence $22 against a located N=13.
+        Refusing there is the same convention as locate_seq_table's tie refusal.
+        """
+        end_of_image = self.load_address + len(self.data)
+        sequences = []
+        for idx, start in enumerate(ptrs):
+            if idx + 1 < count:
+                stop = ptrs[idx + 1]
+            else:
+                # The last body has no successor to bound it. Cut it at the
+                # grammar's own END marker instead of running to end-of-image.
+                stop = start
+                while (stop < end_of_image
+                       and self.data[stop - self.load_address] != 0x7F):
+                    stop += 1
+                stop = min(stop + 1, end_of_image)
+            sequences.append(bytes(
+                self.data[start - self.load_address:stop - self.load_address]))
+
+        located_ptr = locate_seq_ptr_table(self.data, self.load_address)
+        if located_ptr is None:
+            lo_base = self.load_address + LAXITY_SEQ_PTRS_LO_OFFSET
+            hi_base = self.load_address + LAXITY_SEQ_PTRS_HI_OFFSET
+        else:
+            lo_base, hi_base = located_ptr
+        if hi_base + 2 >= end_of_image:
+            numbers = None
+        else:
+            numbers = read_orderlist_numbers(
+                self.data, self.load_address, lo_base, hi_base)
+
+        if numbers is None:
+            # The bodies are still structurally sound -- the locate is unique and
+            # self-verifying -- but with no readable orderlist there is nothing to
+            # say which sequence each voice plays, and inventing one would be a
+            # guess. Emit the sequences and leave the orderlists empty.
+            logger.info(
+                "Laxity sequence table at $%04X: %d sequences, orderlists "
+                "unreadable", tbl, count)
+            return sequences, [[], [], []]
+
+        outside = [n for voice in numbers for n in voice if n >= count]
+        if outside:
+            logger.warning(
+                "Laxity sequence table at $%04X declares %d sequences but the "
+                "orderlists name %s -- declining it rather than truncating",
+                tbl, count, sorted(set(outside))[:8])
+            return None
+
+        logger.info("Laxity sequence table at $%04X: %d sequences, orderlists "
+                    "%s", tbl, count, [len(v) for v in numbers])
+        return sequences, numbers
 
     def _extract_sequence_at_address(self, address: int) -> bytes:
         """

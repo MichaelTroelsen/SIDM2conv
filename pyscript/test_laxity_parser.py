@@ -33,6 +33,7 @@ from sidm2.laxity_parser import (                                  # noqa: E402
     LAXITY_SEQ_PTRS_LO_OFFSET,
     LAXITY_SEQ_PTRS_HI_OFFSET,
     locate_seq_ptr_table,
+    locate_seq_table,
 )
 from sidm2.sid_parser import SIDParser                             # noqa: E402
 
@@ -80,32 +81,90 @@ def test_angulars_ch_seq_ptr_really_is_below_the_load_address():
 
 @pytest.mark.skipif(not ANGULAR.exists(), reason="SID/Angular.sid not present")
 def test_angular_locates_its_real_sequence_table():
-    """WAS test_a_pointer_below_the_load_address_is_refused_not_extracted_from,
-    and it asserted Angular yields NOTHING.
+    """Angular's sequences come from the SEQUENCE TABLE, not from ch_seq_ptr.
 
-    That premise died with the constant. It was true only because the parser
-    read ch_seq_ptr at a hardcoded offset that is wrong for Angular, producing
-    three below-load pointers ($0334/$0341/$0336) which the out-of-image gate
-    then refused. locate_seq_ptr_table now finds Angular's real table at $1907
-    by code signature, so the honest assertion is the positive one: these are
-    the addresses, independently confirmed by decoding them to three clean NP21
-    bodies ('87 01 01 ... FF', 73/59/45 bytes).
+    THIS TEST PREVIOUSLY PINNED THE DEFECT, which is worth recording because it
+    looked like a passing test the whole time. It asserted three bodies of
+    73/59/45 bytes and quoted their opening as '87 01 01 01 01 01 01 08' -- and
+    that IS the defect, in the assertion: those bytes are Angular's ORDERLIST for
+    voice 0 ($1AF2), a transpose byte followed by twelve sequence NUMBERS and an
+    $FF. The parser terminates on $7F, an orderlist ends on $FF, so it ran past
+    the end and kept scanning; 73/59/45 are how far it got, not the size of
+    anything. The old assertion `orderlists == [[0], [1], [2]]` is the same
+    mistake seen from the other side -- three "sequences" that are really the
+    three orderlists, so each voice appeared to play exactly one.
 
-    The REFUSAL is still pinned, by the two synthetic tests below and by
-    test_a_file_whose_locate_refuses_yields_nothing -- it just cannot be pinned
-    on a file the locate now handles correctly.
+    What ch_seq_ptr locates is still correct and still pinned below; it simply
+    points at orderlists rather than at sequences. Derivation: 34ed351 and
+    docs/players/LAXITY.md.
     """
     data, load = _angular()
+    # ch_seq_ptr is unchanged -- it was never the wrong table, only the wrong
+    # GRAMMAR was applied to what it points at.
     assert locate_seq_ptr_table(data, load) == (0x1907, 0x190A)
+
+    # the real sequence table: split lo[14]/hi[14] at $1B1C, bodies from $1B38
+    tbl, count, ptrs = locate_seq_table(data, load)
+    assert (tbl, count) == (0x1B1C, 14)
+    assert ptrs[0] == tbl + 2 * count
+
     result = LaxityParser(data, load).parse()
-    # the three bodies decoded from $1AF2 / $1B00 / $1B0E
-    assert [len(s) for s in result.sequences] == [73, 59, 45]
-    assert result.sequences[0][:8] == bytes([0x87, 1, 1, 1, 1, 1, 1, 8])
-    # $7F is END in the SEQUENCE grammar (CLAUDE.md); the $FF the locator's
-    # scorer scans for is the raw table terminator. Two different markers --
-    # the scorer only needs a consistent stop, not the grammar's one.
-    assert result.sequences[0][-1] == 0x7F
-    assert result.orderlists == [[0], [1], [2]]
+    assert len(result.sequences) == 14
+    # bodies are cut at the NEXT POINTER, so lengths are structural rather than
+    # scanned -- and none of them is a 73/59/45 over-read
+    assert [len(s) for s in result.sequences] == [
+        3, 84, 86, 75, 60, 81, 81, 56, 84, 86, 54, 50, 51, 57]
+    assert sum(len(s) for s in result.sequences) == ptrs[-1] - ptrs[0] + len(
+        result.sequences[-1])
+
+    # and the orderlists are now what the voices actually PLAY: twelve numbers
+    # each, indexing the table directly, with the $87/$93 transpose bytes
+    # dropped rather than read as sequence 135/147.
+    assert result.orderlists == [
+        [1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8],
+        [2, 2, 2, 2, 2, 2, 9, 9, 9, 9, 9, 9],
+        [5, 6, 3, 4, 3, 7, 10, 10, 11, 12, 11, 13]]
+    assert all(n < count for voice in result.orderlists for n in voice)
+
+
+def test_a_table_the_orderlists_contradict_is_DECLINED_not_truncated():
+    """A located table smaller than the numbers the song plays is refused.
+
+    Rudolph_in_the_Kitchen locates a 13-entry table at $12E9, but its voices
+    name sequences up to $22. Both cannot be true, and truncating to 13 would
+    hand back a table that is silently missing most of the song -- so the
+    parser declines the whole stage and the older reader answers instead.
+    This is locate_seq_table's own tie-refusal convention applied one layer up.
+
+    Measured over SID/Laxity/ (286 files): 21 locate, 17 are used, and 4 are
+    declined here -- Farfisa, Flappy_Hero_March, Hand_Interludes_Side_3 and
+    this one. If a future change makes one of them consistent, that is a
+    result; update the count rather than deleting the check.
+    """
+    path = ROOT / "SID" / "Laxity" / "Rudolph_in_the_Kitchen.sid"
+    if not path.exists():
+        pytest.skip("SID/Laxity/Rudolph_in_the_Kitchen.sid not present")
+    p = SIDParser(str(path))
+    data, load = p.get_c64_data(p.parse_header())
+    tbl, count, _ = locate_seq_table(data, load)
+    assert (tbl, count) == (0x12E9, 13)
+    result = LaxityParser(data, load).parse()
+    # NOT 13: the table was declined, so this is the fallback reader's answer
+    assert len(result.sequences) != count
+
+    # POSITIVE CONTROL, and it is load-bearing. `!= count` alone is vacuously
+    # true whenever the table stage does nothing at all -- a mutation that
+    # disables the stage outright leaves the assertion above GREEN. Pairing it
+    # with a file the stage does accept means the two together can only pass
+    # when the stage is running AND declining selectively.
+    ok = ROOT / "SID" / "Laxity" / "First_Tune.sid"
+    if not ok.exists():
+        pytest.skip("SID/Laxity/First_Tune.sid not present")
+    p2 = SIDParser(str(ok))
+    d2, l2 = p2.get_c64_data(p2.parse_header())
+    _, n2, _ = locate_seq_table(d2, l2)
+    assert n2 == 4
+    assert len(LaxityParser(d2, l2).parse().sequences) == n2
 
 
 def test_a_file_whose_locate_refuses_yields_nothing():
