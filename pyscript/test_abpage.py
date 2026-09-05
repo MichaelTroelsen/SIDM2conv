@@ -1339,3 +1339,149 @@ def test_row_schedule_carries_provenance_verbatim():
     r = A.row_schedule(root / "SF2" / "Angular.sf2")
     assert "provenance" in r
     assert set(r["provenance"]) == {"reader", "structural"}
+
+# ---------------------------------------------------------------------------
+# `serve` must refuse a port that is already serving.
+#
+# The bug was NOT that serve lacked an error path -- it has one. It is that on
+# Windows the error path never fires: HTTPServer sets allow_reuse_address, and
+# SO_REUSEADDR there permits binding an address already in use. Measured
+# against a live server, the second bind SUCCEEDED. Both processes then hold
+# the port and both answer 200, so a reader silently gets whichever one wins --
+# potentially a stale build/listen from a forgotten background process.
+# ---------------------------------------------------------------------------
+
+
+def _free_port():
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_port_in_use_is_true_only_while_something_listens():
+    import socket
+
+    port = _free_port()
+    assert A._port_in_use(port) is False, "nothing is listening yet"
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        srv.bind(("127.0.0.1", port))
+        srv.listen(1)
+        assert A._port_in_use(port) is True
+    finally:
+        srv.close()
+
+
+def test_serve_refuses_an_occupied_port_WITHOUT_binding(monkeypatch, capsys):
+    """The refusal must happen BEFORE the bind.
+
+    Binding first and checking afterwards is exactly the defect: on Windows the
+    bind succeeds, so by the time anything could notice, the port is shadowed.
+    This asserts the server is never constructed at all.
+    """
+    import http.server
+
+    monkeypatch.setattr(A, "_port_in_use", lambda port, host="127.0.0.1": True)
+
+    def _explode(*a, **k):                       # pragma: no cover - must not run
+        raise AssertionError("serve() bound the port despite it being in use")
+
+    monkeypatch.setattr(http.server, "ThreadingHTTPServer", _explode)
+
+    assert A.serve(8791) == 2
+    out = capsys.readouterr().out
+    assert "8791" in out and "already serving" in out
+    assert "--port" in out, "the refusal should say how to pick another port"
+
+
+def test_serve_still_reports_a_bind_failure_that_is_not_in_use(monkeypatch, capsys):
+    """The OSError path is kept, not replaced -- it still covers a privileged
+    port, a bad interface, and the POSIX in-use error."""
+    import http.server
+
+    monkeypatch.setattr(A, "_port_in_use", lambda port, host="127.0.0.1": False)
+
+    def _refuse(*a, **k):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(http.server, "ThreadingHTTPServer", _refuse)
+
+    assert A.serve(80) == 2
+    assert "cannot bind" in capsys.readouterr().out
+
+# ---------------------------------------------------------------------------
+# An empty voice must always SAY WHY.
+#
+# Measured 2026-09-04 over the twelve staged songs: seven rendered no pattern
+# card at all. `patterns_card` returned "" whenever no voice had rows, so the
+# page looked as though pattern data had never been requested -- when in fact
+# every voice had been refused, and for a recorded reason.
+#
+# One of those reasons was recorded NOWHERE: an orderlist entry naming a
+# sequence the reader never produced. `degenerate`, `truncated` and `overread`
+# were all reported; this was not, so the card fell through to "this voice has
+# no rows in the orderlist" -- which is FALSE for these files. Their orderlists
+# are populated (lens like [3,4,3] and [7,7,4]); the ids they name are simply
+# absent from the parser's sequence table, 8 of 10 on 2_Young_2_Die_native_part01
+# and 17 of 18 on 5_Title_Tunes_song0_part01. The music was not LOCATED, which
+# is a different statement from "this voice is empty".
+# ---------------------------------------------------------------------------
+
+
+def _pat_all_empty(**extra):
+    d = {"tempo": 31, "tracks": [[], [], []], "frames": 0, "sequences": 3,
+         "degenerate": [], "truncated": [], "default_sequence_length": 134}
+    d.update(extra)
+    return d
+
+
+def test_patterns_card_is_silent_only_when_there_is_NO_reason():
+    """The old behaviour, kept: an all-empty payload with nothing to report
+    still renders nothing."""
+    assert A.patterns_card(_pat_all_empty()) == ""
+
+
+def test_patterns_card_EXPLAINS_when_every_voice_was_refused():
+    """The fix: all three refused, but a reason exists, so the card appears."""
+    pat = _pat_all_empty(missing_sequences=[{"track": 0, "seq": 7},
+                                            {"track": 1, "seq": 9},
+                                            {"track": 2, "seq": 9}])
+    html = A.patterns_card(pat)
+    assert html, "every voice refused for a RECORDED reason must still explain"
+    assert "7" in html and "9" in html, "name the sequences that did not resolve"
+    assert "no rows in the orderlist" not in html, (
+        "the orderlist is NOT empty on these files -- saying so is false")
+
+
+def test_a_missing_sequence_is_not_reported_as_an_empty_orderlist():
+    """The specific wrong message this fixes, pinned on its own."""
+    one = _pat_all_empty(missing_sequences=[{"track": 1, "seq": 4}])
+    html = A.patterns_card(one)
+    assert "orderlist and the sequence table disagree" in html
+    # voice 1 has no reason of its own -> it may still use the old wording
+    assert html.count("no rows in the orderlist") <= 2
+
+
+def test_row_schedule_records_missing_sequence_references(tmp_path):
+    """Real-file check. Skips on a clone without the built corpus, which is
+    gitignored -- the assertion is about a defect only real artifacts show."""
+    src = Path(__file__).resolve().parent.parent / "out" / "sdi" / \
+        "2_Young_2_Die_native_part01.sf2"
+    if not src.exists():
+        pytest.skip("built SDI corpus not present (out/ is gitignored)")
+    r = A.row_schedule(src)
+    assert r is not None
+    assert r["missing_sequences"], (
+        "this file's orderlists name sequences the reader never produced; "
+        "that must be RECORDED, not silently skipped")
+    # and every empty track has SOME recorded reason
+    reasons = set(r["degenerate"]) | set(r["truncated"])
+    reasons |= {o["track"] for o in r["overread"]}
+    reasons |= {m["track"] for m in r["missing_sequences"]}
+    for tno, rows in enumerate(r["tracks"]):
+        if not rows:
+            assert tno in reasons, (
+                "voice %d is empty with no recorded reason -- the page would "
+                "have to guess" % tno)

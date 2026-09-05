@@ -1798,10 +1798,27 @@ def row_schedule(sf2_path: Path, max_rows: int | None = None) -> dict | None:
     # that case. Pinned by test_the_length_guard_applies_only_to_UNBOUNDED_decodes.
     pointer_bounded = bool(getattr(p, "laxity_seq_table", None))
     tracks, degenerate, truncated, overread, fallback = [], [], [], [], []
+    # AN ORDERLIST ENTRY POINTING AT A SEQUENCE THE READER NEVER
+    # PRODUCED was, until now, the one way a track could come out empty
+    # with NO reason recorded anywhere. `degenerate`, `truncated` and
+    # `overread` were all reported; this was not, so the page fell
+    # through to "this voice has no rows in the orderlist" -- which is
+    # FALSE for exactly these files. Measured 2026-09-04 across the 12
+    # staged songs: every one of the seven blank pages has a populated
+    # orderlist (lens like [3,4,3] and [7,7,4]), and the ids it names
+    # are simply absent from `p.sequences` -- 8 of 10 on
+    # 2_Young_2_Die_native_part01, 17 of 18 on 5_Title_Tunes_song0_part01,
+    # 2 of 3 on Beginning. The orderlist and the sequence table
+    # disagree, which is a LOCATE failure and not an empty song.
+    missing = []
     for tno, entries in enumerate(_track_orderlists(p)[:3]):
         rows, frame, cut = [], 0, False
         for ent in entries or []:
             sidx = ent.get("sequence")
+            if sidx not in seqs:
+                # Recorded, not skipped silently -- see `missing` above.
+                missing.append((tno, sidx))
+                continue
             rowsrc = seqs.get(sidx, [])
             # NOT DE-INTERLEAVED. The parser flags some sequences
             # `interleaved` and sf2_viewer_gui's comment describes such a
@@ -1903,6 +1920,8 @@ def row_schedule(sf2_path: Path, max_rows: int | None = None) -> dict | None:
             "truncated": truncated,
             "overread": [{"track": t, "seq": sq, "rows": n}
                          for t, sq, n in overread],
+            "missing_sequences": [{"track": t, "seq": sq}
+                                  for t, sq in missing],
             "fallback": fallback,
             "default_sequence_length": seqlen}
 
@@ -1935,12 +1954,29 @@ def _note_name(n: int) -> str:
 
 def patterns_card(pat: dict | None) -> str:
     """Three per-voice row columns that scroll with playback."""
-    if not pat or not any(pat.get("tracks") or []):
+    if not pat:
         return ""
+    if not any(pat.get("tracks") or []):
+        # EVERY VOICE REFUSED. Returning "" here showed the reader
+        # NOTHING -- no card, no reason -- on SEVEN of the twelve songs
+        # staged 2026-09-04, which is the worst of both worlds: the page
+        # looked as though pattern data had never been asked for, when in
+        # fact every voice had been refused and the reason was recorded.
+        # Fall through instead and let the per-voice branches below say
+        # why each one was refused.
+        #
+        # Silence is still correct when there is genuinely nothing to
+        # report -- an all-empty payload with no recorded reason -- which
+        # is what test_patterns_card_absent_without_a_payload pins.
+        if not (pat.get("degenerate") or pat.get("overread")
+                or pat.get("missing_sequences") or pat.get("truncated")):
+            return ""
     cols = ""
     for tno, rows in enumerate(pat["tracks"][:3]):
         if not rows:
             over = [o for o in (pat.get("overread") or []) if o.get("track") == tno]
+            miss = [m for m in (pat.get("missing_sequences") or [])
+                    if m.get("track") == tno]
             if over:
                 why = ("its sequence (%s) decodes to %d rows against a declared "
                        "sequence length of %s &mdash; the decoder ran past the "
@@ -1950,6 +1986,12 @@ def patterns_card(pat: dict | None) -> str:
             elif tno in (pat.get("degenerate") or []):
                 why = ("its sequence decodes to rows that advance no time at "
                        "all, so they cannot be this voice's")
+            elif miss:
+                why = ("its orderlist names sequence(s) %s, which the reader "
+                       "never produced &mdash; the orderlist and the sequence "
+                       "table disagree, so the music was not located rather "
+                       "than absent"
+                       % ", ".join(str(m.get("seq")) for m in miss[:6]))
             else:
                 why = "this voice has no rows in the orderlist"
             cols += ('<div class="trkcol"><h3>Voice %d</h3>'
@@ -2037,6 +2079,17 @@ def _pattern_caveats(pat: dict) -> str:
                 "conversion."
                 % (", ".join(str(d + 1) for d in deg),
                    pat.get("default_sequence_length") or "?"))
+    miss = pat.get("missing_sequences") or []
+    if miss:
+        out += (" <b>%d orderlist entr%s</b> name a sequence the reader never "
+                "produced (voice%s %s). The orderlist and the sequence table "
+                "disagree: the music was not LOCATED, which is a limit of the "
+                "SF2 reader on this driver layout and is not evidence about the "
+                "conversion."
+                % (len(miss), "y" if len(miss) == 1 else "ies",
+                   "" if len({m["track"] for m in miss}) == 1 else "s",
+                   ", ".join(str(t + 1) for t in
+                             sorted({m["track"] for m in miss}))))
     trunc = pat.get("truncated") or []
     if trunc:
         out += (" Voice %s was truncated at the row cap, so the tail is not "
@@ -2534,6 +2587,37 @@ class _Slice:
         self._fh.close()
 
 
+def _port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Is something already listening there?
+
+    WHY A PROBE, RATHER THAN LETTING bind() FAIL. `http.server.HTTPServer` sets
+    `allow_reuse_address = True`, and on Windows SO_REUSEADDR lets a second
+    process bind an address that is ALREADY IN USE. Measured 2026-09-04 against
+    a live server on 8791: the second bind SUCCEEDED. Two servers then hold the
+    port, which one answers any given connection is undefined, and a reader can
+    be served a `build/listen` snapshot belonging to a process they have
+    forgotten about -- silently, because both answer 200.
+
+    That makes `serve`'s `except OSError` branch effectively DEAD on Windows for
+    the in-use case. It is kept, because it still catches a privileged port, a
+    bad interface, and the POSIX in-use error.
+
+    THE REUSE FLAG IS DELIBERATELY NOT TURNED OFF. On POSIX it is what lets this
+    server restart immediately after a crash instead of waiting out TIME_WAIT,
+    which is the case it is most often restarted in. Refusing early costs
+    nothing there and fixes the Windows shadow.
+
+    A connect probe races a process starting between the probe and the bind.
+    That race is not worth closing for a loopback dev server: it replaces a
+    silent wrong answer with a rare and obvious one.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.35)
+        return probe.connect_ex((host, port)) == 0
+
+
 def serve(port: int) -> int:
     """Serve build/listen on 127.0.0.1 until interrupted.
 
@@ -2545,6 +2629,16 @@ def serve(port: int) -> int:
     """
     import functools
     import http.server
+
+    if _port_in_use(port):
+        # Refused BEFORE binding: on Windows the bind would otherwise succeed
+        # and shadow the running server rather than failing.
+        print("127.0.0.1:%d is already serving -- refusing to start a second "
+              "server on that port." % port)
+        print("Almost always an earlier `abpage serve` still running in the "
+              "background; stop that process, or use a different port:")
+        print("    py -3 pyscript/abpage.py serve --port %d" % (port + 1))
+        return 2
 
     handler = functools.partial(_RangeHandler, directory=str(listen_dir()))
     try:
