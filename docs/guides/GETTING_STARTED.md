@@ -413,35 +413,49 @@ pyinstaller sidm2.spec        # -> dist/sid-to-sf2/sid-to-sf2.exe
 3.36 MB `sid-to-sf2.exe` inside a 41 MB bundle directory, and it converts a real
 file end to end.
 
-⚠️ **But you must run it from a SIDM2 checkout root, or it silently produces a
-broken file.** Measured on the same build, converting `SID/Angular.sid` twice
-with the same binary and the same arguments:
+✅ **And it no longer cares where you run it from** (fixed 2026-09-06). The
+working-directory dependence recorded below was real; it is closed, and both
+halves of it are worth keeping because either one alone still broke the result.
+
+`sidm2/conversion_pipeline.py` now has `_tool_path(name)`, which resolves a
+bundled tool in this order: `sys._MEIPASS/tools/<name>` when frozen (nothing in
+the tree consulted `_MEIPASS` before, so a frozen binary could never find its own
+tools), then `<repo root>/tools/<name>` derived from the module's own location,
+and only then the historical `cwd/tools/<name>`.
+
+That alone was **not enough**, and the second half is the instructive part:
+`DriverSelector.__init__` has its own default of the *relative*
+`Path('tools/player-id.exe')`, so auto-selection still mis-detected even after
+`detect_player_type()` was fixed — the log showed
+`Player Type: Unknown → DRIVER11` from the selector and
+`Player type: Laxity_NewPlayer_V21` from the pipeline **in the same run**. The
+pipeline now injects the resolved path through the constructor argument the
+selector already accepts.
+
+Measured on `SID/Angular.sid` with auto-selection, no `--driver`:
 
 | run from | driver chosen | result |
 |---|---|---|
-| a checkout root | `LAXITY` — "Laxity-specific driver for maximum accuracy" | 9,029 bytes, valid |
-| anywhere else | `DRIVER11`, player `Unknown` | 7,408 bytes, **`Instruments table (0x80) MISSING - file will be rejected!`** |
+| the checkout root | `LAXITY` | md5 `8982fc65…`, 8,578 bytes |
+| an unrelated directory | `LAXITY` | md5 `8982fc65…`, 8,578 bytes — **byte-identical** |
 
-**Both runs exit 0.** The second one prints `SF2 FILE VALIDATION FAILED` among
-its log lines and then reports success, so a script checking the exit code sees
-a clean conversion and gets a file SID Factory II will refuse. Per the accuracy
-matrix, native Laxity through Driver 11 is the 1–8% path — so this is not a
-cosmetic difference, it is the documented bad conversion.
+Before the fix the second row read `DRIVER11`, player `Unknown`, 7,408 bytes and
+`Instruments table (0x80) MISSING - file will be rejected!` — and **exited 0**,
+so a script checking the return code saw a clean conversion. Per the accuracy
+matrix, native Laxity through Driver 11 is the 1–8% path, so that was the
+documented bad conversion, chosen silently.
 
-The cause is not the packaging. `sidm2/conversion_pipeline.py` resolves
-`player-id.exe` relative to `os.getcwd()` rather than to the bundle, and nothing
-in the tree consults `sys._MEIPASS`, so outside a checkout the identifier is
-never found and driver auto-selection falls back to its safe default. Until a
-frozen-mode path helper lands (tracked as
-`sidm2-has-no-frozen-mode-tool-resolution`), treat the binary as
-"portable executable, non-portable working directory".
+⚠️ **The exit code is still wrong on a genuinely failed conversion.** Force the
+bad path with `--driver driver11` on a native Laxity file and the run still logs
+`SF2 FILE VALIDATION FAILED` and exits 0. That is a separate defect
+(`binary-exits-0-after-sf2-validation-failed`) and it is NOT fixed here.
 
-**The workaround is `--driver`, and it fully recovers the result** — measured,
-not assumed. Running the same binary from outside the checkout with
-`--driver laxity` produced a file **byte-identical** to the in-checkout run
-(md5 `a46642f7…`, 9,029 bytes) with no validation errors. Naming the driver
-skips auto-selection, so `player-id.exe` is never needed. Only auto-selection
-depends on the working directory; everything downstream of it does not.
+📎 An earlier note here recorded `--driver laxity` as the workaround, with the
+in-checkout artifact at md5 `a46642f7…`, 9,029 bytes. The workaround is no longer
+needed. That md5 no longer reproduces either — the Laxity duration decoder
+changed in the meantime (`$80–$9F` is `(b & $0F) + 1`, see
+`docs/players/LAXITY.md`), so the artifact legitimately differs. Quote the
+figures in the table above, measured at this HEAD.
 
 ### The external tools are NOT Python, so they are not "just imported"
 

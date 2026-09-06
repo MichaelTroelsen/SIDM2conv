@@ -928,6 +928,20 @@ FILT_LEAD = int(os.environ.get("FILT_LEAD", "4"))
 # risk is canon count and table pressure, not wrong output.
 FILT_EXACT_PB = os.environ.get("FILT_EXACT_PB") == "1"
 
+# Frames BEFORE the note-on that the per-note filter capture may start from.
+# 0 = capture at the onset, which is what every build did before this flag and
+# what every player except SDI still does, so a builder that does not set it is
+# byte-identical.
+#
+# WHY IT EXISTS. On SDI the filter program is written BEFORE the gate rise it
+# belongs to, so the single brightest frame of a note is the frame before its
+# onset and `filter_program_for`'s SET row lands on the first DECAY value --
+# the attack transient is dropped. Measured on Funk_Facet voice 0: frame 96 is
+# 1920, onset 97 is already 1672 and falling -248/frame; onset 121 is the same
+# shape (120 = 1920, 121 = 1632). Same class as PATTERNS F10, where the DMC
+# capture-onset was snapped to the PREVIOUS note.
+FILT_ANCHOR = int(os.environ.get("FILT_ANCHOR", "0"))
+
 
 def routed_voice(ftr):
     """The single voice routed to the filter, from the dominant $D417 low-nibble routing
@@ -1034,8 +1048,19 @@ def filter_program_for(ftr, onset, span, pbtr=None):
     n = len(ftr)
     if onset + 1 >= n:
         return 0, None
+    # THE ANCHOR IS GATED, not applied wherever it is allowed. FILT_ANCHOR only
+    # says how far back to LOOK; the capture moves only when the earlier frame
+    # is genuinely BRIGHTER at the same res/routing, i.e. the attack peak really
+    # does sit before the gate rise. Without that test the anchor would also
+    # swallow the previous note's tail on every ordinary note, which is exactly
+    # how F10/F11 moved 26 DMC voices down.
+    start = onset
+    if FILT_ANCHOR > 0:
+        pre = onset - FILT_ANCHOR
+        if pre >= 0 and ftr[pre][1] == ftr[onset][1] and ftr[pre][0] > ftr[onset][0]:
+            start = pre
     cap = max(2, min(span, 220))
-    seq = [ftr[onset + k] if onset + k < n else ftr[-1] for k in range(cap)]
+    seq = [ftr[start + k] if start + k < n else ftr[-1] for k in range(cap)]
     cut = [c >> 3 for c, _ in seq]                    # $D416 (8-bit) per frame
     ctl = [ct for _, ct in seq]
     # $D418 passband per frame. Defaults to low-pass when no trace is supplied,
@@ -1044,7 +1069,7 @@ def filter_program_for(ftr, onset, span, pbtr=None):
     if pbtr is None:
         pbd = [1] * len(seq)
     else:
-        pbd = [pbtr[min(onset + k, len(pbtr) - 1)] if pbtr else 1
+        pbd = [pbtr[min(start + k, len(pbtr) - 1)] if pbtr else 1
                for k in range(len(seq))]
     prog = [_filt_set_row(seq[0][0], seq[0][1], pbd[0])]
     k = 1
@@ -2848,8 +2873,19 @@ def main():
                 # left to split, and a window that still will not fit at one row is
                 # emitted as before rather than looping forever.
                 _floor = max(1, int(getattr(m, "frames_per_tick", 1) or 1))
+                # COUNT THE SHRINK, because 'the probe never fires' and 'the probe is not
+                # there' produce byte-identical corpora and were indistinguishable for two
+                # cycles. A firing means the packer chose a window its own layout could not
+                # hold -- the DMC crash class (2bdbb71) -- so it is worth a line of output
+                # rather than a silent correction. Zero firings prints nothing and leaves
+                # every existing build log byte-identical.
+                _shrunk = 0
                 while t1 - t0 > _floor and not fits(t0, t1):
                     t1 = max(t0 + _floor, t0 + (t1 - t0) // 2)
+                    _shrunk += 1
+                if _shrunk:
+                    print(f"  BASE WINDOW DID NOT FIT: shrank {_shrunk}x "
+                          f"to {t0}-{t1}f ({(t1 - t0) // 50}s)")
                 bounds.append((t0, t1))
                 t0 = t1
             was30 = (span + 1499) // 1500

@@ -393,9 +393,20 @@ def build_song(shim, base_name, traces, span, emit=True):
         # DMC form verbatim, because this builder already has align() and fpt.
         # A window that already fits is untouched, so the corpus rebuilds
         # byte-identical.
+        # COUNT THE SHRINK, because 'the probe never fires' and 'the probe is not
+        # there' produce byte-identical corpora and were indistinguishable for two
+        # cycles. A firing means the packer chose a window its own layout could not
+        # hold -- the DMC crash class (2bdbb71) -- so it is worth a line of output
+        # rather than a silent correction. Zero firings prints nothing and leaves
+        # every existing build log byte-identical.
+        _shrunk = 0
         while t1 - t0 > fpt and not fits(t0, t1):
             shrunk = max(fpt, (t1 - t0) // 2)
             t1 = max(align(t0 + shrunk), t0 + fpt)
+            _shrunk += 1
+        if _shrunk:
+            print(f"  BASE WINDOW DID NOT FIT: shrank {_shrunk}x "
+                  f"to {t0}-{t1}f ({(t1 - t0) // 50}s)")
         bounds.append((t0, t1))
         t0 = t1
     parts = []

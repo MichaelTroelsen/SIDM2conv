@@ -24,8 +24,21 @@ from sidm2.command_mapping import decompose_laxity_command
 logger = logging.getLogger(__name__)
 
 # Laxity NewPlayer v21 constants
-LAXITY_FREQ_TABLE_ADDR = 0x1835  # Frequency table (96 notes × 2 bytes) - starts at $1835, not $1833!
+# The frequency table is LOCATED BY SEARCH (locate_frequency_table below), never
+# by this constant. It survives only as the last-resort fallback for data in which
+# no table can be found at all -- and it is known to be WRONG BY TWO BYTES: the
+# player itself reads `LDA $1833,Y` / `LDA $1834,Y` (four call sites in Angular;
+# $1835/$1836 is the SECOND read, used at $14A4 to compute the semitone delta
+# table[n+1]-table[n]). Entry 0 is $0116, not $0127. Measured over 303 corpus
+# files, the constant addresses a strictly-ascending table on ZERO of them.
+LAXITY_FREQ_TABLE_ADDR = 0x1835  # legacy fallback only -- see locate_frequency_table
 LAXITY_FREQ_TABLE_SIZE = 96
+
+# Search parameters. A frequency table is a strictly ascending run of 16-bit
+# values in which each note repeats an octave higher 12 entries later.
+FREQ_MIN_ENTRIES = 36      # three octaves; below this a run is not a scale
+FREQ_OCTAVE_TOL = 0.004    # the tables are exact to about +-1 LSB
+FREQ_OCTAVE_AGREE = 0.9    # fraction of octave pairs that must hold
 
 # PAL C64 SID clock frequency
 PAL_CLOCK_FREQ = 985248  # Hz
@@ -60,6 +73,137 @@ class LaxityEvent:
         return f"LaxityEvent({' '.join(parts)})"
 
 
+def _word(data: bytes, off: int) -> int:
+    """Little-endian 16-bit read."""
+    return data[off] | (data[off + 1] << 8)
+
+
+def _ascending_run(data: bytes, off: int, cap: int) -> int:
+    """Length of the strictly ascending 16-bit run starting at off."""
+    n = 1
+    while n < cap and off + n * 2 + 1 < len(data):
+        if _word(data, off + n * 2) <= _word(data, off + (n - 1) * 2):
+            break
+        n += 1
+    return n
+
+
+def _octave_score(table: List[int]) -> float:
+    """Fraction of entries whose note twelve semitones up is twice its frequency.
+
+    This is what separates a frequency table from any other ascending run of
+    bytes: an equal-tempered scale doubles every octave. Without it a packed
+    sequence of counters scores as a table -- the Stinsen and Broware images each
+    contain a 38-entry ascending run that is not music.
+    """
+    pairs = [(table[i], table[i + 12]) for i in range(len(table) - 12) if table[i] > 0]
+    if not pairs:
+        return 0.0
+    ok = sum(1 for a, b in pairs
+             if abs(b - 2 * a) <= max(2, FREQ_OCTAVE_TOL * 2 * a))
+    return ok / len(pairs)
+
+
+def _semitone_score(table: List[int]) -> float:
+    """Fraction of consecutive pairs separated by one equal-tempered semitone.
+
+    This is what fixes the BASE, and the octave test alone cannot: an ascending
+    run may begin one or two bytes before the table, and those stray leading
+    words are still ascending. A semitone is a ratio of 2**(1/12) = 1.0595, so a
+    stray $0001 in front of $0116 shows up as a ratio of 278 and the candidate
+    that starts on it is refused.
+    """
+    pairs = [(table[i], table[i + 1]) for i in range(len(table) - 1) if table[i] > 0]
+    if not pairs:
+        return 0.0
+    ok = sum(1 for a, b in pairs if 1.03 <= b / a <= 1.09)
+    return ok / len(pairs)
+
+
+def _find_interleaved(data: bytes) -> Optional[Tuple[int, int, str]]:
+    """Longest strictly-ascending, octave-doubling run of little-endian words."""
+    best = None
+    limit = len(data) - FREQ_MIN_ENTRIES * 2
+    for off in range(0, max(0, limit)):
+        if _word(data, off) == 0:
+            continue                      # a zero frequency is not a note
+        n = _ascending_run(data, off, cap=LAXITY_FREQ_TABLE_SIZE + 8)
+        if n < FREQ_MIN_ENTRIES:
+            continue
+        table = [_word(data, off + i * 2) for i in range(n)]
+        semitone = _semitone_score(table)
+        if (_octave_score(table) >= FREQ_OCTAVE_AGREE
+                and semitone >= FREQ_OCTAVE_AGREE):
+            # The SCALE decides the base, not the length: a run that starts one
+            # word early is LONGER, so ranking by length alone walks backwards
+            # off the table. Best semitone agreement first, then longest, then
+            # the earliest offset.
+            cand = (round(semitone, 4), n, -off)
+            if best is None or cand > best:
+                best = cand
+    if best is None:
+        return None
+    _sem, n, negoff = best
+    return (-negoff, n, 'interleaved')
+
+
+def _find_split(data: bytes) -> Optional[Tuple[int, int, str]]:
+    """96 non-decreasing high bytes followed by 96 low bytes."""
+    size = LAXITY_FREQ_TABLE_SIZE
+    best = None
+    for off in range(0, max(0, len(data) - 2 * size)):
+        hi = data[off:off + size]
+        if hi[0] > 8 or hi[-1] < 0x60:
+            continue                      # must span roughly eight octaves
+        if any(hi[i] > hi[i + 1] for i in range(size - 1)):
+            continue
+        lo = off + size
+        table = [data[lo + i] | (hi[i] << 8) for i in range(size)]
+        if any(table[i] >= table[i + 1] for i in range(size - 1)):
+            continue
+        score = _octave_score(table)
+        if (score >= FREQ_OCTAVE_AGREE
+                and _semitone_score(table) >= FREQ_OCTAVE_AGREE
+                and (best is None or score > best[1])):
+            best = (off, score)
+    if best is None:
+        return None
+    return (best[0], size, 'split')
+
+
+def locate_frequency_table(data: bytes) -> Optional[Tuple[int, int, str]]:
+    """Locate the Laxity frequency table by search: offset, size AND layout.
+
+    Returns None when no candidate satisfies both tests, which is the honest
+    answer for data that carries no table -- 50 of 303 corpus files.
+
+    AND THOSE 50 ARE NOT NP21 FILES. Measured with detect_player_type over
+    exactly the set this function declines:
+
+        SidFactory/Laxity      27      Soundmonitor           20
+        256bytes/Laxity         1      SidFactory_II/Laxity    1
+        Unknown                 1
+
+    Not one is Laxity_NewPlayer_V21 or Vibrants/Laxity. A 60-file control drawn
+    from the files it DOES locate reads Vibrants/Laxity 25, SidFactory_II/Laxity
+    21, Rob_Hubbard 8, Laxity_NewPlayer_V21 3, JCH_NewPlayer 3. So the search
+    finds a table on the files the Laxity path owns, and the misses are other
+    players sitting in SID/Laxity -- SF2-exported songs (which route to Driver
+    11, not this one) and Sound Monitor rips. The two Laxity-family stragglers,
+    one 256bytes/Laxity and one SidFactory_II/Laxity, are the only residue worth
+    chasing.
+    """
+    return _find_interleaved(data) or _find_split(data)
+
+
+def read_frequency_table(data: bytes, loc: Tuple[int, int, str]) -> List[int]:
+    """Read the table a locate_frequency_table() result describes."""
+    off, size, layout = loc
+    if layout == 'split':
+        return [data[off + size + i] | (data[off + i] << 8) for i in range(size)]
+    return [_word(data, off + i * 2) for i in range(size)]
+
+
 class LaxityFrequencyTable:
     """Handles Laxity frequency table extraction and note conversion."""
 
@@ -76,33 +220,47 @@ class LaxityFrequencyTable:
 
     def _extract_frequency_table(self, c64_data: bytes, load_addr: int) -> List[int]:
         """
-        Extract 96-entry frequency table from Laxity player.
+        Locate and read the Laxity frequency table.
 
-        The frequency table is at offset $0835 from load address (typically $1835 for $1000 load).
-        For non-standard load addresses (e.g., $A000), we calculate the offset relative to $1000.
+        The table is found BY SEARCH -- address and size together -- because the
+        players relocate and because two different layouts are in use:
+
+          interleaved   96 little-endian words, lo,hi,lo,hi (Angular, $1833)
+          split         96 high bytes followed by 96 low bytes (Stinsen, $16A1)
+
+        Both start on the same note: entry 0 is $0116. The historical $0835
+        constant is retained only as a fallback for data in which no table can be
+        located; it points two bytes past the base, i.e. one semitone sharp.
         """
-        # Calculate offset relative to typical load address ($1000)
-        typical_load = 0x1000
-        freq_offset = LAXITY_FREQ_TABLE_ADDR - typical_load  # $0835
+        loc = locate_frequency_table(c64_data)
+        if loc is not None:
+            offset, size, layout = loc
+            self.table_offset = offset
+            self.table_size = size
+            self.table_layout = layout
+            logger.debug(
+                f"Frequency table located by search: offset=${offset:04X} "
+                f"(${load_addr + offset:04X}), {size} entries, {layout}")
+            return read_frequency_table(c64_data, loc)
 
-        # Apply offset to actual load address
-        freq_addr = load_addr + freq_offset
-        offset = freq_addr - load_addr  # Just freq_offset, but clearer
-
-        logger.debug(f"Frequency table: load_addr=${load_addr:04X}, freq_addr=${freq_addr:04X}, offset=${offset:04X}")
+        # Nothing found. Fall back to the constant so that data which carries no
+        # locatable table behaves as it always has, and say so at WARNING -- a
+        # silent fallback is how a wrong address survives measurement.
+        offset = LAXITY_FREQ_TABLE_ADDR - 0x1000
+        self.table_offset = offset
+        self.table_size = LAXITY_FREQ_TABLE_SIZE
+        self.table_layout = 'fallback-constant'
+        logger.warning(
+            f"No frequency table located; falling back to the ${offset:04X} "
+            f"constant, which is known to be two bytes past the base")
 
         if offset < 0 or offset + (LAXITY_FREQ_TABLE_SIZE * 2) > len(c64_data):
             logger.warning(f"Frequency table at offset ${offset:04X} extends beyond data (len={len(c64_data)})")
+            self.table_size = 0
             return []
 
-        frequencies = []
-        for i in range(LAXITY_FREQ_TABLE_SIZE):
-            lo = c64_data[offset + i * 2]
-            hi = c64_data[offset + i * 2 + 1]
-            freq = lo | (hi << 8)
-            frequencies.append(freq)
-
-        return frequencies
+        return [c64_data[offset + i * 2] | (c64_data[offset + i * 2 + 1] << 8)
+                for i in range(LAXITY_FREQ_TABLE_SIZE)]
 
     def frequency_to_sf2_note(self, frequency: int) -> int:
         """
@@ -131,7 +289,21 @@ class LaxityFrequencyTable:
         note_float = 12.0 * math.log2(freq_hz / 440.0) + 69.0
         note = int(round(note_float))
 
-        # Clamp to SF2 range (C-0 to B-7 = 0 to 93 = 0x00 to 0x5D)
+        # Clamp to SF2 range (C-0 to B-7 = 0 to 93 = 0x00 to 0x5D).
+        #
+        # THE TOP OF THE CLAMP CAN NEVER STOP FIRING, and that is a property of
+        # the format, not a defect to chase. A located Laxity table is 96 notes
+        # starting on $0116 = MIDI 12, so it ends at MIDI 107 -- fourteen
+        # semitones above SF2's B-7. Measured over the 236 tables located in
+        # SID/Laxity: 3,266 entries sit above MIDI 93, ZERO below 0, and 231 of
+        # the 236 files have EXACTLY 14 such entries. A song that plays a note
+        # in its top 14 table slots clamps, correctly.
+        #
+        # What DID change when the table stopped being read at the $0835
+        # constant (see locate_frequency_table): corpus clamp firings fell from
+        # 16,406 to 7,838 here and from 2,976 to 1,055 on the index path, and
+        # Short_but_Urgent went from ONE distinct pitch -- the value 93, i.e.
+        # the clamp itself -- to fifty.
         return max(0, min(93, note))
 
     def translate_laxity_note(self, lax_note: int) -> int:
@@ -230,7 +402,21 @@ class LaxitySequenceParser:
 
             # Duration ($80-$9F)
             elif 0x80 <= byte <= 0x9F:
-                current_duration = (byte & 0x1F) + 1  # $80 = 1 frame, $9F = 32 frames
+                # LOW NIBBLE plus one -- established from the player's own 6502 in
+                # drivers/laxity/laxity_player_disassembly.asm, not from another
+                # module here (all three in-repo readings disagreed, and all three
+                # were wrong). The reader masks `and #$0F`, stores to $FD,X, copies
+                # that to $EE,X, and the per-frame path is `dec ... / bpl`: the row
+                # advances only when the counter goes NEGATIVE, so a stored n lasts
+                # n+1 frames. $80..$8F is therefore 1..16 frames.
+                #
+                # BIT 4 IS NOT PART OF THE COUNT. `$1F` folded it in, making one
+                # duration byte in seven (232 of 1,708 over SID/Laxity/) up to 16
+                # frames too long. The player instead uses bit 4 to bump a SEPARATE
+                # gate/continue flag ($100,X) that a note byte of $00/$7E also bumps
+                # -- so it is not purely a tie, and it is not a duration input.
+                # See docs/players/LAXITY.md.
+                current_duration = (byte & 0x0F) + 1   # $80 = 1 frame, $8F = 16
                 pos += 1
 
             # Laxity command bytes ($C0-$FF)

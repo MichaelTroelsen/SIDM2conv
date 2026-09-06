@@ -24,7 +24,7 @@ the 55):
 
 | Question | Count | How |
 |---|---|---|
-| Does `native_dispatch.probe("mattgray", path)` **accept** it? | **11/55** | `locate()` finds every table by signature; raises otherwise |
+| Does `native_dispatch.probe("mattgray", path)` **accept** it? | **13/55** | `locate()` finds every table by signature; raises otherwise |
 
 **QUOTE THE DENOMINATOR WITH THE NUMBER, because 11 and 12 are both right.**
 The 55 is `SID/Gray_Matt/*.sid`, TOP LEVEL ONLY. A recursive sweep of `SID/`
@@ -36,7 +36,16 @@ The three figures that have appeared for this row reconcile as: **13** retired
 (pre-2026-08-21, see below), **11** current at this denominator, **12** the
 tree-wide recursive count.
 
-**The probe was 13/55 until 2026-08-21, and the 2 it lost were never real.**
+**13 → 11 → 13: the two that came back, and why both readings were right at the time.** *(current answer: 13, re-measured 2026-09-06)*
+
+`Pogo_Stick_Olympics` and `Warriors` were accepted until 2026-08-21 on a `locate()`
+that had genuinely mis-placed their tempo table, so dropping them was correct. They
+were refused for the next fortnight, and `347bcc3` (*a static tempo slot, found from
+the consumer*, 2026-09-05) located it properly — so they decode again, this time on a
+tempo the consumer agrees with. The 2026-09-03 re-measurement recorded below was
+accurate when taken and PREDATES that commit by two days.
+
+The original 2026-08-21 finding, kept because the mechanism still matters:
 `Pogo_Stick_Olympics` and `Warriors` were accepted on a `locate()` that had
 silently mis-placed two tables. `n_patterns` is `pat_hi - pat_lo`, and the
 search took the FIRST adjacent site pair rather than the widest, so it picked a
@@ -46,17 +55,61 @@ pair ONE byte apart and declared a one-pattern song while the tracks referenced
 that already decoded picks the same table it always did, because in all of them
 the real pattern table IS the widest candidate.
 
+**And the two files are ONE PLAYER RELOCATED, so a heuristic that fails on both
+has failed once.** *(measured 2026-09-06)*
+
+Every time these two appear together in a failure they read as two independent
+confirmations, and they are not. `Pogo_Stick_Olympics` loads at `$1000` and
+`Warriors` at `$2000`, and the player is the same code moved up a page:
+
+| | Pogo | Warriors | delta |
+|---|---|---|---|
+| load | `$1000` | `$2000` | `+$1000` |
+| init | `$1A10` | `$2A10` | `+$1000` |
+| arp table | `$1511` | `$2511` | `+$1000` |
+| **play** | **`$1557`** | **`$2560`** | **`+$1009`** |
+
+The init region is 194 of 200 bytes identical under the `+$1000` mapping, and at
+`$109F`/`$209F` the instruction bytes are the same except the relocated operand
+high byte (`CE 10 14 10 06 AD` against `CE 10 24 10 06 AD`). So when one of the
+signature heuristics keys on the player's shape and misses, it misses on both
+files for a single structural reason.
+
+**Three corrections to how that was first written down, each measured rather than
+argued.** They matter because the shorthand "the same build at two load
+addresses" is what makes it tempting to treat a fix verified on one as verified
+on both.
+
+1. **`play` is `+$1009`, not `+$1000`.** Warriors' play routine sits nine bytes
+   further into its image. Read at `+$1000` its first 200 bytes differ in 189
+   places; read at the real `+$1009` they differ in 53, of which 17 are the
+   relocation high byte. So the players are near-identical but NOT identical, and
+   an address map that assumes a flat `+$1000` is wrong for the routine that
+   matters most.
+2. **`$1410`/`$2410` and `$140E`/`$240E` do NOT hold the same bytes.** Pogo has
+   pattern data there (`01 FF 70 70 04 00`) where Warriors has zeros. Of the
+   three address pairs originally cited as evidence, only `$109F`/`$209F` holds.
+3. **They are not one build — they are one player carrying different songs.**
+   Best byte alignment is at shift 0 (the code sits at the same relative
+   offsets), and at that alignment only **1093 of 2582 bytes match — 42.3%**.
+   The payloads are not even the same length (2587 vs 2582).
+
+The original conclusion survives all three: a heuristic failing on both is one
+fact about the shared player, not two. The evidence for it is the init region
+and `$109F`, not a flat `+$1000` map.
+
 That exposed the next link: `tune_tempo` was chosen BEFORE the pattern table and
 had been claiming its lo-table. Chosen after it, the only free candidate left
 for these two is the **arpeggio pointer table** (`$1511` → `$1517`/`$151b`,
 whose targets read `00 05 09 0c` and `00 04 07 0c`, chord shapes in semitones),
 whose pointer high byte would have been read as a tempo of 21 — a row every 2.6
-seconds where every decoding file reads 2–5. So they now REFUSE on the tempo
-table, with the pattern table underneath correctly located. Probe and decode are
-both 11/55 and the accept-but-not-decode gap is empty; a wrong tempo would have
+seconds where every decoding file reads 2–5. So they REFUSED on the tempo
+table, with the pattern table underneath correctly located — until `347bcc3` gave
+the tempo a static slot. Probe and decode are now
+both 13/55 and the accept-but-not-decode gap is still empty; a wrong tempo would have
 put every note in the song at the wrong time while the decode still looked fine.
 
-| Does `parse_sid()` **decode** it (tables + sequencer walk)? | **11/55** | same 11; the gap above it is empty. `Pogo_Stick_Olympics` and `Warriors` are **refused by the probe**, not accepted-and-failing — re-measured 2026-09-03, `probe("mattgray", …)` returns False for both. The pattern-with-no-`$ff`-terminator bug (`mattgray-pattern-no-ff-terminator`) is still open but is no longer reachable through this gate |
+| Does `parse_sid()` **decode** it (tables + sequencer walk)? | **13/55** | same 13; the gap above it is empty (symmetric difference 0, re-measured 2026-09-06). `Pogo_Stick_Olympics` and `Warriors` are BACK — see the note above. The pattern-with-no-`$ff`-terminator bug (`mattgray-pattern-no-ff-terminator`) is still open but is not reachable through this gate |
 | How many Stage B **artifacts** are on disk? | **8 songs / 37 song×subtune / 78 built `.sf2` parts** | `out/mattgray_native/*.sf2`, one game per song, part-split for length |
 
 These are not disagreeing answers — accept ⊇ decode ⊇ built, each a stricter
@@ -936,9 +989,11 @@ Rungs 3 and 4 are done and Stage B covers all three games; what is left:
    level / harmonics / per-octave energy / envelope, which are already at the
    floor, and always measure the floor **per voice** (they range 0.937-0.999
    on this tune).
-2. Generalise the locator further — **6 → 11 of 55 files now parse**, 3 of the
-   5 new ones with confirmed instrument tables. `Make_My_Day` still shows
-   `locate()` is not a superset of the fast path.
+2. Generalise the locator further — **13 of 55 files now parse** (6 → 11 with
+   the locator generalisation, then 11 → 13 when `347bcc3` gave the tempo a
+   static slot and `Pogo_Stick_Olympics` and `Warriors` came back). 3 of the
+   5 files the locator added have confirmed instrument tables. `Make_My_Day`
+   still shows `locate()` is not a superset of the fast path.
 3. Subtune 7's truncated pattern: recover the missing bytes from the
    relocating copy, or confirm the rip itself is short.
 

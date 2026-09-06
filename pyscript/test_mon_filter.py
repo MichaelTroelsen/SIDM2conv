@@ -130,3 +130,81 @@ def test_up_and_down_ramps_are_distinct_programs():
     up = BM.filter_program_for(_ftr([64 + 2 * k for k in range(20)]), 0, 20)[1]
     down = BM.filter_program_for(_ftr([128 - 4 * k for k in range(20)]), 0, 20)[1]
     assert up != down
+
+
+# ---------------------------------------------------------------------------
+# FILT_ANCHOR: the per-note filter capture may start BEFORE the onset.
+#
+# SDI writes the filter program before the gate rise it belongs to, so a note's
+# brightest frame is the one before its onset and the SET row otherwise lands on
+# the first DECAY value. Measured on Funk_Facet voice 0: frame 96 = 240, onset
+# 97 = 209 falling -31/frame. The anchor is GATED -- it moves only where the
+# earlier frame is genuinely brighter at the same res/routing -- because a
+# blanket one-frame shift would swallow the previous note's tail everywhere.
+# ---------------------------------------------------------------------------
+
+def _set_cutoff(row):
+    """Decode a SET row's 8-bit cutoff: hi nibble in byte0, lo nibble in byte1."""
+    return ((row[0] & 0x0F) << 4) | (row[1] >> 4)
+
+
+def _trace(pre, at, tail, ctrl=0xF1):
+    """A filter trace: one pre-onset frame, then the note, at 11-bit cutoff."""
+    return [(pre << 3, ctrl)] + [(at << 3, ctrl)] + [(t << 3, ctrl) for t in tail]
+
+
+def test_the_default_is_zero_so_every_other_builder_is_unchanged():
+    import inspect
+    assert BM.FILT_ANCHOR == 0, BM.FILT_ANCHOR
+    src = inspect.getsource(BM.filter_program_for)
+    assert 'start = onset' in src
+
+
+def test_a_brighter_pre_onset_frame_moves_the_capture_back():
+    ftr = _trace(240, 209, [178, 147, 116])
+    old, new = BM.FILT_ANCHOR, None
+    try:
+        BM.FILT_ANCHOR = 0
+        _, prog0 = BM.filter_program_for(ftr, 1, 4)
+        BM.FILT_ANCHOR = 1
+        _, prog1 = BM.filter_program_for(ftr, 1, 4)
+    finally:
+        BM.FILT_ANCHOR = old
+    assert _set_cutoff(prog0[0]) == 209      # the first DECAY value
+    assert _set_cutoff(prog1[0]) == 240      # the attack peak
+
+
+def test_a_DARKER_pre_onset_frame_does_not_move_it():
+    """The gate: an ordinary note whose predecessor is quieter must not shift."""
+    ftr = _trace(32, 209, [178, 147, 116])
+    old = BM.FILT_ANCHOR
+    try:
+        BM.FILT_ANCHOR = 1
+        _, prog = BM.filter_program_for(ftr, 1, 4)
+    finally:
+        BM.FILT_ANCHOR = old
+    assert _set_cutoff(prog[0]) == 209
+
+
+def test_a_res_or_routing_change_blocks_the_anchor():
+    """A different $D417 before the onset is a different filter state, not this
+    note's attack -- capturing it would carry the previous note's routing in."""
+    ftr = [(240 << 3, 0x11)] + [(209 << 3, 0xF1)] + [(c << 3, 0xF1) for c in (178, 147)]
+    old = BM.FILT_ANCHOR
+    try:
+        BM.FILT_ANCHOR = 1
+        _, prog = BM.filter_program_for(ftr, 1, 4)
+    finally:
+        BM.FILT_ANCHOR = old
+    assert _set_cutoff(prog[0]) == 209
+
+
+def test_the_anchor_never_reads_before_frame_zero():
+    ftr = _trace(240, 209, [178, 147])
+    old = BM.FILT_ANCHOR
+    try:
+        BM.FILT_ANCHOR = 1
+        _, prog = BM.filter_program_for(ftr, 0, 3)   # onset 0, nothing before it
+    finally:
+        BM.FILT_ANCHOR = old
+    assert _set_cutoff(prog[0]) == 240               # frame 0 is its own base

@@ -436,3 +436,144 @@ def test_angulars_proven_orderlist_is_the_one_the_panel_contradicts():
     if not ANGULAR.exists():
         pytest.skip("SID/Angular.sid not present")
     assert _first_entries("Angular") == (0x01, 0x02, 0x05)
+
+
+# ---------------------------------------------------------------------------
+# THE LOCATE, CONFIRMED BY THE PLAYER'S OWN FETCHES (2026-09-06)
+#
+# locate_seq_ptr_table finds ch_seq_ptr by CODE SIGNATURE -- two `LDA abs,X`
+# whose operands are 3 apart. ~20 neighbouring 3-byte per-voice tables share
+# that shape in every file, so "the table is read" discriminates NOTHING: the
+# player reads all of them. What only the REAL table can do is supply the base
+# addresses of the indirect-indexed `(zp),Y` fetches that walk sequence data.
+#
+# So: emulate init + N play calls, record every address reached through (zp),Y,
+# and ask whether the pointers STORED in the located table are among them.
+#
+# This replaces the verify's prescribed SF2II ground truth, which two earlier
+# cycles showed CANNOT work: the editor's orderlist panel displays a converter
+# STUB that is byte-identical across files (a0 00 fe ff...), so it disagrees
+# with every file by construction, including the confirmed ones.
+# ---------------------------------------------------------------------------
+
+CONFIRMED_THREE = ["Angular", "Omniphunk", "Stinsens_Last_Night_of_89"]
+
+# The eleven the locate accepted on the validity filter alone. "Unboxed" is the
+# Ending rip -- Unboxed_Intro/Turn_Disk are NOT located at all and are outside
+# this population.
+THE_ELEVEN = ["Balance", "Beast", "Cascade", "Chaser", "Colorama", "Cycles",
+              "Delicate", "Dreams", "Dreamy", "Phoenix_Code_End_Tune",
+              "Unboxed_Ending_8580"]
+
+
+def _sid_path(stem):
+    """ROOT and pytest come from this module's existing header; there is no
+    second import block."""
+    for sub in ("SID", "SID/Laxity"):
+        cand = ROOT / sub / ("%s.sid" % stem)
+        if cand.exists():
+            return str(cand)
+    return None
+
+
+def _load_sid_body(path):
+    d = open(path, "rb").read()
+    doff = int.from_bytes(d[6:8], "big")
+    load = int.from_bytes(d[8:10], "big")
+    init = int.from_bytes(d[10:12], "big")
+    play = int.from_bytes(d[12:14], "big")
+    body = d[doff:]
+    if load == 0:
+        load = body[0] | (body[1] << 8)
+        body = body[2:]
+    return body, load, init, play
+
+
+def _indirect_reads(path, frames=200, budget=400000):
+    """Every address the play routine reaches through (zp),Y."""
+    from sidm2.cpu6502_emulator import CPU6502Emulator
+
+    class _T(CPU6502Emulator):
+        def __init__(self):
+            super().__init__(capture_writes=False)
+            self.ind = set()
+
+        def addr_indirect_y(self):
+            a = super().addr_indirect_y()
+            self.ind.add(a)
+            return a
+
+    body, load, init, play = _load_sid_body(path)
+    t = _T()
+    t.load_memory(body, load)
+    t.reset(pc=init, a=0)
+    t.run_until_return()
+    for _ in range(frames):
+        t.reset(pc=play)
+        n = 0
+        while n < budget and t.run_instruction():
+            n += 1
+    return t.ind, body, load
+
+
+def _fetch_score(body, load, lo_b, hi_b, ind):
+    """How many of the 3 stored pointers the player actually fetched from."""
+    if not (0 <= lo_b - load < len(body) - 3 and 0 <= hi_b - load < len(body) - 3):
+        return None
+    return sum((body[lo_b - load + i] | (body[hi_b - load + i] << 8)) in ind
+               for i in range(3))
+
+
+def _candidates(body):
+    """Every `LDA abs,X` operand pair 3 apart -- the confusion set the code
+    signature cannot separate. The two instructions need NOT be adjacent
+    (Angular's are 6 bytes apart); assuming they were found ZERO candidates in
+    the first version of this check and made it silently vacuous."""
+    ops = {body[i + 1] | (body[i + 2] << 8)
+           for i in range(len(body) - 3) if body[i] == 0xBD}
+    return [(a, a + 3) for a in sorted(ops) if a + 3 in ops]
+
+
+def _score_stem(stem):
+    path = _sid_path(stem)
+    if path is None:
+        pytest.skip("%s.sid not present" % stem)
+    body, load, _i, _p = _load_sid_body(path)
+    loc = locate_seq_ptr_table(body, load)
+    assert loc is not None, "%s: locate returned None" % stem
+    lo_b, hi_b = loc
+    ind, body, load = _indirect_reads(path)
+    return _fetch_score(body, load, lo_b, hi_b, ind), body, load, lo_b, hi_b, ind
+
+
+def test_the_fetch_check_DISCRIMINATES_before_it_is_believed():
+    """NEGATIVE CONTROL, and it comes first. If every candidate scored 3/3 the
+    result below would be vacuous agreement, which is the exact shape this repo
+    keeps shipping. On Angular exactly ONE of 22 candidates scores 3/3 and it is
+    the located one; both historical CONSTANTS score less; an off-by-one
+    degrades rather than passing."""
+    s, body, load, lo_b, hi_b, ind = _score_stem("Angular")
+    assert s == 3, s
+    winners = [(a, b) for a, b in _candidates(body)
+               if _fetch_score(body, load, a, b, ind) == 3]
+    assert len(_candidates(body)) > 10, "confusion set too small to be a control"
+    assert winners == [(lo_b, hi_b)], winners
+    # the constants this locate replaced
+    assert _fetch_score(body, load, load + 0x099F, load + 0x09A2, ind) < 3
+    assert _fetch_score(body, load, load + 0x0A1C, load + 0x0A1F, ind) < 3
+    # and it is not a range that passes by being near-enough
+    assert _fetch_score(body, load, lo_b + 2, hi_b + 2, ind) < 3
+
+
+@pytest.mark.parametrize("stem", CONFIRMED_THREE)
+def test_the_three_independently_confirmed_files_agree(stem):
+    """The instrument must reproduce the answers already known by other means."""
+    assert _score_stem(stem)[0] == 3, stem
+
+
+@pytest.mark.parametrize("stem", THE_ELEVEN)
+def test_the_eleven_plausible_files_are_now_confirmed(stem):
+    """The task's whole question: the locate accepted these on the validity
+    filter alone, and conversion output cannot tell a right locate from a wrong
+    one because the emitted SF2 is byte-identical either way."""
+    assert _score_stem(stem)[0] == 3, stem

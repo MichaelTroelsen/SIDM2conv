@@ -145,13 +145,22 @@ class DMCShim:
                 changes = sorted((tk * ofpt, n.sound)
                                  for tk, n in voices[v] if n.sound >= 0)
                 if v in legato_set:
-                    # DECODE pitch-CHANGE boundaries (a held/tied note keeps its
-                    # pitch -> not a new onset); they align with the trace
-                    # frame-for-frame. A leading rest lands the first note at its
-                    # absolute frame so a late-entering voice stays in sync.
+                    # DECODE note boundaries. A held/tied note keeps its pitch
+                    # across consecutive events -> not a new onset. But a REST
+                    # ENDS THE NOTE, so the next note is a new ARTICULATION even
+                    # at the same pitch, and `prev` must not survive it. Without
+                    # the reset, Dreaming_2 voice 2 merged three pitch-54 notes
+                    # 96-160 frames apart into ONE 380-frame note, and
+                    # _wave_prog_for then -- correctly -- sampled the original's
+                    # gate-off $50 across that span, yielding a degenerate
+                    # program that can never gate: part01's voice 3 went silent.
+                    # They align with the trace frame-for-frame. A leading rest
+                    # lands the first note at its absolute frame so a
+                    # late-entering voice stays in sync.
                     ons, prev = [], None
                     for tk, n in voices[v]:
                         if n.pitch < 0:
+                            prev = None      # a rest ENDS the note
                             continue
                         fr = tk * ofpt + phase
                         if fr >= 0 and n.pitch != prev:
