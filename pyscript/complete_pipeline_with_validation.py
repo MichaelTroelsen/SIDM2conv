@@ -1179,7 +1179,7 @@ Documentation Tools:
 Validation Status
 ================================================================================
 
-Expected Files: {len(REQUIRED_FILES)}
+Expected Files: {len(NEW_FILES) + len(ORIGINAL_FILES) + len(ANALYSIS_FILES)}
 Check output directories to verify all files were generated successfully.
 
 For complete validation, ensure:

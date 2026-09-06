@@ -13,6 +13,7 @@ from enum import Enum
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sidm2.models import PSIDHeader
 from sidm2.sid_parser import SIDParser
 from pyscript.html_export import generate_html_export
 from pyscript.annotate_asm import SectionType
