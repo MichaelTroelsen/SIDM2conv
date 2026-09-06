@@ -14,6 +14,14 @@
     "sidm2-siddump": {
       "command": "python",
       "args": ["mcp-siddump/server.py"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
     }
   }
 }
