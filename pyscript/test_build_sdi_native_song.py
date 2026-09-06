@@ -35,6 +35,7 @@ These tests do NOT build anything: bin/build_sdi_native_song.py has a
 `__name__ == '__main__'` guard, so importing it applies the override and
 nothing else.
 """
+import ast
 import os
 import subprocess
 import sys
@@ -68,7 +69,9 @@ def _probe(env_extra=None):
                          capture_output=True, text=True, timeout=300)
     if out.returncode != 0:
         raise AssertionError("probe failed: " + (out.stderr or "")[-800:])
-    return eval(out.stdout.strip().splitlines()[-1])          # noqa: S307
+    # literal_eval, not eval: the probe prints a tuple literal, and this
+    # refuses anything that is not one.
+    return ast.literal_eval(out.stdout.strip().splitlines()[-1])
 
 
 @unittest.skipIf(not os.path.isfile(_BUILDER), "build_sdi_native_song.py absent")
@@ -306,7 +309,7 @@ class TestFiltAnchorDefault(unittest.TestCase):
                              capture_output=True, text=True, timeout=300)
         if out.returncode != 0:
             raise AssertionError("probe failed: " + (out.stderr or "")[-800:])
-        before, after = eval(out.stdout.strip().splitlines()[-1])
+        before, after = ast.literal_eval(out.stdout.strip().splitlines()[-1])
         self.assertEqual(before, 0, "the SHARED default must stay 0")
         self.assertEqual(after, 1, "importing the SDI builder must opt in")
 
