@@ -954,9 +954,14 @@ def server(staged):
 def _get(url, headers=None):
     import urllib.error
     import urllib.request
+    # urlopen also honours file:// and ftp://. Every caller here hits
+    # the local test server over http, so require that rather than
+    # trusting it -- the nosec below records the review, the assert
+    # enforces it.
+    assert url.startswith("http://"), url
     req = urllib.request.Request(url, headers=headers or {})
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req) as r:  # nosec B310
             return r.status, dict(r.headers), r.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers), e.read()
