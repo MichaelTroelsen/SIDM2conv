@@ -164,7 +164,7 @@ def test_the_journal_sits_beside_the_result_not_in_a_temp_dir():
     for it. None when --json is absent: a sweep nobody wanted the result of
     does not get a journal either.
     """
-    assert S.journal_path_for("/tmp/x/out.json") == "/tmp/x/out.json.journal"
+    assert S.journal_path_for("/w/x/out.json") == "/w/x/out.json.journal"
     assert S.journal_path_for(None) is None
     assert S.journal_path_for("") is None
 

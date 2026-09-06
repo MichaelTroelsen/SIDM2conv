@@ -103,7 +103,8 @@ def build(stem, prekill):
 
 
 def features(path, secs, tag):
-    key = hashlib.md5(("%s|%d|%s" % (path, secs, tag)).encode()).hexdigest()[:10]
+    key = hashlib.sha256(
+        ("%s|%d|%s" % (path, secs, tag)).encode()).hexdigest()[:10]
     wav_path = os.path.join(WORK, "%s.wav" % key)
     if not os.path.exists(wav_path):
         export_to_wav(Path(path), Path(wav_path), duration=secs)

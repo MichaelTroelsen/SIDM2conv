@@ -141,8 +141,10 @@ def test_the_sweep_cannot_see_a_wrong_instrument_locate_BECAUSE_NOTHING_CAN():
     not a measure that happens to be insensitive to the locate. The locate never
     reaches the artifact at all:
 
-        LaxityParser._extract_instruments  8 instruments, md5 cab9a978 at $0A6B
-                                           8 instruments, md5 d1b22dd1 at $0500
+        LaxityParser._extract_instruments  8 instruments, digest A at $0A6B
+                                           8 instruments, digest B at $0500
+        (recorded as md5 cab9a978 / d1b22dd1 when this was written; the
+         code now uses sha256, so only the INEQUALITY reproduces)
         scripts/sid_to_sf2.py --driver laxity   13,449 bytes, BYTE-IDENTICAL
 
     The extraction genuinely reads a different table and returns different bytes;
@@ -191,7 +193,8 @@ def test_the_sweep_cannot_see_a_wrong_instrument_locate_BECAUSE_NOTHING_CAN():
             data, load = sp.get_c64_data(h)
             r = LP.LaxityParser(data, load).parse()
         ins = getattr(r, "instruments", None) or []
-        return len(ins), hashlib.md5(b"".join(bytes(x) for x in ins)).hexdigest()
+        return len(ins), hashlib.sha256(
+            b"".join(bytes(x) for x in ins)).hexdigest()
 
     try:
         good = extract(0x0A6B)

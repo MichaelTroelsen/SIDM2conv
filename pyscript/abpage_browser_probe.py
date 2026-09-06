@@ -138,8 +138,11 @@ def main(argv=None) -> int:
         return 2
 
     url = "http://127.0.0.1:%s/%s.html" % (port, name)
+    # urlopen also honours file:// and ftp://; this probe only ever
+    # speaks http to a local port, so say so rather than trusting it.
+    assert url.startswith("http://"), url
     try:
-        with urllib.request.urlopen(url, timeout=20) as r:
+        with urllib.request.urlopen(url, timeout=20) as r:  # nosec B310
             html = r.read().decode("utf-8")
     except OSError as exc:
         print("[ERROR] cannot fetch %s -- is `abpage.py serve` running? (%s)"
