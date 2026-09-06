@@ -79,6 +79,18 @@ if "FILT_LEAD" not in os.environ:
     BM.FILT_LEAD = 64
 if "FILT_EXACT_PB" not in os.environ:
     BM.FILT_EXACT_PB = True
+# SDI writes the per-note filter program BEFORE the gate rise it belongs to, so
+# the brightest frame of a note is the frame BEFORE its onset and the capture's
+# SET row lands on the first decay value instead of the attack peak. Measured
+# over five SDI songs, SET row == the note's attack peak:
+#     Funk_Facet   4 -> 106 of 249      Hardcore    0 -> 104 of 399
+#     Guaranteed  44 -> 197 of 199      Koke_Stek 177 -> 189 of 220
+#     Bouncing   104 -> 110 of 125
+# Every song gains and none loses. The anchor is GATED inside
+# filter_program_for -- it moves only where the earlier frame is genuinely
+# brighter at the same res/routing -- so it is not a blanket one-frame shift.
+if "FILT_ANCHOR" not in os.environ:
+    BM.FILT_ANCHOR = 1
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     "SID", "Gallefoss_Glenn", "2_Young_2_Die.sid")
@@ -118,6 +130,31 @@ def _sem(frames, v, onset):
         if ((delta1 >> 8) & 0xFC) == 0x40:
             return freq_to_semi(f1)
     return s0
+
+
+def onset_gate_rows(real, onsets, horizon=700):
+    """Per-voice (trace, emulated, matched) counts behind the onset gate.
+
+    The gate pools its three voices into one agree/tot ratio and then prints the
+    EMULATED counts alone, which cannot tell a quiet voice from a collapsed one:
+    Culture_Mix_1 emulates [1, 1, 535] and passes, Jessie_Jazz emulates
+    [1, 415, 1] and is refused at 0.055, and the two lines look the same. Only
+    the TRACE column separates them -- the voice reading 1 really has 1 onset in
+    one file and about 70 in the other.
+
+    Returns one (trace, emulated, matched) triple per voice. `emulated` is
+    len(onsets[v]), the same number the old line printed, so the count a reader
+    already knows does not change meaning; `matched` is the numerator of the
+    gate, split by voice.
+    """
+    rows = []
+    for v in range(3):
+        seq = real[v] if isinstance(real, (list, tuple)) else real.get(v, [])
+        rl = set(fr for fr, _ in seq if fr < horizon)
+        em = set(onsets[v])
+        matched = sum(1 for fr in rl if em & {fr - 1, fr, fr + 1})
+        rows.append((len(rl), len(onsets[v]), matched))
+    return rows
 
 
 class SDIShim:
@@ -352,8 +389,19 @@ def build_song(shim, base, traces, span):
         # left to split, and a window that still will not fit at one row is
         # emitted as before rather than looping forever.
         _floor = max(1, int(getattr(shim, "frames_per_tick", 1) or 1))
+        # COUNT THE SHRINK, because 'the probe never fires' and 'the probe is not
+        # there' produce byte-identical corpora and were indistinguishable for two
+        # cycles. A firing means the packer chose a window its own layout could not
+        # hold -- the DMC crash class (2bdbb71) -- so it is worth a line of output
+        # rather than a silent correction. Zero firings prints nothing and leaves
+        # every existing build log byte-identical.
+        _shrunk = 0
         while t1 - t0 > _floor and not fits(t0, t1):
             t1 = max(t0 + _floor, t0 + (t1 - t0) // 2)
+            _shrunk += 1
+        if _shrunk:
+            print(f"  BASE WINDOW DID NOT FIT: shrank {_shrunk}x "
+                  f"to {t0}-{t1}f ({(t1 - t0) // 50}s)")
         bounds.append((t0, t1))
         t0 = t1
     parts = []
@@ -525,17 +573,15 @@ def main():
                                 len(traces[0]))
         # onset-agreement gate vs siddump (multispeed/self-IRQ emulate too slow)
         real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
-        agree = tot = 0
-        for v in range(3):
-            rl = set(fr for fr, _ in (real[v] if isinstance(real, (list, tuple))
-                                      else real.get(v, [])) if fr < 700)
-            em = set(onsets[v])
-            agree += sum(1 for fr in rl if em & {fr - 1, fr, fr + 1})
-            tot += len(rl)
+        rows = onset_gate_rows(real, onsets)
+        agree = sum(m for _, _, m in rows)
+        tot = sum(t for t, _, _ in rows)
         ok = bool(tot) and agree / tot >= 0.85
         print(f"  emulated onsets vs trace: {agree}/{tot} "
               f"({'OK' if ok else 'LOW — suspect multispeed/self-IRQ'})")
-        print(f"  onsets/voice: {[len(o) for o in onsets]}")
+        print(f"  onsets/voice   trace: {[t for t, _, _ in rows]}"
+              f"   emulated: {[e for _, e, _ in rows]}"
+              f"   matched: {[m for _, _, m in rows]}")
         if not ok and '--force' not in sys.argv:
             print("  REFUSING to build: this file cannot be driven by "
                   "measure_onsets (self-IRQ / multispeed). Pass --force to probe.")

@@ -983,3 +983,127 @@ def test_dreamys_sf2_falls_back_while_its_sid_does_not():
     assert len(sf2_res.sequences) != 16, (
         "the SF2 payload now decodes to 16 sequences too -- the residual is "
         "closed and this whole block should go")
+
+
+# ---------------------------------------------------------------------------
+# THE PARTITION SCREEN on laxity_locate_seq_table (2026-09-06)
+#
+# Ascending + in-image + adjacent say the entries look like a TABLE; they do not
+# say the entries bound SEQUENCES. A real sequence ends on $7F and each interior
+# body is bounded by its successor, so body i must have $7F as its FINAL byte.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _PS_Path            # this module imports
+from sf2_viewer_core import SF2Parser           # both lazily elsewhere
+
+_PS_ROOT = _PS_Path(__file__).resolve().parent.parent
+
+
+def _ps_sid_payload(path):
+    d = open(path, "rb").read()
+    if d[:4] not in (b"PSID", b"RSID"):
+        return None
+    doff = int.from_bytes(d[6:8], "big")
+    load = int.from_bytes(d[8:10], "big")
+    body = d[doff:]
+    if load == 0:
+        load = body[0] | (body[1] << 8)
+        body = body[2:]
+    return body, load
+
+
+def _ps_sid(stem):
+    for sub in ("SID/Laxity", "SID"):
+        p = _PS_ROOT / sub / (stem + ".sid")
+        if p.exists():
+            return str(p)
+    return None
+
+
+def _ps_locate(stem):
+    p = _ps_sid(stem)
+    if p is None:
+        pytest.skip(stem + ".sid not present")
+    r = _ps_sid_payload(p)
+    if r is None:
+        pytest.skip(stem + ".sid is not a PSID/RSID")
+    return SF2Parser.laxity_locate_seq_table(*r)
+
+
+# The eight SID/Laxity files whose located table does NOT tile. Seven sit at
+# min_n=4 -- three of them at $1005, inside the player code, whose body 0 reads
+# 14 15 17 18 1A 1B 1D 1F..., a rising FREQUENCY TABLE -- and the eighth is
+# Rudolph (N=13, body 0 = 16 16 16 16 16 16 17 17 18 18), the same shape.
+PS_FALSE_LOCATES = ["Broom_Tycoon", "Farfisa", "First_Tune", "Flappy_Hero_March",
+                    "Hand_Interludes_Side_1", "Hand_Interludes_Side_2",
+                    "Hand_Interludes_Side_3", "Rudolph_in_the_Kitchen"]
+
+
+@pytest.mark.parametrize("stem", PS_FALSE_LOCATES)
+def test_the_false_locates_now_refuse_and_fall_back(stem):
+    """Each of these previously located a table that is not a sequence table.
+    Refusing hands the file to the older reader, which is the correct outcome:
+    a wrong table silently renumbers every sequence in the editor view, and the
+    conversion output is byte-identical either way, so nothing downstream would
+    ever catch it."""
+    assert _ps_locate(stem) is None, stem
+
+
+def test_the_screen_is_not_simply_min_n_raised_to_seven():
+    """POSITIVE CONTROL on the CHOICE of screen. Seven of the eight sit at
+    min_n=4 and would also fall to raising the floor; Rudolph would NOT, at
+    N=13. This pins that Rudolph's table passes every pre-screen constraint and
+    is rejected by the partition alone."""
+    p = _ps_sid("Rudolph_in_the_Kitchen")
+    if p is None:
+        pytest.skip("Rudolph_in_the_Kitchen.sid not present")
+    data, base = _ps_sid_payload(p)
+    tbl, cand = 0x12E9, 13
+    off = tbl - base
+    ptrs = [data[off + i] | (data[off + cand + i] << 8) for i in range(cand)]
+    assert ptrs[0] == tbl + 2 * cand, "adjacency held before the screen"
+    assert all(ptrs[i] < ptrs[i + 1] for i in range(cand - 1)), "ascending held"
+    assert cand > 7, "Rudolph sits above any plausible min_n floor"
+    bad = [i for i in range(cand - 1) if data[ptrs[i + 1] - 1 - base] != 0x7F]
+    assert len(bad) == 12, bad
+
+
+def test_a_tie_HAS_been_observed_and_the_screen_breaks_it_correctly():
+    """Upfront yields TWO pre-screen candidates ($190F N=14 and $1917 N=6),
+    which the docstring's older claim -- 'NOT ONE yields two' -- denied. That
+    claim was measured over SF2/ alone. Before the screen this file refused and
+    fell back; the screen breaks the tie on evidence, and Upfront is the only
+    file whose behaviour the change IMPROVES rather than restricts."""
+    got = _ps_locate("Upfront")
+    assert got is not None, "Upfront should now locate"
+    tbl, n, ptrs = got
+    assert (tbl, n) == (0x190F, 14), (hex(tbl), n)
+    data, base = _ps_sid_payload(_ps_sid("Upfront"))
+    # duration $80, note $00, end $7F -- the canonical Laxity sequence shape
+    assert list(data[ptrs[0] - base:ptrs[1] - base]) == [0x80, 0x00, 0x7F]
+
+
+def test_every_surviving_table_actually_tiles():
+    """The property itself, over whatever locates -- and it asserts a NON-ZERO
+    denominator first, because a sweep that locates nothing reports a clean pass
+    while meaning the scan never ran. That exact vacuous arm is in this repo's
+    run log for this very function."""
+    located = 0
+    d = _PS_ROOT / "SID" / "Laxity"
+    if not d.is_dir():
+        pytest.skip("SID/Laxity not present")
+    for path in sorted(d.glob("*.sid")):
+        r = _ps_sid_payload(str(path))
+        if r is None:
+            continue
+        data, base = r
+        got = SF2Parser.laxity_locate_seq_table(data, base)
+        if not got:
+            continue
+        located += 1
+        _tbl, n, ptrs = got
+        for i in range(n - 1):
+            end = ptrs[i + 1] - 1 - base
+            assert 0 <= end < len(data), (path.name, i)
+            assert data[end] == 0x7F, (path.name, i, hex(data[end]))
+    assert located >= 10, "only %d files located -- the sweep is vacuous" % located

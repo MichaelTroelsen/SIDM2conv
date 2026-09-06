@@ -186,3 +186,110 @@ def test_B7_bit0_DRUM_IS_exercised_and_never_appears_without_bit3():
     assert all(b7 & 0x08 for _, b7 in drums), (
         "bit0 now appears WITHOUT bit3 -- the two are separable after all: %s"
         % drums)
+
+
+# ---------------------------------------------------------------------------
+# THE DRUM ROWS REACH THE ARTIFACT (B7 bit0), 2026-09-06
+#
+# bit0 DRUM was decoded and shipped some time ago -- `_drum_semitone` reads the
+# value byte as the note's frequency HIGH byte, and `build_instruments` emits
+# one wave row per (waveform, value) pair from the drum table. What was never
+# checked is the last step: that those rows survive into the EMITTED FILE.
+# A decoder that is right and an emitter that drops its output are
+# indistinguishable from the builder's own log.
+#
+# The marker is the value byte's bit 7: the drum branch is the ONLY producer of
+# `0x80 | ...` in the wave table (arpeggio offsets are masked to 0x7F, and the
+# jump rows carry a row index). On both corpus songs that is 13 of 99 rows, so
+# it discriminates rather than matching everything.
+# ---------------------------------------------------------------------------
+
+DRUM_SONGS = ["Delirious_9_tune_1", "Road_of_Excess_end"]
+
+
+def _drum_marked(wave_table):
+    """(index, row) for every wave row carrying the drum marker."""
+    return [(i, tuple(w)) for i, w in enumerate(wave_table) if w[1] & 0x80]
+
+
+@pytest.mark.parametrize("stem", DRUM_SONGS)
+def test_the_drum_branch_actually_emits_rows(stem):
+    """POSITIVE CONTROL FIRST. If no sound sets bit0, or the branch emitted
+    nothing, the artifact check below would pass by finding nothing and
+    comparing it against nothing."""
+    sid = os.path.join(ROOT, "SID", "Fun_Fun", stem + ".sid")
+    if not os.path.exists(sid):
+        pytest.skip("%s.sid not present" % stem)
+    d, la = R.load_sid(sid)
+    rmz = R.RMZ(d, la)
+    drum_sounds = [i for i, s in enumerate(rmz.sounds) if s[7] & 0x01]
+    assert drum_sounds, "no sound sets B7 bit0 -- this file cannot test the drum path"
+    _instr, wave_table, _pulse = R.build_instruments(rmz)
+    marked = _drum_marked(wave_table)
+    assert marked, "the drum branch produced no marked rows"
+    # discriminating, not universal: a marker every row carried would prove nothing
+    assert len(marked) < len(wave_table) / 2, (len(marked), len(wave_table))
+
+
+@pytest.mark.parametrize("stem", DRUM_SONGS)
+def test_every_drum_row_survives_into_the_emitted_sf2(stem):
+    """The step nothing checked: read the rows back OUT OF THE FILE.
+
+    Not from the builder's in-memory table -- that is the thing under test.
+    """
+    sid = os.path.join(ROOT, "SID", "Fun_Fun", stem + ".sid")
+    art = os.path.join(ROOT, "out", "romuzak", stem + ".sf2")
+    if not (os.path.exists(sid) and os.path.exists(art)):
+        pytest.skip("%s: sid or built artifact not present" % stem)
+    sys.path.insert(0, os.path.join(ROOT, "pyscript"))
+    from sf2_viewer_core import SF2Parser
+
+    d, la = R.load_sid(sid)
+    _instr, wave_table, _pulse = R.build_instruments(R.RMZ(d, la))
+    intended = _drum_marked(wave_table)
+
+    p = SF2Parser(art)
+    p.parse()
+    wt = next(t for t in p.table_descriptors
+              if t.name == "Wave" and t.column_count == 2)
+    rows = p.get_table_data(wt)
+    in_file = {i: (r[0], r[1]) for i, r in enumerate(rows)
+               if len(r) >= 2 and r[1] & 0x80}
+
+    missing = [(i, w) for i, w in intended if in_file.get(i) != w]
+    assert not missing, (
+        "%s: %d drum row(s) did not reach the artifact, or reached it with "
+        "different bytes: %r" % (stem, len(missing), missing[:5]))
+    assert len(in_file) == len(intended), (len(in_file), len(intended))
+
+
+# ---------------------------------------------------------------------------
+# THE DEFAULT OUTPUT PATH (2026-09-06)
+#
+# It used to be `out/<stem>.sf2` -- the out/ ROOT. That is invisible in the
+# normal case: the file appears and the build reports success. It surfaced only
+# as a SCOPE violation, when a task declaring `rw:out/romuzak` ran this the
+# documented way and wrote a path it had not declared. The root already holds
+# hundreds of loose .sf2 files, so nothing looked out of place.
+# ---------------------------------------------------------------------------
+
+def test_the_default_output_goes_to_the_corpus_dir_not_the_out_root():
+    got = R.default_out(os.path.join("SID", "Fun_Fun", "Delirious_9_tune_1.sid"))
+    parts = os.path.normpath(got).split(os.sep)
+    assert parts[-3:] == ["out", "romuzak", "Delirious_9_tune_1.sf2"], got
+    # the specific regression: exactly two path segments before the filename
+    assert os.path.dirname(os.path.normpath(got)) == os.path.join("out", "romuzak"), got
+
+
+def test_the_default_takes_the_STEM_not_the_whole_name():
+    """A path with directories in it must not leak them into the artifact name."""
+    got = R.default_out(os.path.join("a", "b", "Road_of_Excess_end.sid"))
+    assert os.path.basename(got) == "Road_of_Excess_end.sf2", got
+
+
+def test_main_still_honours_an_EXPLICIT_destination():
+    """The default changed; the override must not have. This is what the
+    romuzak drum-row cycle relied on to keep its writes inside out/romuzak."""
+    src = open(os.path.join(ROOT, "bin", "romuzak_to_sf2.py"), encoding="utf-8").read()
+    assert "sys.argv[2] if len(sys.argv) > 2 else default_out(path)" in src, (
+        "main() no longer prefers an explicit argv[2] over the default")

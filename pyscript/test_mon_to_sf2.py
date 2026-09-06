@@ -41,14 +41,19 @@ def test_emit_and_structure():
 
 
 @pytest.mark.parametrize("subtune", [2, 3])
-def test_sf2_roundtrip_onsets(subtune):
+def test_sf2_roundtrip_onsets(subtune, tmp_path):
     # the emitted SF2, played back, must reproduce the original onsets exactly
     # (note + aligned frame), all 3 voices. Subtune 2 also exercises the $40-$5F
     # orderlist pattern-repeat counter; subtune 3 is the simple case.
     val = _load_mod("mon_sf2_validate", os.path.join("bin", "mon_sf2_validate.py"))
+    # The chdir STAYS: the siddump invocations below resolve their tool
+    # path relative to the repo root, so removing it breaks them. What
+    # moves is the PROBE, which used to be written to out/ -- a tracked
+    # build directory -- leaving two .sid files behind on every run and
+    # making a corpus audit report artifacts no build produced.
+    # tmp_path is absolute, so it survives the chdir above.
     os.chdir(ROOT)
-    os.makedirs("out", exist_ok=True)
-    probe = os.path.join("out", f"_mon_test_probe_{subtune}.sid")
+    probe = str(tmp_path / f"_mon_test_probe_{subtune}.sid")
     open(probe, "wb").write(val.build_probe(HAWKEYE, subtune))
     orig = val.onsets(HAWKEYE, [f"-a{subtune}", "-t12"])
     sf2 = val.onsets(probe, ["-t12"])

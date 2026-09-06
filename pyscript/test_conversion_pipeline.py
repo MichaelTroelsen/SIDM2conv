@@ -164,3 +164,80 @@ def test_the_driver_clause_can_now_only_cause_a_MISS_not_a_false_positive():
         "the driver clause was dropped -- that is the right END state, but only "
         "after sf2_player_parser decodes the packed grammar correctly; see this "
         "test's docstring")
+
+
+# ---------------------------------------------------------------------------
+# FROZEN-MODE TOOL RESOLUTION (2026-09-06)
+#
+# `player-id.exe` used to be resolved as os.path.join(os.getcwd(), 'tools', ...).
+# Run from anywhere but the repo root that misses, detect_player_type() returns
+# 'Unknown', and DriverSelector picks DRIVER11 -- for a native Laxity file the
+# documented 1-8% path, chosen silently, still exiting 0. Nothing consulted
+# sys._MEIPASS either, so the frozen binary could never find its bundled tools.
+# ---------------------------------------------------------------------------
+
+from sidm2.conversion_pipeline import _tool_path   # noqa: E402
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _inside_repo(path):
+    """True when `path` is under the repo root.
+
+    normCASE, not just normpath. Windows is case-insensitive, and the suite
+    imports `sidm2` through TWO differently-cased sys.path entries: graphify
+    wrote `SIDM2` for a directory named `sidm2` (see
+    pyscript/graphify_root_fixup.py), and test_graphify_root_fixup inserts its
+    parent on sys.path. Whichever runs first fixes the casing of
+    conversion_pipeline.__file__, which _tool_path derives its root from -- so
+    a raw startswith made these tests pass alone and fail in a full run, on a
+    path difference that is not a difference on this filesystem.
+    """
+    a = os.path.normcase(os.path.normpath(path))
+    b = os.path.normcase(os.path.normpath(_REPO))
+    return a.startswith(b)
+
+
+def test_tool_path_is_absolute_and_does_not_depend_on_the_cwd(tmp_path, monkeypatch):
+    """THE REGRESSION. Resolution must be identical from any working directory."""
+    here = _tool_path("player-id.exe")
+    monkeypatch.chdir(tmp_path)
+    there = _tool_path("player-id.exe")
+    assert os.path.isabs(here) and os.path.isabs(there)
+    assert here == there, (here, there)
+    assert _inside_repo(here), here
+
+
+def test_tool_path_prefers_MEIPASS_when_frozen(tmp_path, monkeypatch):
+    """PyInstaller extracts the bundle to sys._MEIPASS; a frozen binary must
+    look there FIRST, otherwise it finds the tools of whatever checkout the
+    machine happens to have -- or none at all."""
+    fake = tmp_path / "tools"
+    fake.mkdir()
+    (fake / "player-id.exe").write_bytes(b"stub")
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    got = _tool_path("player-id.exe")
+    assert got == str(fake / "player-id.exe"), got
+
+
+def test_MEIPASS_is_skipped_when_the_bundle_lacks_the_tool(tmp_path, monkeypatch):
+    """A _MEIPASS without the tool must fall through to the repo layout rather
+    than returning a path that does not exist -- otherwise adding frozen support
+    would BREAK the from-source case."""
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)  # empty
+    got = _tool_path("player-id.exe")
+    assert os.path.exists(got), got
+    assert _inside_repo(got), got
+
+
+def test_the_driver_selector_is_given_the_resolved_path():
+    """DriverSelector's own default is the RELATIVE Path('tools/player-id.exe'),
+    so the pipeline must inject a resolved one. Fixing it at the call site uses
+    the injection point the constructor already provides, and leaves
+    driver_selector.py alone."""
+    src = open(os.path.join(_REPO, "sidm2", "conversion_pipeline.py"),
+               encoding="utf-8").read()
+    assert "DriverSelector(" in src
+    assert "player_id_exe=Path(_tool_path('player-id.exe'))" in src, (
+        "the selector is being constructed without a resolved tool path; it will "
+        "fall back to its relative default and mis-detect from any other cwd")

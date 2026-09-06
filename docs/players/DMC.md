@@ -727,6 +727,68 @@ not worth generalising from. `DMC_GRID=0` is the A/B lever, but the grid exists
 to stop sequences bloating 4-5× (`Balloon` 77 parts), so turning it off
 corpus-wide is not the answer.
 
+## The 14 the builder refuses: FOUR signatures, not fourteen variants (2026-09-06)
+
+`bin/build_dmc_native_song.py:438` refuses a file whose layout is incomplete:
+
+```python
+if not (m.lay.sector_lo and m.lay.sound and m.lay.freq and m.lay.trk_lo):
+    sys.exit("DMC tables not located (variant?) — cannot build")
+```
+
+Measured over all 88 `SID/JohannesBjerregaard/*.sid`: **74 pass the predicate,
+14 refuse, 0 fail to load.** Grouping the 14 by *which fields are missing*
+collapses them into four signatures — so the open question is four shapes, not
+fourteen files:
+
+| missing | n | files |
+|---|---|---|
+| `sector_lo` + `sound` | **8** | `2nd`, `Crazy_Comets_remix`, `Magnetic_Fields`, `Mus86`, `Sarah`, `Skateboard`, `Tiger_Mission`, `Tuba` |
+| `freq` only | **4** | `Dragon`, `Metallic`, `Street_Cred_Boxing`, `USA_Tune` |
+| `sound` only | **1** | `Deel_1` |
+| all four | **1** | `Vikings_loader` |
+
+**The 8 are largely ONE generation, not eight variants.** Six of them load into
+`$C000..$CFFF` and play from `$C36D` or `$C22x` — `2nd` `$C367`/`$C36D`,
+`Sarah` `$C16D`/`$C36D`, `Skateboard` `$C367`/`$C36D`, `Tuba` `$C367`/`$C36D`,
+`Crazy_Comets_remix` `$C000`/`$C223`, `Magnetic_Fields` `$C000`/`$C228`. The
+other two sit elsewhere (`Mus86` `$1000`/`$186D`, `Tiger_Mission` `$0801`/
+`$1AB5`). So one relocated build of a later player probably accounts for most of
+this bucket, and locating `sector_lo`+`sound` for it would move six files at
+once.
+
+⚠️ **Read the load address from the DATA, not the PSID header.** All 88 carry
+`load=$0000` in the header, with the real address in the first two bytes of the
+payload — the standard PSID convention that `dmc_parser.load_sid` resolves. A
+census taken off the header field reports every file as `$0000` and finds the
+`$C000` cluster nowhere; that misreading was made and caught while writing this
+table.
+
+**`Dragon` and `Metallic` are RSIDs with `play=$0000`** (magic checked, not
+inferred). A file that declares no play address cannot be driven by the frame
+clock this builder assumes, which is a plausible reason `freq` never resolves —
+and it is the same class as the RSID limitation `PLAYBOOK.md` records for
+zig64. `Street_Cred_Boxing` (`$BF95`/`$C006`) and `USA_Tune` (`$1000`/`$1003`)
+are ordinary PSIDs and are NOT explained by that.
+
+**`Vikings_loader` is out of scope**, not a decode failure: it misses all four
+tables and is a loader stub rather than a tune.
+
+### The other 74 do NOT disagree between the docs
+
+CLAUDE.md says `70 scored / 14 no-tables / 4 refused`; this page says the same
+at "Corpus effect (2026-08-15)", and spells the arithmetic out above at
+"88 = 70 scored + 14 tables-not-located + 3 decoded-no-notes + 1 WAVE overflow"
+— the "4 errored" is that 3 + 1. The **14** there is exactly the 14 measured
+here, so the two partitions agree:
+
+> **88 = 74 the predicate accepts (70 scored + 4 errored) + 14 it refuses.**
+
+The **72** that also appears on this page is a `--build` run count, not a corpus
+figure, and the passage carrying it already says so: *"A build count and a
+corpus are different numbers."* Do not reconcile 72 against 70 — they answer
+different questions.
+
 ## Parser + decoder (`sidm2/dmc_parser.py`)
 
 Signature-locates the sector-ptr / sound / freq / track tables (relocation-safe, resolves

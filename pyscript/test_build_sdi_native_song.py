@@ -35,6 +35,7 @@ These tests do NOT build anything: bin/build_sdi_native_song.py has a
 `__name__ == '__main__'` guard, so importing it applies the override and
 nothing else.
 """
+import ast
 import os
 import subprocess
 import sys
@@ -68,7 +69,9 @@ def _probe(env_extra=None):
                          capture_output=True, text=True, timeout=300)
     if out.returncode != 0:
         raise AssertionError("probe failed: " + (out.stderr or "")[-800:])
-    return eval(out.stdout.strip().splitlines()[-1])          # noqa: S307
+    # literal_eval, not eval: the probe prints a tuple literal, and this
+    # refuses anything that is not one.
+    return ast.literal_eval(out.stdout.strip().splitlines()[-1])
 
 
 @unittest.skipIf(not os.path.isfile(_BUILDER), "build_sdi_native_song.py absent")
@@ -189,3 +192,149 @@ class TestPartCountIsDensityNotDefect(unittest.TestCase):
                 "spread 2-18s" % (base, len(set(w)), sorted(set(w))))
         if not checked:
             self.skipTest("none of the three comparison songs are built")
+
+
+# ---------------------------------------------------------------------------
+# The onset gate's REPORT (not its verdict).
+#
+# The gate pools three voices into one agree/tot and prints only the emulated
+# counts, so Culture_Mix_1 [1, 1, 535] (quiet in both traces, PASSES) and
+# Jessie_Jazz [1, 415, 1] (a busy voice collapsed only in emulation, REFUSED at
+# 0.055) read identically on the one line a human sees. These tests pin the
+# trace column that separates them -- and pin that the VERDICT did not move.
+# ---------------------------------------------------------------------------
+
+def _rows(real, onsets):
+    sys.path.insert(0, os.path.join(_ROOT, "bin"))
+    from build_sdi_native_song import onset_gate_rows
+    return onset_gate_rows(real, onsets)
+
+
+class TestOnsetGateReport(unittest.TestCase):
+
+    def test_a_quiet_voice_and_a_collapsed_voice_no_longer_look_alike(self):
+        """The whole point: same emulated count, opposite meanings."""
+        quiet_real = {0: [(10, 1)], 1: [(12, 1)], 2: [(f, 1) for f in range(0, 500, 3)]}
+        quiet_em = [[10], [12], list(range(0, 500, 3))]
+        collapsed_real = {0: [(10, 1)],
+                          1: [(f, 1) for f in range(0, 350, 5)],
+                          2: [(11, 1)]}
+        collapsed_em = [[10], [0], [11]]
+
+        quiet = _rows(quiet_real, quiet_em)
+        collapsed = _rows(collapsed_real, collapsed_em)
+
+        # voice 1 emulates ONE onset in both -- indistinguishable before
+        self.assertEqual(quiet[1][1], 1)
+        self.assertEqual(collapsed[1][1], 1)
+        # ...and the trace column says one really has 1 and the other has 70
+        self.assertEqual(quiet[1][0], 1)
+        self.assertEqual(collapsed[1][0], 70)
+
+    def test_matched_is_the_gate_numerator_split_by_voice(self):
+        real = {0: [(5, 1), (9, 1)], 1: [(20, 1)], 2: []}
+        onsets = [[5, 9], [999], []]
+        rows = _rows(real, onsets)
+        self.assertEqual([m for _, _, m in rows], [2, 0, 0])
+        self.assertEqual(sum(m for _, _, m in rows), 2)
+        self.assertEqual(sum(t for t, _, _ in rows), 3)
+
+    def test_a_one_frame_slip_still_counts_as_matched(self):
+        """The gate's +-1 tolerance is behaviour, not an accident."""
+        rows = _rows({0: [(100, 1)], 1: [], 2: []}, [[101], [], []])
+        self.assertEqual(rows[0][2], 1)
+        rows = _rows({0: [(100, 1)], 1: [], 2: []}, [[102], [], []])
+        self.assertEqual(rows[0][2], 0)
+
+    def test_the_horizon_that_bounds_the_trace_side_is_still_700(self):
+        rows = _rows({0: [(699, 1), (700, 1), (1200, 1)], 1: [], 2: []},
+                     [[699], [], []])
+        self.assertEqual(rows[0][0], 1)      # only frame 699 counts
+
+    def test_the_emulated_column_is_the_number_the_old_line_printed(self):
+        """len(onsets[v]), NOT the de-duplicated set -- so no reader is surprised."""
+        rows = _rows({0: [], 1: [], 2: []}, [[7, 7, 8], [], []])
+        self.assertEqual(rows[0][1], 3)
+
+    def test_a_list_shaped_real_is_accepted_as_well_as_a_dict(self):
+        as_dict = _rows({0: [(5, 1)], 1: [], 2: []}, [[5], [], []])
+        as_list = _rows([[(5, 1)], [], []], [[5], [], []])
+        self.assertEqual(as_dict, as_list)
+
+    def test_the_verdict_is_unchanged_by_this_report(self):
+        """agree/tot recomputed from the rows must equal the old pooled arithmetic."""
+        real = {0: [(5, 1), (9, 1)], 1: [(20, 1), (30, 1)], 2: [(40, 1)]}
+        onsets = [[5, 9], [21], [999]]
+        rows = _rows(real, onsets)
+        agree = sum(m for _, _, m in rows)
+        tot = sum(t for t, _, _ in rows)
+        old_agree = old_tot = 0
+        for v in range(3):
+            rl = set(fr for fr, _ in real[v] if fr < 700)
+            em = set(onsets[v])
+            old_agree += sum(1 for fr in rl if em & {fr - 1, fr, fr + 1})
+            old_tot += len(rl)
+        self.assertEqual((agree, tot), (old_agree, old_tot))
+        self.assertEqual(bool(tot) and agree / tot >= 0.85,
+                         bool(old_tot) and old_agree / old_tot >= 0.85)
+
+
+class TestFiltAnchorDefault(unittest.TestCase):
+    """SDI opts in to the pre-onset filter anchor; the shared default stays 0.
+
+    Same shape as FILT_LEAD/FILT_EXACT_PB above: importing the SDI builder must
+    raise BM.FILT_ANCHOR to 1, and an explicit env var must still win, because
+    the A/B that justified it is driven that way.
+    """
+
+    def test_the_shared_default_is_0_and_the_sdi_import_raises_it_to_1(self):
+        """Measured in a CLEAN interpreter, because this module's own test run
+        has already imported the SDI builder and mutated the shared attribute --
+        asserting it in-process reads 1 and proves nothing about the default."""
+        code = (
+            "import sys, os, io, contextlib\n"
+            "sys.path.insert(0, os.path.join(%r, 'bin'))\n"
+            "sys.path.insert(0, %r)\n"
+            "sys.path.insert(0, os.path.join(%r, 'pyscript'))\n"
+            "import build_mon_native_song as BM\n"
+            "before = BM.FILT_ANCHOR\n"
+            "buf = io.StringIO()\n"
+            "with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):\n"
+            "    import build_sdi_native_song\n"
+            "print(repr((before, BM.FILT_ANCHOR)))\n"
+        ) % (_ROOT, _ROOT, _ROOT)
+        env = dict(os.environ)
+        env.pop("FILT_ANCHOR", None)
+        out = subprocess.run([sys.executable, "-c", code], cwd=_ROOT, env=env,
+                             capture_output=True, text=True, timeout=300)
+        if out.returncode != 0:
+            raise AssertionError("probe failed: " + (out.stderr or "")[-800:])
+        before, after = ast.literal_eval(out.stdout.strip().splitlines()[-1])
+        self.assertEqual(before, 0, "the SHARED default must stay 0")
+        self.assertEqual(after, 1, "importing the SDI builder must opt in")
+
+    def test_an_explicit_env_var_still_wins(self):
+        code = (
+            "import sys, os, io, contextlib\n"
+            "sys.path.insert(0, os.path.join(%r, 'bin'))\n"
+            "sys.path.insert(0, %r)\n"
+            "sys.path.insert(0, os.path.join(%r, 'pyscript'))\n"
+            "import build_mon_native_song as BM\n"
+            "buf = io.StringIO()\n"
+            "with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):\n"
+            "    import build_sdi_native_song\n"
+            "print(BM.FILT_ANCHOR)\n"
+        ) % (_ROOT, _ROOT, _ROOT)
+        env = dict(os.environ)
+        env["FILT_ANCHOR"] = "0"
+        out = subprocess.run([sys.executable, "-c", code], cwd=_ROOT, env=env,
+                             capture_output=True, text=True, timeout=300)
+        self.assertEqual(out.stdout.strip().splitlines()[-1], "0",
+                         out.stderr[-600:])
+
+    def test_the_override_is_a_module_attribute_not_an_environ_mutation(self):
+        src = open(os.path.join(_ROOT, "bin", "build_sdi_native_song.py"),
+                   encoding="utf-8").read()
+        self.assertIn('if "FILT_ANCHOR" not in os.environ:', src)
+        self.assertIn("BM.FILT_ANCHOR = 1", src)
+        self.assertNotIn('os.environ["FILT_ANCHOR"]', src)

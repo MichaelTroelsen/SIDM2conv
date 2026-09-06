@@ -357,7 +357,19 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
 
         # Duration byte (0x80-0x9F)
         if value >= 0x80 and value < 0xA0:  # Explicitly exclude instrument range
+            # KNOWN ONE-FRAME-SHORT READING, deliberately left in place.
+            # The native NP21 player's row counter advances when it goes
+            # NEGATIVE (`dec DataBlock_6+$EE,X / bpl`), so a stored n lasts
+            # n+1 frames -- this line should be `(value & 0x0F) + 1`.
+            # IT IS NOT CHANGED HERE because that ground truth is the LAXITY
+            # player, while unpack_sequence decodes EVERY SF2 including
+            # Driver 11 artifacts, and Driver 11's own counter convention is
+            # not established. Adding the +1 also moves two pinned row/entry
+            # counts (abpage Hawkeye 2495 -> 2919, Stinsen 1762 -> 2231).
+            # See docs/players/LAXITY.md, 'What was changed, and what was not'.
             current_duration = value & 0x0F
+            # Bit 4 bumps a SHARED gate/continue flag that a $00/$7E note byte
+            # also bumps -- 'tie' is a workable name for it, not the player's.
             current_tie = bool(value & 0x10)
             # Get next byte for the actual note
             if i < len(packed_data):
@@ -1486,10 +1498,19 @@ class SF2Parser:
         THE SHAPE IS SELF-VERIFYING, which is what makes an exhaustive scan safe:
         the bodies start immediately after the table, so entry 0 MUST equal
         table + 2N. Combined with "every entry inside the image" and "entries
-        strictly ascending", that constraint is strong enough to be UNIQUE --
-        measured over all 47 Laxity SF2s on disk: 22 files yield exactly ONE
-        candidate, 25 yield none, and NOT ONE yields two. So a tie has never been
-        observed, and if one ever is, this refuses rather than picking.
+        strictly ascending", that is nearly unique -- over all 47 Laxity SF2s on
+        disk, 22 files yield exactly ONE candidate and 25 yield none.
+
+        BUT A TIE *HAS* NOW BEEN OBSERVED, and the older claim that none had was
+        measured over SF2/ ALONE. Over SID/Laxity/, Upfront.sid yields TWO
+        candidates -- $190F N=14 and $1917 N=6 -- so before the partition screen
+        below this file refused and fell back. The screen breaks that tie on
+        evidence rather than by preference: $1917 has 5 interior bodies that do
+        not end on $7F, $190F has none, and $190F's body 0 is `80 00 7F`, the
+        canonical duration/note/end shape. It is the only file whose behaviour
+        the screen IMPROVES rather than restricts.
+
+        If a tie ever survives the screen, this still refuses rather than picking.
 
         Refusing matters more than locating here. The 25 that yield nothing keep
         the older readers' behaviour; a wrong table would silently renumber every
@@ -1515,6 +1536,31 @@ class SF2Parser:
                 if not all(base <= p < lim for p in ptrs):
                     continue
                 if not all(ptrs[i] < ptrs[i + 1] for i in range(cand - 1)):
+                    continue
+                # THE PARTITION SCREEN. Ascending, in-image and adjacent say the
+                # entries look like a table; they do not say the entries bound
+                # SEQUENCES. A real sequence ends on $7F, and each interior body
+                # is bounded by its successor, so body i must have $7F as its
+                # FINAL byte. The last body has no successor and is not screened.
+                #
+                # Measured over SID/Laxity/: 21 files locate, 13 tile exactly and
+                # 8 do not, with NOTHING in between. All 8 are false locates on
+                # the bytes -- seven sit at min_n=4 (three of them at $1005, in
+                # the player code, whose body 0 reads 14 15 17 18 1A 1B 1D 1F...,
+                # a rising FREQUENCY TABLE) and the eighth is Rudolph, N=13,
+                # body 0 = 16 16 16 16 16 16 17 17 18 18, the same shape.
+                #
+                # SAFE ON SF2/: 22 of 22 located tables survive, deleting NONE --
+                # including Blue ($1CD4 N=22) and Dreamy ($1C8E N=16), which an
+                # earlier cycle reported this test destroying. That measurement
+                # used a SHIFTED scan where bodies are not bounded by the next
+                # pointer: the same sentence, a different test.
+                #
+                # Preferred over raising min_n 4 -> 7, which catches the seven but
+                # misses Rudolph.
+                if any(not (0 <= ptrs[i + 1] - 1 - base < n)
+                       or data[ptrs[i + 1] - 1 - base] != 0x7F
+                       for i in range(cand - 1)):
                     continue
                 hits.append((tbl, cand, ptrs))
         if len(hits) != 1:

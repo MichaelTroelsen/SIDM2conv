@@ -9,6 +9,18 @@
             "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_root_py.py\"",
             "timeout": 15,
             "statusMessage": "Checking root-folder rule..."
+          },
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce_touches.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking the task's declared touches..."
+          },
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/runs_jsonl_append_only.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking the run log stays append-only..."
           }
         ]
       }
@@ -22,9 +34,54 @@
             "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn_missing_test.py\"",
             "timeout": 15,
             "statusMessage": "Checking for a matching test file..."
+          },
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_line_endings.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking line endings..."
+          },
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pyflakes_on_edit.py\"",
+            "timeout": 25,
+            "statusMessage": "Running pyflakes on the edited file..."
+          },
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/doc_number_conditions.py\"",
+            "timeout": 25,
+            "statusMessage": "Checking the figure carries its conditions..."
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "py -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/task_pipeline_status.py\"",
+            "timeout": 30,
+            "statusMessage": "Reading the task pipeline state..."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git show:*)",
+      "Bash(py -3 -m pytest:*)",
+      "Bash(py -3 -m pyflakes:*)"
     ]
   }
 }

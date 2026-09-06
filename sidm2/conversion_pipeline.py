@@ -324,6 +324,41 @@ def native_builder_for(input_path: str, player_type: str = None):
     return DriverSelector().identify_native_builder(Path(input_path), player_type)
 
 
+def _tool_path(name):
+    """Absolute path to a bundled tool, correct both frozen and from source.
+
+    THE BUG THIS REPLACES: `os.path.join(os.getcwd(), 'tools', name)`. That is
+    right only when the process happens to be running from the repo root.
+    Anywhere else `player-id.exe` is simply not found, detect_player_type()
+    returns 'Unknown', and auto-selection falls back to DRIVER11 -- the
+    documented 1-8% path for a native Laxity file. It fails SILENTLY: a wrong
+    driver still emits an .sf2 and still exits 0.
+
+    Resolution order, first hit wins:
+      1. sys._MEIPASS/tools/<name>   -- PyInstaller's extraction dir. Nothing
+         in this package consulted it before, so the frozen binary could never
+         find its own bundled tools.
+      2. <repo root>/tools/<name>    -- derived from THIS FILE's location, so
+         it does not care what the cwd is.
+      3. cwd/tools/<name>            -- the historical behaviour, kept last so
+         an unusual layout that relied on it still works.
+
+    Returns the first candidate that exists; if none does, returns the
+    package-relative path so the error names where it looked.
+    """
+    candidates = []
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        candidates.append(os.path.join(meipass, 'tools', name))
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates.append(os.path.join(pkg_root, 'tools', name))
+    candidates.append(os.path.join(os.getcwd(), 'tools', name))
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[-2] if len(candidates) > 1 else candidates[0]
+
+
 def detect_player_type(filepath: str) -> str:
     """Detect the player type of a SID file using player-id.exe
 
@@ -335,8 +370,7 @@ def detect_player_type(filepath: str) -> str:
         or "Unknown" if detection fails
     """
     try:
-        # Use absolute path for player-id.exe
-        player_id_path = os.path.join(os.getcwd(), 'tools', 'player-id.exe')
+        player_id_path = _tool_path('player-id.exe')
 
         result = subprocess.run(
             [player_id_path, filepath],
@@ -928,7 +962,16 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         driver_selection = None
         if driver_type is None:
             logger.info("No driver specified - using automatic driver selection (Policy v2.0)")
-            selector = DriverSelector()
+            # Inject the RESOLVED tool path. DriverSelector's own default is
+            # `Path('tools/player-id.exe')` -- relative, so it resolves against the
+            # cwd and misses whenever the process is not started from the repo
+            # root. When it misses, select_driver() sees player type 'Unknown' and
+            # picks DRIVER11: for a native Laxity file that is the documented
+            # 1-8% path, chosen silently and still exiting 0. Fixing it HERE
+            # rather than in driver_selector.py uses the injection point its
+            # constructor already provides.
+            selector = DriverSelector(
+                player_id_exe=Path(_tool_path('player-id.exe')))
             driver_selection = selector.select_driver(Path(input_path))
             driver_type = driver_selection.driver_name
 

@@ -83,6 +83,7 @@ Comprehensive guides for using the system:
 | [EXPERIMENTS_WORKFLOW_GUIDE.md](guides/EXPERIMENTS_WORKFLOW_GUIDE.md) | **Experiment system workflow** - Lifecycle, templates, best practices | v2.2 |
 | [CLEANUP_SYSTEM.md](guides/CLEANUP_SYSTEM.md) | **Cleanup system guide** - Automated cleanup, git protection, file organization | v2.3 |
 | [SIDWINDER_GUIDE.md](guides/SIDWINDER_GUIDE.md) | **SIDwinder integration guide** - Features, usage, rebuilding | - |
+| [GRAPHIFY_GUIDE.md](guides/GRAPHIFY_GUIDE.md) | **Code-graph usage** - the .graphify_root repair, and why a NEGATIVE from `graphify path`/`query` is not evidence | - |
 | [ROOT_FOLDER_RULES.md](guides/ROOT_FOLDER_RULES.md) | **Root folder management** - What belongs in root, organization rules | - |
 | [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | **Troubleshooting guide** - Common errors, solutions, debugging tips | v2.0.0 |
 | [LOGGING_AND_ERROR_HANDLING_GUIDE.md](guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md) | **Logging system guide** - Enhanced logging v2.0.0, CLI flags, JSON output | v2.0.0 |

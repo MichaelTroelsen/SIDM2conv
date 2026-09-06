@@ -388,7 +388,40 @@ def measure_onsets(d, la, init_addr, play_addr, frames, song=0,
     then ON inside one play call (Sound Monitor's note-set) leave the frame
     state 1->1, so the state-based scan misses EVERY such retrigger — the
     note plays legato, the envelope never re-attacks, and the build renders
-    at half loudness while every per-frame register metric reads 100%."""
+    at half loudness while every per-frame register metric reads 100%.
+
+    THIS IS NOT A SOUND MONITOR SPECIALITY. Measured over SID/Gallefoss_Glenn
+    (15s, first 700 frames), each file's BUSIEST voice, state-based count vs
+    siddump's own note onsets:
+
+        Sveitser_Ost        1 vs 67     within_frame=True -> 67   exact
+        Jessie_Jazz         1 vs 70     within_frame=True -> 70   exact
+        Twin_Peaks          1 vs 59     within_frame=True -> 59   exact
+        Psycho_II           4 vs 66     within_frame=True -> 66   exact
+        Neverending_Story  15 vs 117    within_frame=True -> 15   UNCHANGED
+        Culture_Mix_1      47 vs 47     control, unmoved
+        Lame               23 vs 25     within_frame=True -> 24
+
+    So four of the five under-detecting SDI files are within-frame retriggers,
+    NOT legato voices gliding under a held gate. Neverending_Story is a
+    different defect -- it is the self-IRQ file, which no py65 replay drives.
+
+    AND THE SIDDUMP REFERENCE IS ITSELF BLIND TO SAME-PITCH RETRIGGERS, so a
+    within_frame count ABOVE it is not automatically a false positive.
+    Culture_Mix_1 voice 0 re-gates every ~12 frames at $0627 with AD=$0D (a
+    real re-attack) and siddump prints ONE note for the whole window: at frame
+    409 its frequency cell reads '....' and the note and waveform cells are
+    empty, because siddump compares end-of-frame state exactly as the
+    state-based scan here does. Two frame-state detectors agreeing is not
+    ground truth.
+
+    Refuted while measuring this, so nobody re-tries it: gating a within-frame
+    rise on "the frequency also changed this frame" does NOT separate the two
+    cases -- it takes Lame from 25 to 4 and Psycho_II from 66 to 18.
+
+    The default is still state-based. Flipping it re-times every song in the
+    nine builders that import this function, and that is a corpus-rebuild
+    decision, not a detector one."""
     # siddump CPU + $D012 raster fake + banking — a bare py65 diverges on players
     # that read the raster ($D012) or bank ROMs (the same reason Hubbard's
     # measure_tick_schedule uses it).

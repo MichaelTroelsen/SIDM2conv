@@ -99,6 +99,43 @@ batch-convert-laxity.bat                                     # whole corpus
 
 ---
 
+## EVERY Laxity constant was derived from two or three files — the standing rule (2026-09-06)
+
+Three separate table constants in this codebase were each read off a couple of
+songs and then applied to the corpus. All three fail on almost everything else,
+and they fail the same way, because **the NP21 player is assembled per song**:
+the layout is uniform, only the offset moves.
+
+| constant | what it claimed | measured |
+|---|---|---|
+| `ch_seq_ptr` (`$099F` / `$0A1C`) | the sequence-pointer table | `$099F` serves **Angular and Omniphunk**, `$0A1C` serves **Stinsen and Unboxed** — and neither serves the other 13 of the 17 root files. Replaced by a code-signature search in `73780fa`. |
+| instrument table (`$0A6B`) | `load + $0A6B` | **not among the ranked candidates on ANY of 14** `SID/Laxity/*.sid`, while the validated search located one on **14 of 14**. Offsets run `$0475`…`$0F07` — see the section below. |
+| frequency table (`$0835`) | 96 interleaved lo/hi entries | over **303** Laxity SIDs: 61 too short, 242 return 96 entries, and only **2 of those 242** have real octave structure — Angular and Omniphunk again. 16 read all zeros. **0 of 242 are strictly ascending**, which a 96-note table must be. |
+
+Two things follow, and they are the reason this page states the pattern once
+instead of three times.
+
+**The same two or three filenames keep appearing.** Angular and Omniphunk are
+the pair behind both `ch_seq_ptr`'s `$099F` and the frequency table's only two
+survivors; Stinsen and Unboxed are the pair behind `$0A1C`. A constant that
+works on the file it was derived from is not evidence about the format — it is
+evidence about that file, and this repo has now spent cycles on all three
+mistaking one for the other.
+
+**And "the address is right" is not "the read is right."** The frequency
+constant is the sharp case: on Angular it scores 97.6% octave-doubling, which
+looks like a hit, and is still not strictly ascending — because the real table
+is at `$1833` and the constant reads `$1835`, two bytes high, so it starts half
+an entry off and runs one entry past the end. A search that finds only the
+ADDRESS would still be wrong here; the SIZE has to be established too.
+
+> **The rule: locate a Laxity table by SEARCH, and make the search
+> self-verifying.** A shape a wrong answer cannot fake — strictly ascending plus
+> octave doubling for the frequency table, the `(zp),Y` fetch bases for
+> `ch_seq_ptr` — is what separates a located table from a plausible one. Refuse
+> on a tie rather than picking: a wrong table silently transposes or renumbers
+> the whole song, and no downstream check in this repo would catch it.
+
 ## `out/Beginning.sf2` is silent because it is a STALE DRIVER 11 BUILD (2026-09-05)
 
 **Attribution, not a defect in this driver.** `out/Beginning.sf2` renders
@@ -187,7 +224,7 @@ and the counter it feeds:
 
 | where | reading | verdict |
 |---|---|---|
-| `sidm2/sequence_translator.py:233` | `(b & $1F) + 1` → 1..32 | **wrong mask** — folds bit 4 into the count; the `+1` is right |
+| `sidm2/sequence_translator.py:233` | ~~`(b & $1F) + 1`~~ → **`(b & $0F) + 1`** | **FIXED 2026-09-06.** The mask folded bit 4 into the count; the `+1` was already right |
 | `pyscript/sf2_viewer_core.py` `unpack_sequence` | `b & $0F`, bit 4 = tie | **right mask and right bit-4 split — but no `+1`**, so every duration is one frame short |
 | `CLAUDE.md` Laxity constants | `$80 = GATE_OFF` | **wrong for the sequence stream** — `$80` is a duration byte whose nibble is 0, i.e. one frame |
 
@@ -196,7 +233,65 @@ at line 140 when the NOTE byte is `$00` or `$7E`. So it is a shared
 gate/continue flag that bit 4 is one input to, and calling it `tie` in a decoder
 is a simplification that happens to work rather than the player's own model.
 
-### Why the code was NOT changed when this was established
+### A THIRD defect in the same decoder: the duration is STICKY and the parser resets it
+
+Found while pinning the mask (2026-09-06), from the same disassembly:
+
+```asm
+$1102   lda DataBlock_6 + $FD,X     ; the stored count...
+        sta DataBlock_6 + $EE,X     ; ...reloads the counter EVERY row
+...
+$10B2   dec DataBlock_6 + $EE,X
+        bpl Label_16
+```
+
+`$FD,X` is written **only** when a `$80–$9F` byte arrives, and the row-advance
+path reloads `$EE,X` from it every row. So **the last duration persists across
+following notes until a new duration byte appears.**
+
+`sequence_translator.parse_sequence` instead does `current_duration = 1` in its
+"reset per-note state" block after every note, so `84 30 31 32` decodes as
+`[5, 1, 1, 1]` where the player holds 5 for all three. This is **not fixed** —
+it is a second semantic change with its own blast radius and wants its own
+measured arm. It is recorded as a `strict=True` xfail in
+`pyscript/test_sequence_translator.py`, so whoever fixes it is forced to remove
+the marker rather than leaving the divergence undocumented.
+
+### What was changed, and what was not
+
+**SHIPPED (2026-09-06):** `sequence_translator.py`'s mask, `$1F` → `$0F`. The
+four suites the task named — `scripts/test_converter.py`,
+`pyscript/test_laxity_analyzer.py`, `pyscript/test_sf2_viewer_core.py`,
+`pyscript/test_abpage.py` — were baselined at **259 passed** before the edit and
+are at **259 passed** after it, including both pins of Angular's editor capture
+(sequence 07 rows 7..14 = `A-4 G-4 B-4 G-4 D-4 C-5 B-4 G-4`). The published
+**99.93–100%** figure is carried by `test_laxity_analyzer.py` and
+`test_converter.py` within that set and did not move.
+
+**NOT SHIPPED:** `unpack_sequence`'s missing `+1`. Two independent reasons, and
+the second is the substantive one:
+
+1. It fails `pyscript/test_abpage.py::test_row_schedule_default_no_longer_truncates_hawkeye_at_2048`
+   (2495 → 2919 rows) and
+   `test_sf2_viewer_core.py::test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard`
+   (1762 → 2231 entries). Both shift because `row_schedule` expands each event
+   into `duration` rows, so the counts move by roughly one row per event. Both
+   numbers were measured under the one-frame-short decoder, so they are not
+   evidence against the fix — but `test_abpage.py` is read-only to the task that
+   found this.
+2. **The ground truth does not obviously transfer.** The `+1` is derived from the
+   *native NP21 player's* counter. `unpack_sequence` decodes **every** SF2,
+   including Driver 11 artifacts — the Hawkeye file in the failing test is
+   MoN/Driver 11, not Laxity. `drivers/laxity/sf2driver_laxity_00.prg` is the
+   same player repackaged, so the `+1` is sound *for the Laxity driver*; whether
+   Driver 11 uses the same `n+1` convention is **not established**, and applying
+   it corpus-wide on that assumption is the over-generalisation this page exists
+   to prevent.
+
+Fixing it wants a task that declares `pyscript/test_abpage.py` as writable and
+establishes Driver 11's own counter from `G5/drivers/sf2driver11_*.prg`.
+
+### Why the mask fix waited (historical)
 
 The mask difference is **not inert**. Measured over the 6 `SID/Laxity/*.sid`
 files whose sequence table locates: **1,708 duration bytes, of which 232 (13.6%)
@@ -212,9 +307,77 @@ decoder task normally declares. Fixing `unpack_sequence`'s missing `+1` is
 equally non-inert in the other direction: `abpage.row_schedule` multiplies
 duration by tempo, so every row's frame position shifts.
 
-**Both fixes are correct and neither is safe to ship unverified.** They want a
-task that declares the converter corpus and re-measures the headline figure on
-both arms.
+**That caution was right about the `+1` and over-cautious about the mask.** The
+mask fix shipped on 2026-09-06 against a measured 259-pass baseline (above); the
+`+1` is still open for the two reasons listed there.
+
+## The locate is CONFIRMED on 11 of 11 — by the player's own fetches, not the editor (2026-09-06)
+
+`locate_seq_ptr_table` (73780fa) was verified on **three** files whose sequence
+addresses are independently known (Angular `$1907`, Omniphunk `$1907`, Stinsen
+`$1A1C`) and merely *plausible* on eleven more. That mattered because the
+conversion A/B showed the emitted SF2 is **byte-identical with and without the
+locate**, so a wrong locate is invisible downstream.
+
+### The prescribed ground truth cannot work, and that is settled
+
+The task's method was SF2II's orderlist panel (Ctrl+P, F1). Two cycles
+established it is unusable: the panel shows a converter **stub** that is
+byte-identical across files (`a0 00 fe ff ff…` → `00 01 02`), while **zero of
+14** files' real orderlists start `00 01 02`. It disagrees with every file by
+construction, *including the confirmed ones*. No GUI was used for the result
+below.
+
+### What was used instead: the player fetches its own sequences
+
+The locate finds `ch_seq_ptr` by **code signature** — two `LDA abs,X` whose
+operands are 3 apart. Every file contains ~10–24 candidates matching that shape,
+because the player keeps several parallel 3-byte per-voice tables side by side.
+So *"is the table read?"* discriminates nothing — the player reads all of them.
+
+What only the real table can do is supply the **base addresses of the
+indirect-indexed `(zp),Y` fetches that walk sequence data**. So: emulate `init`
+plus 200 `play` calls under `sidm2/cpu6502_emulator.py`, record every address
+reached through `(zp),Y`, and ask whether the pointers *stored in* the located
+table are among them. Score is out of 3, one per voice.
+
+### It discriminates — checked before it was believed
+
+On Angular, of **22** candidates sharing the code signature, **exactly one
+scores 3/3 and it is the located one**; the other 21 score 0/3. Both historical
+constants score less than 3 (`$099F` → 1/3, `$0A1C` → 0/3), and an off-by-one
+degrades rather than passing (±1 → 2/3, +2 → 1/3). On Stinsen, 1 of 21, and
+`$0A1C` also scores 3/3 — correct, that constant genuinely serves Stinsen.
+
+### The result
+
+> **11 of 11 score 3/3, alongside 3/3 on all three controls.**
+
+| | files | score |
+|---|---|---|
+| controls (independently confirmed) | Angular, Omniphunk, Stinsen | **3/3 each** |
+| the eleven | Balance, Beast, Cascade, Chaser, Colorama, Cycles, Delicate, Dreams, Dreamy, Phoenix_Code_End_Tune, Unboxed_Ending | **3/3 each** |
+
+⚠️ **The caveat, and it is not a small one.** On **6 of the 14** the located
+table is the *unique* 3/3 candidate; on the other **8** a neighbour six bytes
+below also scores 3/3 (Angular's `$1901` vs `$1907` shape). Those neighbours
+hold *different* pointers, so they are a second real table the player also
+fetches through — most likely the orderlist pointers.
+
+**This does not weaken the locate, and the reason is the control:
+Omniphunk — one of the three independently confirmed files — is among the
+ambiguous eight.** So the ambiguity is structural to the format, not a symptom
+of a wrong pick. What the check establishes on all 14 is that the located
+address *is* a table the player fetches sequence-shaped data from; on 6 it also
+excludes every alternative.
+
+Pinned in `pyscript/test_laxity_parser.py` (15 tests, ~3 s). Shifting the
+locate −6 to the ambiguous neighbour fails 7 of them.
+
+⚠️ **The locate accepts far more than 14 files.** Swept over `SID/` and
+`SID/Laxity/` it locates **208**, of which 178 are unique-3/3. This page's
+denominator of 14 is the population the original task named, not the reach of
+the function.
 
 ## The instrument table is NOT at a fixed offset — and the validated search is not a drop-in (2026-09-05)
 

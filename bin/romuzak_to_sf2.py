@@ -7,6 +7,11 @@ Format fully RE'd (player disasm + decrunched editor + the V6.x manual); see the
 reusing the FC IR + emitter + silent-intro anchors + trace-driven pulse/filter.
 
 Usage:  py -3 bin/romuzak_to_sf2.py SID/Fun_Fun/Delirious_9_tune_1.sid [out.sf2]
+
+With no second argument the artifact goes to `out/romuzak/<stem>.sf2`, NOT the
+`out/` root. It used to land in the root, where a caller that had declared only
+`out/romuzak` wrote outside its own scope without noticing -- `out/` already
+holds hundreds of loose .sf2 files, so nothing looked wrong.
 """
 import os
 import sys
@@ -365,13 +370,26 @@ def _append_silent_instrument(instr_rows, wave_table, pulse_table):
     return idx
 
 
+def default_out(path):
+    """Where an artifact goes when the caller names no destination.
+
+    `out/romuzak/`, not the `out/` ROOT. The root default was invisible in the
+    normal case -- the file appeared, the build reported success -- and only
+    showed up as a scope violation: a task declaring `rw:out/romuzak` invoked
+    this the documented way and wrote `out/<stem>.sf2` instead, a path it had
+    not declared. Returning the corpus directory makes the documented
+    invocation and the declared scope the same thing.
+    """
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return os.path.join('out', 'romuzak', stem + '.sf2')
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         return 1
     path = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-        'out', os.path.splitext(os.path.basename(path))[0] + '.sf2')
+    out = sys.argv[2] if len(sys.argv) > 2 else default_out(path)
     d, la = load_sid(path)
     rmz = RMZ(d, la)
     base = calibrate_base(rmz)

@@ -271,8 +271,19 @@ def build_song(shim, base_name, traces, span, emit=True):
         # left to split, and a window that still will not fit at one row is
         # emitted as before rather than looping forever.
         _floor = max(1, int(getattr(shim, "frames_per_tick", 1) or 1))
+        # COUNT THE SHRINK, because 'the probe never fires' and 'the probe is not
+        # there' produce byte-identical corpora and were indistinguishable for two
+        # cycles. A firing means the packer chose a window its own layout could not
+        # hold -- the DMC crash class (2bdbb71) -- so it is worth a line of output
+        # rather than a silent correction. Zero firings prints nothing and leaves
+        # every existing build log byte-identical.
+        _shrunk = 0
         while t1 - t0 > _floor and not fits(t0, t1):
             t1 = max(t0 + _floor, t0 + (t1 - t0) // 2)
+            _shrunk += 1
+        if _shrunk:
+            print(f"  BASE WINDOW DID NOT FIT: shrank {_shrunk}x "
+                  f"to {t0}-{t1}f ({(t1 - t0) // 50}s)")
         bounds.append((t0, t1))
         t0 = t1
     print(f"  packed into {len(bounds)} adaptive part(s)")

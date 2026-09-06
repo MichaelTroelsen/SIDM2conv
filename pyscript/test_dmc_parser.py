@@ -193,3 +193,76 @@ def test_onset_validation_main_player():
             matched += best
             total += len(rf)
         assert total and 100 * matched / total >= 90, f"{name} onsets low"
+
+
+# ---------------------------------------------------------------------------
+# measure_onsets: the two detection modes, and what each is blind to.
+#
+# The state-based default reads the END-OF-FRAME gate bit, so a player that
+# writes gate OFF then ON inside one play call leaves it 1->1 and the onset is
+# invisible. Measured over SID/Gallefoss_Glenn this is four of the five files
+# that under-detect (Sveitser_Ost 1 vs 67, Jessie_Jazz 1 vs 70, Twin_Peaks
+# 1 vs 59, Psycho_II 4 vs 66) -- not the "legato voice under a held gate" the
+# defect was filed as. See the measure_onsets docstring for the full table.
+# ---------------------------------------------------------------------------
+
+from sidm2.dmc_parser import measure_onsets  # noqa: E402
+
+# init: RTS.  play: LDA #$40 / STA $D404 / LDA #$41 / STA $D404 / RTS
+# -- one gate off-then-on per call, i.e. a retrigger every frame.
+_RETRIGGER = bytes([0x60,
+                    0xA9, 0x40, 0x8D, 0x04, 0xD4,
+                    0xA9, 0x41, 0x8D, 0x04, 0xD4,
+                    0x60])
+
+# init: RTS.  play: LDA #$41 / STA $D404 / RTS -- gate raised once, held.
+_HELD = bytes([0x60, 0xA9, 0x41, 0x8D, 0x04, 0xD4, 0x60])
+
+
+def test_the_state_scan_sees_one_onset_where_there_are_eight():
+    """The defect, in nine bytes of 6502."""
+    got = measure_onsets(_RETRIGGER, 0x1000, 0x1000, 0x1001, 8)
+    assert got[0] == [0]
+
+
+def test_within_frame_sees_all_eight():
+    got = measure_onsets(_RETRIGGER, 0x1000, 0x1000, 0x1001, 8,
+                         within_frame=True)
+    assert got[0] == [0, 1, 2, 3, 4, 5, 6, 7]
+
+
+def test_a_genuinely_held_gate_reads_the_same_in_both_modes():
+    """within_frame must not invent onsets -- this is the control."""
+    state = measure_onsets(_HELD, 0x1000, 0x1000, 0x1001, 8)
+    within = measure_onsets(_HELD, 0x1000, 0x1000, 0x1001, 8,
+                            within_frame=True)
+    assert state[0] == [0]
+    assert within[0] == [0]
+
+
+def test_the_other_two_voices_stay_empty():
+    """The write-stream scan is per voice, not a global gate counter."""
+    got = measure_onsets(_RETRIGGER, 0x1000, 0x1000, 0x1001, 8,
+                         within_frame=True)
+    assert got[1] == [] and got[2] == []
+
+
+def test_at_most_one_onset_per_voice_per_frame():
+    """Two off/on pairs in one call is still one note, not two."""
+    twice = bytes([0x60,
+                   0xA9, 0x40, 0x8D, 0x04, 0xD4,
+                   0xA9, 0x41, 0x8D, 0x04, 0xD4,
+                   0xA9, 0x40, 0x8D, 0x04, 0xD4,
+                   0xA9, 0x41, 0x8D, 0x04, 0xD4,
+                   0x60])
+    got = measure_onsets(twice, 0x1000, 0x1000, 0x1001, 4, within_frame=True)
+    assert got[0] == [0, 1, 2, 3]
+
+
+def test_the_default_is_still_state_based():
+    """Pins the blast radius: nine builders import this and flipping the
+    default re-times every song. The change is a corpus decision, not a
+    detector one, so the default must not drift silently."""
+    import inspect
+    sig = inspect.signature(measure_onsets)
+    assert sig.parameters['within_frame'].default is False
