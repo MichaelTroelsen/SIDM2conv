@@ -2437,7 +2437,7 @@ class SymbolTableGenerator:
     def __init__(self,
                  subroutines: Dict[int, 'SubroutineInfo'],
                  xrefs: Dict[int, List['Reference']],
-                 sections: List['SectionInfo']):
+                 sections: List['Section']):
         self.subroutines = subroutines
         self.xrefs = xrefs
         self.sections = sections
@@ -3569,7 +3569,7 @@ def _extract_line_address(line: str) -> Optional[int]:
 def export_to_json(
     file_info: dict,
     subroutines: Dict[int, 'SubroutineInfo'],
-    sections: List['SectionInfo'],
+    sections: List['Section'],
     xrefs: Dict[int, List['Reference']],
     patterns: List['Pattern'],
     symbols: Dict[int, 'Symbol'],
@@ -3780,7 +3780,7 @@ def export_to_markdown(
     input_path: Path,
     file_info: dict,
     subroutines: Dict[int, 'SubroutineInfo'],
-    sections: List['SectionInfo'],
+    sections: List['Section'],
     symbols: Dict[int, 'Symbol'],
     patterns: List['Pattern'],
     loops: List['LoopInfo'],
