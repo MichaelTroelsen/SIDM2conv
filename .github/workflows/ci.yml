@@ -31,14 +31,31 @@ jobs:
     - name: Install test dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-cov
+        # requirements-dev.txt pins pytest and pyflakes. numpy is a
+        # real runtime dep (requirements.txt) that 8 test modules
+        # import UNGUARDED -- without it the suite fails to collect,
+        # which is not the same as failing.
+        pip install -r requirements-dev.txt
+        pip install pytest-cov numpy
 
     - name: Run unit tests with coverage
       run: |
-        # Run Python unit tests if they exist
-        if [ -d "pyscript" ]; then
-          python -m pytest pyscript/test_*.py -v --cov=sidm2 --cov-report=xml --cov-report=term-missing || echo "No pytest tests found"
-        fi
+        # THIS GATE MUST BE ABLE TO FAIL. It previously carried both
+        # `continue-on-error: true` and a trailing `|| echo "No pytest
+        # tests found"`, so all 14 matrix checks reported green
+        # whether or not the tests passed. A missing pyscript/ is now
+        # an error too -- silence is not success.
+        test -d pyscript || { echo "pyscript/ is missing"; exit 1; }
+        python -m pytest pyscript/test_*.py -v --cov=sidm2 --cov-report=xml --cov-report=term-missing
+      # STILL ADVISORY, BUT NO LONGER LYING. The `|| echo` that hid the
+      # exit code is gone and the deps are installed, so the log now
+      # shows real results. Flip this to remove the line entirely once
+      # these THREE fail on a corpus-less checkout (SF2/ and out/ are
+      # gitignored, so CI never has them):
+      #   test_abpage.py::test_row_schedule_carries_provenance_verbatim
+      #   test_mon_filter.py::test_the_default_is_zero_so_every_other_builder_is_unchanged
+      #   test_build_galway_native_song.py::TestMainVolPlumbing::test_EVERY_layout_inc...
+      # Measured 2026-09-06: 3040 passed, 3 failed, 86 skipped.
       continue-on-error: true
 
     - name: Upload coverage report

@@ -162,11 +162,24 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _parsed_sf2(name):
-    """Parse an SF2 by basename. Named _parsed_sf2, not _sf2: this module
-    already has a _sf2() that returns a PATH, and shadowing it broke four
-    passing tests when these were first appended."""
+    """Parse an SF2 by basename, or SKIP if the corpus is not here.
+
+    Named _parsed_sf2, not _sf2: this module already has a _sf2() that
+    returns a PATH, and shadowing it broke four passing tests when these
+    were first appended.
+
+    SKIPS rather than parsing a missing file. SF2/**/*.sf2 is gitignored
+    (.gitignore:58), so a clean checkout -- which is what CI gets -- has
+    none of it, and SF2Parser on an absent path returns an object whose
+    fields are all None. The tests then died on 'NoneType' has no
+    attribute rather than skipping. A test with no input has not failed;
+    it has not run.
+    """
     from sf2_viewer_core import SF2Parser
-    p = SF2Parser(os.path.join(_ROOT, "SF2", name))
+    path = os.path.join(_ROOT, "SF2", name)
+    if not os.path.isfile(path):
+        pytest.skip("no SF2 corpus on this machine: %s" % name)
+    p = SF2Parser(path)
     p.parse()
     return p
 
@@ -205,9 +218,11 @@ def test_every_laxity_sf2_on_disk_can_be_rebased():
     must refuse rather than slice at a negative offset. This is the test that
     turns "$1000 looked right on the file I tried" into an invariant.
     """
-    import glob
+    # _all_sf2s() SKIPS on an empty corpus. Globbing directly here let
+    # the final `seen >= 40` fail as "AssertionError: 0" on a clean
+    # checkout -- a verdict on nothing rather than a skip.
     seen = 0
-    for f in sorted(glob.glob(os.path.join(_ROOT, "SF2", "*.sf2"))):
+    for f in _all_sf2s():
         try:
             from sf2_viewer_core import SF2Parser
             p = SF2Parser(f)
@@ -517,8 +532,17 @@ def test_the_repo_root_is_on_sys_path_from_this_module():
 # whole legitimate voices, which is settled and pinned elsewhere.
 
 def _all_sf2s():
+    """Every SF2 in the corpus, or SKIP if there are none.
+
+    Returning [] let a caller assert over an empty set and FAIL with
+    "AssertionError: 0" -- a verdict on nothing, which is the vacuity
+    shape fidelity_common.score_pct returns None for.
+    """
     import glob
-    return sorted(glob.glob(os.path.join(_ROOT, "SF2", "*.sf2")))
+    hits = sorted(glob.glob(os.path.join(_ROOT, "SF2", "*.sf2")))
+    if not hits:
+        pytest.skip("no SF2 corpus on this machine")
+    return hits
 
 
 def _parsed(path):

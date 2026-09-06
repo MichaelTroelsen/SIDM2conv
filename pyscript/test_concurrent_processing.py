@@ -19,7 +19,16 @@ from typing import List, Dict
 # Add pyscript directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from PyQt6.QtCore import QCoreApplication
+import pytest
+
+# PyQt6 is an OPTIONAL dependency (requirements.txt marks it GUI-only)
+# and this module imports it at collection time, so without the guard
+# a headless runner fails to collect rather than skipping. Matches the
+# 14 sibling test modules that already guard their optional imports.
+pytest.importorskip("PyQt6.QtCore",
+                    reason="PyQt6 is an optional GUI dependency")
+
+from PyQt6.QtCore import QCoreApplication  # noqa: E402
 
 from pipeline_config import PipelineConfig
 from conversion_executor import ConversionExecutor
