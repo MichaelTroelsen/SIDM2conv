@@ -26,7 +26,10 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+try:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP
+except ImportError:  # mcp 2.x renamed it and dropped the fastmcp subpackage
+    from mcp.server import MCPServer as FastMCP
 
 mcp = FastMCP(
     name="sidm2-siddump",
