@@ -13,6 +13,8 @@ from unittest.mock import Mock, patch, MagicMock, mock_open
 from pathlib import Path
 from io import StringIO
 
+import pytest
+
 # Import functions from conversion_pipeline module (not the CLI script)
 from sidm2.conversion_pipeline import (
     detect_player_type,
@@ -24,6 +26,32 @@ from sidm2.conversion_pipeline import (
     convert_sid_to_both_drivers,
     get_default_config,
 )
+
+
+# ---------------------------------------------------------------------------
+# WHY THE STRUCTURE VERDICT IS STUBBED FOR THIS WHOLE FILE.
+#
+# These tests patch `builtins.open` with `mock_open(read_data=b'\x00' * 1024)`,
+# which is process-wide: EVERY read returns that payload, including the SF2
+# structure validator's read of the file the conversion just "wrote". So the
+# validator correctly judges 1,024 zero bytes to be not-an-SF2, and
+# convert_sid_to_sf2 raises -- six tests here failed the moment that gate went
+# live, none of them for a reason about the code they exercise.
+#
+# The over-broad double is the defect; stubbing the verdict is the smallest
+# honest fix, because these tests are about DRIVER SELECTION and CONVERSION
+# DISPATCH and never had an SF2 to validate. Real validation behaviour -- the
+# raise on a failing verdict, the artifact still being written before it, and a
+# passing verdict NOT raising -- is pinned in pyscript/test_conversion_pipeline.py
+# against genuine files, so nothing is left unguarded by this stub.
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _stub_sf2_structure_verdict():
+    from sidm2 import conversion_pipeline as _cp
+    from sidm2.sf2_diagnostics import SF2ValidationResult
+    with patch.object(_cp, "_validate_sf2_structure",
+                      return_value=SF2ValidationResult(True)):
+        yield
 
 
 class TestDetectPlayerType(unittest.TestCase):

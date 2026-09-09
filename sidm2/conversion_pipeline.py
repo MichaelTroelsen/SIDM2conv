@@ -83,6 +83,17 @@ from sidm2.logging_config import get_logger
 # Import driver selector (Conversion Policy v2.0)
 from sidm2.driver_selector import DriverSelector, DriverSelection
 
+# SF2 structural validation. This used to import scripts.validate_sf2_format,
+# which was archived on 2026-01-02 -- so the try/except below always took the
+# except arm, logged 'validator unavailable', and every conversion since then
+# reported OK with no validation line at all. Resolved by routing through the
+# in-tree diagnostic rather than restoring an eight-month-archived second
+# validator: sf2_diagnostics.validate_sf2_file now returns an
+# SF2ValidationResult (ok/errors/warnings/table_types) instead of None, and its
+# block-3 hardcoded-stride false positive was fixed, so it is the maintained
+# single source of the verdict.
+from sidm2.sf2_diagnostics import validate_sf2_file as _validate_sf2_structure
+
 # Import Laxity converter for custom driver
 try:
     from sidm2.laxity_converter import LaxityConverter
@@ -394,6 +405,33 @@ def detect_player_type(filepath: str) -> str:
     return "Unknown"
 
 
+def _validation_verdict(validation_result):
+    """Normalize an SF2 validation verdict to (passed, n_errors, n_warnings).
+
+    Accepts sf2_diagnostics.SF2ValidationResult (ok + message LISTS) and the
+    older count-based shape (passed + int counts) that test doubles still use.
+    """
+    if validation_result is None:
+        return True, 0, 0
+
+    passed = getattr(validation_result, 'ok', None)
+    if passed is None:
+        passed = getattr(validation_result, 'passed', True)
+    passed = bool(passed)
+
+    def _count(value):
+        if isinstance(value, int):
+            return value
+        try:
+            return len(value)
+        except TypeError:
+            return 0
+
+    return (passed,
+            _count(getattr(validation_result, 'errors', 0)),
+            _count(getattr(validation_result, 'warnings', 0)))
+
+
 def print_success_summary(input_path: str, output_path: str, driver_selection=None, validation_result=None, quiet=False):
     """Print an enhanced success summary with clear visual formatting.
 
@@ -406,7 +444,8 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
     """
     if quiet:
         # Quiet mode: minimal output for automation
-        status = "OK" if not validation_result or validation_result.passed else "WARN"
+        passed, _n_err, _n_warn = _validation_verdict(validation_result)
+        status = "OK" if validation_result is None or passed else "WARN"
         print(f"{status}: {os.path.basename(output_path)}")
         return
 
@@ -424,10 +463,9 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
         accuracy = driver_selection.expected_accuracy if hasattr(driver_selection, 'expected_accuracy') else 'N/A'
         print(f"Driver:     {driver_name} ({accuracy})")
 
-    if validation_result:
-        status = "PASSED" if validation_result.passed else "FAILED"
-        errors = validation_result.errors
-        warnings = validation_result.warnings
+    if validation_result is not None:
+        passed, errors, warnings = _validation_verdict(validation_result)
+        status = "PASSED" if passed else "FAILED"
         print(f"Validation: {status} ({errors} errors, {warnings} warnings)")
 
     # Info file path
@@ -1184,42 +1222,31 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         else:
             logger.debug("Skipping SF2Writer (custom driver already wrote file)")
 
-        # CONVERSION POLICY v2.0: Validate SF2 format
+        # CONVERSION POLICY v2.0: Validate SF2 format.
+        # Routed through sidm2.sf2_diagnostics (imported at module scope, so an
+        # import failure is a hard error at import time and can no longer
+        # degrade silently into "validation skipped").
         logger.info("")
         logger.info("Validating SF2 file format...")
-        try:
-            # Import validator
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-            from scripts.validate_sf2_format import SF2FormatValidator
+        validation_result = _validate_sf2_structure(str(output_path))
 
-            validator = SF2FormatValidator()
-            validation_result = validator.validate_file(Path(output_path), verbose=False)
-
-            if validation_result.passed:
-                logger.info(f"SUCCESS: SF2 format validation passed")
-                if validation_result.warnings > 0:
-                    logger.warning(f"  {validation_result.warnings} warnings detected")
-            else:
-                logger.error(
-                    f"FAILED: SF2 format validation failed ({validation_result.errors} errors)\n"
-                    f"  Suggestion: File may still work in SID Factory II despite validation errors\n"
-                    f"  Try: Test the SF2 file in SID Factory II editor\n"
-                    f"  Check: Review validation errors below for specific issues\n"
-                    f"  See: docs/guides/TROUBLESHOOTING.md#sf2-validation-failures"
-                )
-                # Log errors but don't fail the conversion
-                for check in validation_result.checks:
-                    if check.severity == "ERROR":
-                        logger.error(
-                            f"  - {check.name}: {check.message}\n"
-                            f"    Suggestion: This validation check failed\n"
-                            f"    Check: Review error details above for root cause\n"
-                            f"    Try: Re-generate SF2 file or fix source data\n"
-                            f"    See: docs/guides/TROUBLESHOOTING.md#sf2-validation-failures"
-                        )
-        except Exception as e:
-            logger.warning(f"SF2 format validation skipped (validator unavailable): {e}")
-            validation_result = None
+        if validation_result.ok:
+            logger.info("SUCCESS: SF2 format validation passed")
+            if validation_result.warnings:
+                logger.warning(f"  {len(validation_result.warnings)} warnings detected")
+        else:
+            logger.error(
+                f"FAILED: SF2 format validation failed "
+                f"({len(validation_result.errors)} errors)\n"
+                f"  Suggestion: File may still work in SID Factory II despite validation errors\n"
+                f"  Try: Test the SF2 file in SID Factory II editor\n"
+                f"  Check: Review validation errors below for specific issues\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sf2-validation-failures"
+            )
+            # Log errors but don't fail the conversion (the process exit code is
+            # deliberately unchanged here; that is a separate concern).
+            for message in validation_result.errors:
+                logger.error(f"  - {message}")
 
         # CONVERSION POLICY v2.0: Generate info file with driver documentation
         if driver_selection:
@@ -1241,14 +1268,11 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
 
                 # Convert validation result to dict
                 validation_dict = None
-                if validation_result:
+                if validation_result is not None:
                     validation_dict = {
-                        'status': 'PASS' if validation_result.passed else 'FAIL',
-                        'details': [
-                            f"{check.name}: {check.message}"
-                            for check in validation_result.checks
-                            if check.severity in ('ERROR', 'WARNING')
-                        ]
+                        'status': 'PASS' if validation_result.ok else 'FAIL',
+                        'details': (list(validation_result.errors)
+                                    + list(validation_result.warnings)),
                     }
 
                 # Generate info file content
@@ -1319,6 +1343,39 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         logger.info("- The output file may need manual editing in SID Factory II")
         logger.info("- Complex music data extraction is still in development")
         logger.info("- Consider this a starting point for further refinement")
+
+        # THE EXIT CODE, and it is raised LAST on purpose. Every artifact above
+        # is already on disk -- the .sf2, the .txt info file, any exported audio
+        # -- so this reports the verdict without discarding the work or aborting
+        # a batch mid-write. scripts/sid_to_sf2.py already maps SIDMError to
+        # exit 1, which is the whole point: a conversion whose own structural
+        # validation says the editor will REJECT the file must not return 0, or
+        # every wrapper script checking a return code reads it as clean.
+        #
+        # WHAT THIS DOES *NOT* CATCH, said plainly so the gate is not read as
+        # more than it is: it is a STRUCTURAL check. A file whose blocks and
+        # tables are all present passes here even when the music in it is wrong
+        # -- converting a native Laxity tune with `--driver driver11` produces a
+        # structurally valid SF2 and still exits 0, which is correct behaviour
+        # for this gate and is the documented 1-8% accuracy path, not a
+        # malformed file. Fidelity is measured elsewhere; this only answers
+        # "will the editor load it".
+        verdict_passed, _verdict_errors, _ = _validation_verdict(validation_result)
+        if not verdict_passed:
+            raise sidm2_errors.ConversionError(
+                stage="SF2 structure validation",
+                reason=(f"{_verdict_errors} structure error(s) in "
+                        f"{os.path.basename(str(output_path))} -- the SF2 editor "
+                        f"will reject this file"),
+                input_file=input_path,
+                suggestions=[
+                    "The file WAS written -- it is the structure that is wrong; "
+                    "the ERR lines above name the missing blocks or tables",
+                    "Re-run without --driver to let auto-selection choose",
+                    "Inspect the output with sf2-viewer.bat",
+                ],
+                docs_link="docs/guides/TROUBLESHOOTING.md#sf2-validation-failures",
+            )
 
     except sidm2_errors.SIDMError:
         # Re-raise our custom errors (they have helpful messages)

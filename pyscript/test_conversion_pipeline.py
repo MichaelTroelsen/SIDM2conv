@@ -241,3 +241,144 @@ def test_the_driver_selector_is_given_the_resolved_path():
     assert "player_id_exe=Path(_tool_path('player-id.exe'))" in src, (
         "the selector is being constructed without a resolved tool path; it will "
         "fall back to its relative default and mis-detect from any other cwd")
+
+
+# ---------------------------------------------------------------------------
+# The SF2 validation block imported `scripts.validate_sf2_format`, archived on
+# 2026-01-02. Every conversion since then took the except arm, logged
+# "SF2 format validation skipped (validator unavailable)", set validation_result
+# to None, and printed a summary with NO validation line -- eight months of
+# conversions reporting OK from code that never ran. Resolved by routing through
+# the in-tree sidm2.sf2_diagnostics verdict (which now RETURNS an
+# SF2ValidationResult instead of None), not by restoring the archived module.
+# ---------------------------------------------------------------------------
+import io as _io                                             # noqa: E402
+import contextlib                                            # noqa: E402
+
+from sidm2.conversion_pipeline import (                      # noqa: E402
+    print_success_summary,
+    _validate_sf2_structure,
+    _validation_verdict,
+)
+from sidm2.sf2_diagnostics import (                          # noqa: E402
+    validate_sf2_file as _diagnostics_validate,
+    SF2ValidationResult,
+)
+
+
+def test_the_pipeline_validator_is_the_live_diagnostic_not_the_archive():
+    """The name the pipeline calls must BE sf2_diagnostics.validate_sf2_file.
+
+    Sabotage check: point the import back at
+    archive/cleanup_2026-01-02/orphaned_scripts/validate_sf2_format.py and this
+    fails at import time -- `scripts.validate_sf2_format` does not resolve.
+    """
+    assert _validate_sf2_structure is _diagnostics_validate
+
+    src = open(os.path.join(_ROOT, "sidm2", "conversion_pipeline.py"),
+               encoding="utf-8").read()
+    # No live import of the archived module, and no silent-skip arm left.
+    assert "from scripts.validate_sf2_format import" not in src
+    assert "validator unavailable" not in src.replace(
+        "# except arm, logged 'validator unavailable', and every conversion since then",
+        "")
+
+
+def test_a_real_sf2_produces_a_real_passing_verdict():
+    """A genuine SF2 must validate, and the verdict must be the object the
+    summary consumes -- not None, which is how a skipped validator looks."""
+    result = _validate_sf2_structure(_REFERENCE)
+    assert isinstance(result, SF2ValidationResult)
+    assert result.ok, result.errors
+    assert _validation_verdict(result) == (True, 0, len(result.warnings))
+
+
+def test_the_summary_carries_the_real_verdict_for_a_good_file():
+    result = _validate_sf2_structure(_REFERENCE)
+    buf = _io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        print_success_summary("in.sid", _REFERENCE, validation_result=result)
+    out = buf.getvalue()
+    assert "Validation: PASSED (0 errors," in out, out
+
+
+def test_the_summary_says_FAILED_when_the_file_is_actually_broken(tmp_path):
+    """The other half of the gate: a summary that can only ever print PASSED is
+    the same non-result as printing nothing."""
+    broken = tmp_path / "broken.sf2"
+    broken.write_bytes(b"\x00\x10" + b"\xDE\xAD" + b"\x00" * 400)  # wrong magic
+    result = _validate_sf2_structure(str(broken))
+    assert not result.ok
+    buf = _io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        print_success_summary("in.sid", str(broken), validation_result=result)
+    out = buf.getvalue()
+    assert "Validation: FAILED" in out, out
+    assert "0 errors" not in out, out
+
+
+def test_quiet_mode_warns_on_a_failed_verdict():
+    passing = SF2ValidationResult(True)
+    failing = SF2ValidationResult(False, errors=["bad magic"])
+    for res, expect in ((passing, "OK:"), (failing, "WARN:")):
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            print_success_summary("in.sid", "out.sf2", validation_result=res,
+                                  quiet=True)
+        assert buf.getvalue().startswith(expect), buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# THE EXIT CODE. A conversion whose own structural validation says the editor
+# will reject the file must not return 0 -- every wrapper script checking a
+# return code reads 0 as a clean conversion.
+#
+# WHY THESE TESTS PATCH THE VERDICT INSTEAD OF CONVERTING A KNOWN-BAD FILE:
+# there is no longer a SID in this repo whose conversion emits a structurally
+# invalid SF2. The task that opened this gate named one -- a native Laxity tune
+# forced through `--driver driver11` -- but that repro was an artefact of the
+# sf2_diagnostics false positive fixed earlier (a hardcoded block-3 descriptor
+# stride). With the diagnostic correct, driver11 output is structurally VALID;
+# it is musically wrong, which is the documented 1-8% path and a different
+# question entirely. So the negative fixture is a failing verdict, injected.
+# ---------------------------------------------------------------------------
+import pytest                                                # noqa: E402
+from unittest import mock                                    # noqa: E402
+from sidm2 import conversion_pipeline as _cp                 # noqa: E402
+from sidm2 import errors as _errs                            # noqa: E402
+
+
+def _convert(tmp_path, verdict):
+    """Run a real conversion with the structure verdict forced to `verdict`."""
+    out = tmp_path / "out.sf2"
+    with mock.patch.object(_cp, "_validate_sf2_structure", return_value=verdict):
+        _cp.convert_sid_to_sf2("SID/Angular.sid", str(out), quiet=True)
+    return out
+
+
+def test_a_failing_structure_verdict_raises_so_the_cli_exits_nonzero(tmp_path):
+    failing = SF2ValidationResult(False, errors=["ERR Instruments table (0x80) MISSING"])
+    with pytest.raises(_errs.SIDMError) as exc:
+        _convert(tmp_path, failing)
+    # scripts/sid_to_sf2.py maps SIDMError -> sys.exit(1); that mapping is what
+    # turns this raise into a non-zero process exit.
+    assert "structure" in str(exc.value).lower(), str(exc.value)
+
+
+def test_the_artifact_is_still_written_before_the_raise(tmp_path):
+    """Raised LAST on purpose: the .sf2 is on disk so the failure is
+    inspectable, and a batch loses nothing it had already produced."""
+    failing = SF2ValidationResult(False, errors=["ERR Commands table (0x81) MISSING"])
+    out = tmp_path / "out.sf2"
+    with mock.patch.object(_cp, "_validate_sf2_structure", return_value=failing):
+        with pytest.raises(_errs.SIDMError):
+            _cp.convert_sid_to_sf2("SID/Angular.sid", str(out), quiet=True)
+    assert out.exists() and out.stat().st_size > 100, "artifact was discarded"
+
+
+def test_a_passing_verdict_does_not_raise(tmp_path):
+    """The half that is not optional. A previous attempt at this gate shipped a
+    version where BOTH a good and a bad conversion exited 1 -- 'always exits 0'
+    inverted, not fixed."""
+    out = _convert(tmp_path, SF2ValidationResult(True))
+    assert out.exists()

@@ -11,6 +11,7 @@ Focus: 300+ line _inject_laxity_music_data method and validation
 """
 
 import unittest
+import logging
 import sys
 import struct
 import tempfile
@@ -345,6 +346,27 @@ class TestSF2Validation(unittest.TestCase):
             f.write(data)
         # Should detect truncation
         self.writer._validate_sf2_file(test_file)
+
+    def test_validate_real_sf2ii_file_through_writer_reports_no_error(self):
+        """The writer's wrapper must not condemn a genuine SID Factory II file.
+
+        `SF2/Angular.sf2` is an SF2II file this converter did not produce.
+        `sf2_diagnostics.validate_sf2_file` used to report
+        `ERR Instruments table (0x80) MISSING` against it, because its Block 3
+        descriptor walk advanced by byte 2 (the text FIELD SIZE, 0x0C) instead
+        of the name's NUL terminator (9 bytes), overshooting by 3 and reading
+        every later descriptor out of the middle of the previous one.
+        """
+        real_file = Path(__file__).resolve().parent.parent / 'SF2' / 'Angular.sf2'
+        if not real_file.exists():
+            self.skipTest(f"{real_file} not present")
+
+        with self.assertLogs('sidm2.sf2_diagnostics', level='DEBUG') as cm:
+            self.writer._validate_sf2_file(str(real_file))
+        error_records = [r for r in cm.records if r.levelno >= logging.ERROR]
+        self.assertEqual(
+            error_records, [],
+            msg="\n".join(r.getMessage() for r in error_records))
 
     def test_validate_end_marker(self):
         """Test validation recognizes end marker."""
