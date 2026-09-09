@@ -48,7 +48,13 @@ def declared_writable(records):
     """Union of the rw: paths across every held record, repo-relative, /-joined."""
     out = set()
     for rec in records:
-        for entry in rec.get("touches") or []:
+        # lockctl.js writes the declared set as `paths` (lockctl.js:494); older
+        # hand-written records used `touches`. Reading only `touches` made this
+        # union EMPTY for every real lock, so the hook denied EVERY Edit/Write
+        # while any task was held and reported "Writable: (none)" -- a
+        # deny-everything guard reads exactly like a correctly-scoped one from
+        # the outside, because both refuse.
+        for entry in rec.get("paths") or rec.get("touches") or []:
             if entry.startswith("r:"):             # read-only: not a grant
                 continue
             path = entry[3:] if entry.startswith("rw:") else entry
