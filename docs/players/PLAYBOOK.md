@@ -261,69 +261,65 @@ the write *sequence* agrees. Not wired into SIDM2.
 
 ---
 
-## 7. Artifact provenance — what is stamped, and the decision still open
+## 7. Artifact provenance — the decision: accept UNSTAMPED, do not rebuild
 
 Every native build writes a `<name>.sf2.prov` sidecar beside its artifact
 (`commit / tree / builder / flags`). It is **not in the bytes**, so a `cp` of a
 `.sf2` leaves a stale stamp that a byte-compare cannot see. `_provenance()`
 deliberately omits a timestamp, so a same-commit rebuild stays byte-identical.
 
-**Censused 2026-09-04 (re-measured, superseding the 84.5% figure that circulated
-earlier this session — `out/dmc` was rebuilt in between, which moved it a lot):**
+### Existing corpora are unstamped until rebuilt — DECIDED, no rebuild
+
+**A human decision has been taken: do not rebuild any corpus for provenance.**
+Every artifact built before 2026-09 is **UNSTAMPED** by definition, and every
+pre-existing stamp that IS present reads `dirty`. That is the accepted, final
+state — it is not a gap waiting on a future rebuild pass.
+
+**Census, measured 2026-09-04 (record 229) — this is the number, do not
+re-census:**
 
 | corpus | stamped | total |
 |---|---|---|
-| `out/dmc` | 1175 | 1177 |
-| `out/hardtrack_native` | 313 | 313 |
-| `out/soundmonitor` | 9 | 31 |
-| `out/mon` | 3 | 211 |
-| `out/sdi` | 2 | 5039 |
-| `out/blackbird` | 0 | 20 |
-| `out/fc` | 0 | 19 |
-| **total** | **1502** | **6810** |
+| `out/sdi` | 0 | 5039 |
+| `out/dmc` | 412 | 1140 (**four distinct stamps**) |
+| `out/mon` | 210 | 211 |
+| `out/soundmonitor` | 22 | 31 |
+| `out/blackbird` | 20 | 20 |
+| `out/fc` | 19 | 19 |
+| `out/hardtrack_native` | 0 | 313 |
+| **total** | **1051** | **6773** |
 
-**5,308 UNSTAMPED (77.9%)** — and the distribution is the finding, not the
-headline. `out/sdi` alone accounts for **5,037 of the 5,308**, i.e. **95%** of
-every unstamped artifact in the tree. Two corpora are now fully or nearly fully
-stamped (`hardtrack_native` 313/313, `dmc` 1175/1177), both as a side effect of
-rebuilds done for other reasons.
+**6,773 artifacts, 5,722 UNSTAMPED (84.5%).** Every existing stamp — all 1,051
+of them, across all four distinct stamp values seen in `out/dmc` — reads
+`dirty`. None is a clean-tree stamp. No corpus in the tree meets "one stamp at
+a clean commit".
 
-Distinct stamps on disk: `7e67c33/dirty` ×1407, `423731b/dirty` ×84,
-`21d3b48/dirty` ×9, `c78c349/dirty` ×1, `7e67c33/**clean**` ×1.
+**Why accept UNSTAMPED instead of rebuilding:** a mass rebuild buys **dating,
+not correctness**. Measured directly: rebuilding `out/dmc` from its stale state
+to a same-flag control changed the passband score of **ZERO** files while
+moving part counts by 11 — the rebuild re-dated the corpus and re-shuffled its
+part boundaries without changing a single fidelity verdict. `UNSTAMPED` is also
+the *honest* label: the census counts it as such, and `fidelity_common`'s own
+test file records that **a wrong stamp is worse than no stamp**, because a
+stale one is confidently wrong while an absent one asks the right question.
 
-**A correction:** it has been written here and elsewhere that *every* existing
-stamp reads `dirty`. That is no longer true — exactly one artifact carries a
-clean-tree stamp. The stronger claim it was supporting still holds: **no corpus
-meets "one stamp at a clean commit"**, because one file out of 6,810 does not
-make a corpus reproducible.
+**What this means whenever a fidelity number from one of these artifacts is
+quoted**, in any player doc, corpus table, or report: **the number is still
+real — its provenance is not recorded.** The measurement itself is not in
+doubt and does not need re-running solely because the artifact is UNSTAMPED or
+carries a `dirty` stamp. Do not re-run a builder, and do not treat an
+UNSTAMPED/`dirty` artifact as suspect on that basis alone — treat it as what it
+is: a real number whose build commit/tree is simply not on record. If a
+reader needs to know *which commit* produced a given number, that provenance
+question is open for pre-2026-09 artifacts and will not be closed by rebuilding
+them; a genuinely fresh measurement (a new file, a new defect investigation)
+still gets a real stamp going forward since the builders themselves are
+unchanged.
 
-### The decision: rebuild everything, or accept UNSTAMPED — NOT YET TAKEN
-
-This is a human call and it is deliberately left open here. What the evidence
-says, so it does not have to be re-derived:
-
-**For accepting UNSTAMPED.** A mass rebuild buys **dating, not correctness**.
-Measured: rebuilding `out/dmc` from its stale state to a same-flag control
-changed the passband score of **ZERO** files while moving part counts by 11.
-`UNSTAMPED` is also *honest* — the census counts it as such, and
-`fidelity_common`'s own test file records that **a wrong stamp is worse than no
-stamp**, because a stale one is confidently wrong.
-
-**For rebuilding.** Provenance exists so a corpus figure can be dated, and today
-most cannot be. A sweep that averages artifacts from several commits is
-measuring its own build history.
-
-**What has changed since the question was first asked**, and it sharpens the
-decision considerably: the corpus-wide question has collapsed into **one
-corpus**. With `dmc` and `hardtrack_native` already stamped, "rebuild
-everything" now means, in practice, "rebuild `out/sdi`" — 5,039 artifacts, 95%
-of the remaining gap, and by far the most expensive corpus in the tree.
-`blackbird` (20), `fc` (19), `soundmonitor` (22) and `mon` (208) together are
-269 artifacts and are cheap by comparison.
-
-**If the rebuild is chosen: COMMIT FIRST.** Every stamp written from a modified
-tree reads `dirty`, which is exactly the state this exercise is trying to leave.
-Rebuilding before committing reproduces the problem at greater cost.
+See also `docs/players/PATTERNS.md` F7 (a fix in the builder is not a fix in
+the corpus) for the related, still-live point that a builder-level correctness
+fix and a corpus-provenance rebuild are two different operations — this
+decision closes off the second, not the first.
 
 ---
 

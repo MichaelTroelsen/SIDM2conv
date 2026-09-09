@@ -441,6 +441,18 @@ check, not the test suite.
 [DMC.md](DMC.md)); `pyscript/passband_check.py`, pinned by
 `pyscript/test_passband_check.py`.
 
+**Related but distinct — do not conflate them**: F7 is about a builder
+correctness fix not being reflected in the corpus yet (re-run the artifact
+check). Separately, PLAYBOOK.md §7 ("Existing corpora are unstamped until
+rebuilt — DECIDED, no rebuild") settles a different question — whether the
+corpus's *provenance* (which commit built it) is on record — and the human
+decision there is to accept every pre-2026-09 artifact as UNSTAMPED /
+`dirty`-stamped rather than mass-rebuild for dating: measured on `out/dmc`, a
+same-flag rebuild moved part counts by 11 while changing the passband score of
+**zero** files, i.e. it re-dated the corpus without touching correctness. A
+fidelity number quoted from an UNSTAMPED artifact is still real; only its
+build provenance is unrecorded.
+
 ---
 
 ### F8. The artifact must record the window it was built for

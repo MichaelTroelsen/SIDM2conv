@@ -91,6 +91,8 @@ output/**/*_exported_disassembly.md
 *_ANALYSIS.md
 *_ANALYSIS.csv
 *_ANALYSIS.tsv
+# ...except real analysis docs checked into docs/ (not scratch analyses elsewhere)
+!docs/*_ANALYSIS.md
 
 # Temporary files
 *.tmp
