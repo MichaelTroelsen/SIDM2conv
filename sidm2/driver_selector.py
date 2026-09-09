@@ -64,8 +64,28 @@ class DriverSelector:
                 'Laxity_NewPlayer_V21',   # Native Laxity NP21
                 'Vibrants/Laxity',        # Laxity player by Vibrants
                 '256bytes/Laxity',        # Compact Laxity player
-                'SidFactory_II/Laxity',   # SF2-exported but embeds Laxity NP21 player code
-                'SidFactory/Laxity',      # Older SF2 version, same situation
+                # MEASURED 2026-09-09, and the two ids are NOT the same case --
+                # which is why they no longer share a comment. The test is whether
+                # the file embeds a locatable Laxity frequency table
+                # (sequence_translator.locate_frequency_table, found by scale
+                # structure rather than by an address):
+                #
+                #   SidFactory_II/Laxity   63 of 64 locate one   (98%)
+                #   SidFactory/Laxity       0 of 28 locate one   (0%)
+                #
+                # So the justification below is TRUE for SidFactory_II and FALSE
+                # for SidFactory. CLAUDE.md said BOTH belong on Driver 11; the
+                # measurement says that is wrong for SidFactory_II, and the docs
+                # were corrected rather than this list.
+                'SidFactory_II/Laxity',   # MEASURED: embeds Laxity NP21 player code (63/64)
+                # SidFactory/Laxity is left here DELIBERATELY AND UNDER PROTEST:
+                # its stated justification is refuted (0 of 28 embed a Laxity
+                # table), but neither does it carry an SF2 payload (0 of 28
+                # contain magic 0x1337), so nothing establishes that Driver 11
+                # would serve it BETTER. Rerouting 28 files on a refuted premise
+                # rather than on a fidelity measurement would swap one unmeasured
+                # claim for another. Measure before moving it.
+                'SidFactory/Laxity',      # justification REFUTED, reroute unmeasured
             ],
             'driver_file': 'sf2driver_laxity_00.prg',
             # PROVENANCE OF '99.93%', because it is this repo's flagship number and

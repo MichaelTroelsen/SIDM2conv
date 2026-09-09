@@ -418,3 +418,30 @@ if __name__ == '__main__':
     import sys
     success = run_tests()
     sys.exit(0 if success else 1)
+
+
+# ---------------------------------------------------------------------------
+# SidFactory_II/Laxity vs SidFactory/Laxity: the two ids are NOT one case.
+#
+# MEASURED 2026-09-09 over SID/**/*.sid, using whether the file embeds a
+# locatable Laxity frequency table (found by scale structure, not by address):
+#     SidFactory_II/Laxity   63 of 64   (98%)
+#     SidFactory/Laxity       0 of 28   (0%)
+# CLAUDE.md claimed BOTH belong on Driver 11 and marked it **Critical**; the
+# measurement refutes that for SidFactory_II, and the docs were corrected rather
+# than the registry. This case pins the routing so the doc claim cannot quietly
+# come back and change it.
+# ---------------------------------------------------------------------------
+def test_both_sidfactory_laxity_ids_route_to_the_laxity_driver():
+    from sidm2.driver_selector import DriverSelector
+    ids = DriverSelector.PLAYER_REGISTRY['laxity']['player_ids']
+    assert 'SidFactory_II/Laxity' in ids, (
+        "63 of 64 SidFactory_II/Laxity files embed a Laxity frequency table; "
+        "routing them to Driver 11 would be the documented 1-8% path")
+    assert 'SidFactory/Laxity' in ids, (
+        "its justification is refuted (0 of 28), but rerouting it is unmeasured "
+        "-- move it only with a fidelity measurement, not on the refutation alone")
+    for other in ('driver11', 'np20'):
+        if other in DriverSelector.PLAYER_REGISTRY:
+            assert 'SidFactory_II/Laxity' not in \
+                DriverSelector.PLAYER_REGISTRY[other]['player_ids']
