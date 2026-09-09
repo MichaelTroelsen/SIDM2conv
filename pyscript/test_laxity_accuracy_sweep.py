@@ -207,3 +207,35 @@ def test_the_sweep_cannot_see_a_wrong_instrument_locate_BECAUSE_NOTHING_CAN():
         "moving the instrument locate 1,387 bytes no longer changes what "
         "_extract_instruments returns -- the demonstration this test rests on "
         "is gone, so re-measure before trusting the docstring above")
+
+
+# ---------------------------------------------------------------------------
+# THE WINDOW MUST TRAVEL WITH THE NUMBER.
+#
+# The sweep scores the first N seconds of each song (default 30), not the whole
+# song, so a defect that starts later scores clean. The header said so once; a
+# figure gets quoted from the DISTRIBUTION block, and from the JSON, neither of
+# which carried it. These cases pin that every place a number can be read from
+# also states the window.
+# ---------------------------------------------------------------------------
+def test_the_distribution_block_states_the_window(capsys, monkeypatch, tmp_path):
+    import json as _json
+    import pyscript.laxity_accuracy_sweep as sw
+
+    rows = [{"file": "X", "status": "ok", "frame_accuracy": 100.0,
+             "exact_match_pct": 100.0, "frames": 600, "note": ""}]
+    monkeypatch.setattr(sw, "laxity_corpus", lambda: [tmp_path / "X.sid"], raising=False)
+    monkeypatch.setattr(sw, "measure_one", lambda *a, **k: rows[0])
+    out_json = tmp_path / "s.json"
+    monkeypatch.setattr(sys, "argv",
+                        ["sweep", "--duration", "7", "--json", str(out_json)])
+    sw.main()
+    out = capsys.readouterr().out
+
+    # Every place a figure can be read from names the window.
+    assert "(7s window)" in out, out
+    assert "over a 7s window" in out, out
+    assert "QUOTE THE WINDOW WITH THE NUMBER" in out, out
+    payload = _json.loads(out_json.read_text(encoding="utf-8"))
+    assert payload["window_seconds"] == 7
+    assert payload["summary"]["window_seconds"] == 7

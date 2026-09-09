@@ -224,18 +224,31 @@ def main() -> int:
                   % (i, len(corpus), r["file"], r["status"].upper(), r["note"]))
 
     s = summarise(rows)
-    print("\n--- DISTRIBUTION, not a mean ---")
+    # THE WINDOW TRAVELS WITH EVERY FIGURE, which is why it is repeated here
+    # when the header already said it once. A number gets QUOTED from the
+    # distribution block, not from a header twenty lines above it -- so a window
+    # named only once is a window that falls off the moment anyone copies a
+    # line. fidelity_common.fmt_pct already suffixes an underpowered n for the
+    # same reason: a figure has to carry the condition that makes it true, in
+    # the same breath, or the condition is lost and the figure survives.
+    s["window_seconds"] = a.duration
+    print("\n--- DISTRIBUTION, not a mean --- (%ds window)" % a.duration)
     print("measured %d | errors %d | no-frames %d" % (s["measured"], s["errors"], s["no_frames"]))
     if s["measured"]:
-        print("frame accuracy  min %.2f%%  median %.2f%%  max %.2f%%"
-              % (s["min"], s["median"], s["max"]))
+        print("frame accuracy over a %ds window  min %.2f%%  median %.2f%%  max %.2f%%"
+              % (a.duration, s["min"], s["median"], s["max"]))
         print("frames compared per file: %d .. %d%s"
               % (s["n_frames_min"], s["n_frames_max"],
                  "   (! = underpowered sample)" if underpowered(s["n_frames_min"]) else ""))
+        print("QUOTE THE WINDOW WITH THE NUMBER: these figures describe the first %ds"
+              % a.duration)
+        print("of each song, not the whole song. A defect that starts later scores clean here.")
     if a.json:
-        Path(a.json).write_text(json.dumps({"rows": rows, "summary": s}, indent=1),
-                                encoding="utf-8")
-        print("wrote %s" % a.json)
+        Path(a.json).write_text(
+            json.dumps({"window_seconds": a.duration, "rows": rows, "summary": s},
+                       indent=1),
+            encoding="utf-8")
+        print("wrote %s (window_seconds recorded in it)" % a.json)
     return 0
 
 

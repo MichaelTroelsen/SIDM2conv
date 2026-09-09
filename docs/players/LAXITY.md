@@ -33,8 +33,16 @@
 > | median | **100.00%** | 100.0% |
 > | max | **100.00%** | 100.0% |
 >
-> **16 of 17 files are at exactly 100.00% on BOTH columns** — not just the
-> lenient per-frame mean but exact frame-for-frame identity, 1500/1500. The sole
+> **16 of 17 files are at exactly 100.00% on BOTH columns, OVER A 30-SECOND
+> WINDOW** — not just the lenient per-frame mean but exact frame-for-frame
+> identity, 1500/1500. The window is not a footnote to this figure, it is part
+> of it: songs longer than 30s are scored on their opening only, so a defect
+> that starts at 0:45 is invisible here and 16/17 is a claim about the first
+> half-minute of each file rather than about the file. The sweep now prints the
+> window on every line a number can be quoted from, and records `window_seconds`
+> in its JSON, so the figure cannot be lifted without it (grep for
+> `QUOTE THE WINDOW WITH THE NUMBER` in `pyscript/laxity_accuracy_sweep.py`).
+> Whether 16/17 survives at full song length is UNMEASURED. The sole
 > outlier is `Unboxed_Ending_8580` at 98.73% / 90.7%. So the 99.93% target is met
 > and exceeded by the corpus, and it is now a measurement with a method in the
 > tree.
