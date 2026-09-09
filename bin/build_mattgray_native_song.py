@@ -56,7 +56,15 @@ def _argv(i, default, cast=str):
 
 SID = _argv(1, os.path.join("SID", "Gray_Matt", "Last_Ninja_2.sid"))
 WARG = _argv(2, "auto")
-SUB = _argv(3, 0, int)
+# Match sidm2.mattgray_parser.parse_sid's own default (subtune=1), not 0.
+# They used to disagree: an unqualified run refused with
+# "address $0000 outside image ..." on every file whose track-table entry 0
+# is null (Pogo_Stick_Olympics, Warriors, ...) -- the identical shape to a
+# genuine decode failure, so it read as one. The census settles which default
+# is right: parse_sid at its own default (1) decodes 13/55 files in
+# SID/Gray_Matt; forced to 0 it decodes only 2/57 recursive (Last_Ninja_2 and
+# Tusker, whose track-table entry 0 happens to be non-null).
+SUB = _argv(3, 1, int)
 
 SCAN_FRAMES = 6000
 OUT_DIR = os.path.join(ROOT, "out", "mattgray_native")
