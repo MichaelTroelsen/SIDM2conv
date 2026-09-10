@@ -1485,6 +1485,49 @@ class SF2Parser:
         return data[off:], base
 
     @staticmethod
+    def _gap_is_orderlists(data, base, tbl, cand, p0):
+        """True when the bytes between the table's end and entry 0 decode as
+        whole voice orderlists -- the only shift this locator accepts.
+
+        The Laxity orderlist grammar, as it appears in an SF2 payload:
+          $A0-$BF  transpose, applies to the entries that follow
+          $FF      ends a voice, followed by one loop byte
+          anything else is a SEQUENCE INDEX and must be < N
+
+        A shift of zero (bodies immediately after the table) is the ordinary
+        case and is accepted without decoding anything. Anything else has to
+        earn it: the gap must consume exactly, end on a voice boundary, and
+        never name a sequence the table does not have. That last clause is what
+        rejects the false locates -- three of them sit at $1005 inside the
+        player code, where body 0 is a rising frequency table whose bytes run
+        far past any plausible N.
+        """
+        start = (tbl + 2 * cand) - base
+        end = p0 - base
+        if end == start:
+            return True
+        if end < start or end > len(data):
+            return False
+        gap = data[start:end]
+        i = voices = entries = 0
+        while i < len(gap):
+            b = gap[i]
+            if b == 0xFF:
+                if i + 1 >= len(gap):
+                    return False          # terminator with no loop byte
+                voices += 1
+                i += 2
+                continue
+            if 0xA0 <= b <= 0xBF:
+                i += 1
+                continue
+            if b >= cand:
+                return False              # names a sequence past the table
+            entries += 1
+            i += 1
+        return voices >= 1 and entries >= voices and i == len(gap)
+
+    @staticmethod
     def laxity_locate_seq_table(data, base, min_n=4, max_n=64):
         """(table_addr, N, ptrs) for the split lo[N]/hi[N] sequence table, or None.
 
@@ -1520,19 +1563,43 @@ class SF2Parser:
         lim = base + n
         hits = []
         for off in range(0, n - 2 * min_n):
-            # bodies begin at table + 2N, so lo[0] pins N modulo 128
-            delta = (data[off] - (base + off)) & 0xFF
-            if delta & 1:
-                continue
-            for cand in range(delta >> 1, max_n + 1, 128):
-                if cand < min_n or off + 2 * cand >= n:
+            # N IS ENUMERATED, NOT DERIVED FROM lo[0]. The older form computed
+            # `delta = (data[off] - (base + off)) & 0xFF` and stepped cand by 128,
+            # because "bodies begin at table + 2N" pins N modulo 128 through
+            # lo[0]. That is true ONLY when the bodies start immediately after
+            # the table, so it silently rejected every shifted table before the
+            # screen below could see it -- as did the hi[0] pre-check that used
+            # to sit here. Both were fast paths encoding the assumption being
+            # relaxed, and leaving either in place makes the relaxation INERT.
+            for cand in range(min_n, max_n + 1):
+                if off + 2 * cand >= n:
                     break
                 tbl = base + off
-                if data[off + cand] != ((tbl + 2 * cand) >> 8) & 0xFF:
+                # ENTRY 0 MAY SIT PAST THE TABLE -- BUT ONLY BEHIND WHOLE
+                # ORDERLISTS. Checked on entry 0 alone, before the pointer list
+                # is built, so widening the search costs nothing measurable.
+                #
+                # Stinsen's SF2 is the file that forced this: its table is at
+                # $1A22 with N=39, ends at $1A70, and its first body is at
+                # $1AD1 -- 97 bytes later. Those 97 bytes are NOT padding and
+                # NOT a coincidence. They decode as exactly three $FF-terminated
+                # voice orderlists: 77 entries, every index < 39, and all 39
+                # sequences referenced. So the gap is the ORDERLIST BLOCK, and
+                # its size is a property of the song rather than a constant.
+                #
+                # THE BOUND IS THEREFORE DERIVED, NOT FITTED. An earlier attempt
+                # used `0 <= shift <= 97`, which located the same files -- and
+                # 97 was simply Stinsen's own shift. Sweeping it showed a STEP
+                # at 97 rather than a plateau, and the 24 files it "gained" were
+                # one song plus 23 edited copies of it. Worse, that bound let
+                # four documented false locates back in (Broom_Tycoon,
+                # Hand_Interludes_Side_1/2/3). Screening on the CONTENT of the
+                # gap instead admits Stinsen and refuses all eight, because a
+                # rising frequency table does not decode as an orderlist.
+                p0 = data[off] | (data[off + cand] << 8)
+                if not SF2Parser._gap_is_orderlists(data, base, tbl, cand, p0):
                     continue
                 ptrs = [data[off + i] | (data[off + cand + i] << 8) for i in range(cand)]
-                if ptrs[0] != tbl + 2 * cand:
-                    continue
                 if not all(base <= p < lim for p in ptrs):
                     continue
                 if not all(ptrs[i] < ptrs[i + 1] for i in range(cand - 1)):

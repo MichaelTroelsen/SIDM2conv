@@ -638,8 +638,26 @@ def test_a_pointer_bounded_file_is_not_touched_by_the_guard():
 def test_every_decoded_file_carries_provenance():
     """The packed heuristic's locate is SEVEN ROWS OFF on Angular, the one file
     with editor ground truth -- so a consumer must be able to tell a structural
-    decode from a heuristic one. Re-measured 2026-09-03 over SF2/: 22 files
-    decode via the pointer table (structural), 25 via a heuristic reader."""
+    decode from a heuristic one. THAT is what this test pins, and the per-file
+    assertions below are the whole of it; the corpus counts underneath are a
+    floor, not the claim.
+
+    THE OLD FLOOR WAS `structural > 10 and heuristic > 10`, from a 2026-09-03
+    measurement of 22 structural / 25 heuristic. It is RETIRED because the
+    orderlist-gap screen in laxity_locate_seq_table invalidated its second
+    half: 24 more files now locate (Stinsens plus 23 _stin_*/_test_* copies of
+    it, all at the identical table $1A22 N=39), so the split re-measures at
+    46 structural / 1 heuristic over the 47 .sf2 in SF2/.
+
+    A two-sided floor was the wrong shape to begin with -- it fails whenever
+    the LOCATOR IMPROVES, which is backwards for a test about provenance. The
+    heuristic floor is kept at >= 1 rather than dropped, so the path stays
+    reachable and a change that deletes it entirely still fails here; but be
+    honest about what a 1-file floor is worth. That one file is
+    _test_commando.sf2, and it reaches the `indexed sequence table` reader,
+    NOT the `Laxity SF2 offset-table parser` -- which now has ZERO subjects in
+    this corpus (see
+    test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard)."""
     files = _all_sf2s()
     if len(files) < 10:
         pytest.skip("no SF2 corpus on this machine")
@@ -655,7 +673,7 @@ def test_every_decoded_file_carries_provenance():
             structural += 1
         else:
             heuristic += 1
-    assert structural > 10 and heuristic > 10, (structural, heuristic)
+    assert structural > 40 and heuristic >= 1, (structural, heuristic)
 
 
 def test_structural_is_reserved_for_the_pointer_table():
@@ -676,7 +694,8 @@ def test_structural_is_reserved_for_the_pointer_table():
 
 
 def test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard():
-    """The counter-example the impossibility guard actually needs.
+    """The counter-example the impossibility guard actually needs -- and it has
+    LOST ITS SUBJECT, which is recorded here rather than papered over.
 
     test_a_located_file_may_legitimately_exceed_its_default_sequence_length uses
     Cycles -- but Cycles LOCATES, and the located reader
@@ -684,24 +703,57 @@ def test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard():
     pointer-bounded decode cannot run away. So that test proves the dsl claim and
     proves nothing about the guard: its file never meets it.
 
-    Stinsens_Last_Night_of_89 does. It routes through the GUARDED
-    `Laxity SF2 offset-table parser`, its dsl is 65, and its longest sequence is
-    647 -- ten times the dsl -- for 1,762 entries in 13,449 bytes. If the guard
-    ever regresses into a length threshold, this file is what fails first.
-    """
-    p = _parsed_sf2("Stinsens_Last_Night_of_89.sf2")
-    prov = getattr(p, "sequence_provenance", None)
-    reader = prov.get("reader") if isinstance(prov, dict) else prov
-    assert reader == "Laxity SF2 offset-table parser", reader
-    assert not (prov or {}).get("structural"), "must be a GUARDED heuristic path"
+    Stinsens_Last_Night_of_89 DID: it routed through the guarded
+    `Laxity SF2 offset-table parser` with dsl 65 and a longest sequence of 647 --
+    ten times the dsl -- for 1,762 entries in 13,449 bytes.
 
-    dsl = p.music_data_info.default_sequence_length
-    assert dsl == 65, dsl
-    lengths = [len(v) for v in p.sequences.values()]
-    assert max(lengths) > dsl * 5, (max(lengths), dsl)
-    assert sum(lengths) == 1762, sum(lengths)
+    IT NO LONGER DOES, and the reason is a fix rather than a regression: the
+    orderlist-gap screen in laxity_locate_seq_table now locates Stinsens' table
+    at $1A22 (N=39, its bodies sitting 97 bytes past the table behind three
+    whole voice orderlists), so the file takes the STRUCTURAL path and never
+    reaches the guard. Measured over the 47 .sf2 in SF2/ at this head: ZERO
+    files reach `Laxity SF2 offset-table parser`. The one remaining
+    non-structural file, _test_commando.sf2, reaches `indexed sequence table`.
+
+    So this test SEARCHES for a subject instead of naming one, and SKIPS when
+    the corpus has none. That is deliberate in both directions: it must not be
+    re-pinned to a passing file that does not meet the guard (that would be a
+    false green over an untested guard), and it must not be deleted (the moment
+    any file routes through that reader again, this revives on its own and
+    checks it). Until then, READ THIS AS: the offset-table parser's
+    impossibility guard is UNTESTED by this corpus.
+    """
+    files = _all_sf2s()
+    if len(files) < 10:
+        pytest.skip("no SF2 corpus on this machine")
+    subject = None
+    for f in files:
+        p = _parsed(f)
+        if p is None or not p.sequences:
+            continue
+        prov = getattr(p, "sequence_provenance", None) or {}
+        if prov.get("structural"):
+            continue
+        if prov.get("reader") != "Laxity SF2 offset-table parser":
+            continue
+        dsl = getattr(p.music_data_info, "default_sequence_length", 0) or 0
+        lengths = [len(v) for v in p.sequences.values()]
+        if dsl and lengths and max(lengths) > dsl * 5:
+            subject = (f, p, dsl, lengths)
+            break
+
+    if subject is None:
+        pytest.skip(
+            "NO SUBJECT: no file in SF2/ reaches the guarded "
+            "'Laxity SF2 offset-table parser' with a sequence exceeding 5x its "
+            "dsl. Stinsens_Last_Night_of_89 was the only one and now locates "
+            "structurally. The guard is untested by this corpus -- not passing.")
+
+    f, p, dsl, lengths = subject
+    assert max(lengths) > dsl * 5, (os.path.basename(f), max(lengths), dsl)
     assert not getattr(p, "sequence_refusals", None), (
-        "the guard refused a legitimate decode: %r" % (p.sequence_refusals,))
+        "the guard refused a legitimate decode in %s: %r"
+        % (os.path.basename(f), p.sequence_refusals))
 
 
 def test_every_heuristic_reader_in_the_dispatch_is_guarded():

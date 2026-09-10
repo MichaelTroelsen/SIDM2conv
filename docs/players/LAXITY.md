@@ -192,6 +192,56 @@ note ever gates. A description built from the audio envelope alone puts the
 failure a quarter-second later than it is, and points diagnosis at a decay
 mechanism that does not exist.
 
+## The sequence table's bodies need not follow the table: Stinsen's 97-byte gap is the ORDERLIST BLOCK (2026-09-10)
+
+`SF2Parser.laxity_locate_seq_table` used to require `ptrs[0] == tbl + 2*N` —
+bodies immediately after the table. Stinsen's own SF2 violates it: the table is
+at `$1A22` with N=39, so it ends at `$1A70`, and the first body is at `$1AD1`,
+**97 bytes later**.
+
+**Those 97 bytes were read before any code was written**, and they are not
+padding and not a coincidence. They decode as exactly three `$FF`-terminated
+voice orderlists — 41, 22 and 28 entries, each ending `FF 00`, transposes
+`$A0`/`$A2`/`$AC` in range, every index below 39, and **all 39 sequences
+referenced with none missing**:
+
+```
+A0 0E 0F 0F 0F 0F 11 01 05 01 04 AC 02 03 A0 13 14 13 15 0E 11 01 05 01 04
+AC 02 1B A0 13 14 13 15 1C 1C 1C 1C AC 02 1F 20 FF 00   <- voice 0
+A0 00 12 06 06 06 07 25 25 16 17 06 06 18 25 25 06 06 06 06 1D 21 FF 00
+A0 0A 0A 0B 0C A2 0A A0 10 08 09 19 AC 0D A0 0B 10 08 09 1A AC 0D 23 24 26
+A0 1E 22 FF 00
+```
+
+So the gap is a **known structure**, and the bound is derived from its grammar
+rather than from its size. The locator screens the *content* of the gap
+(`_gap_is_orderlists`) instead of accepting a shift up to some maximum.
+
+**Why not the fitted bound.** An earlier attempt used `0 <= shift <= 97` and
+located the same files — but 97 is simply Stinsen's own shift. Sweeping it
+showed a **step at 97, not a plateau**, and it let four documented false locates
+back in (`Broom_Tycoon`, `Hand_Interludes_Side_1/2/3`). A frequency table does
+not decode as an orderlist, so the content screen admits Stinsen and refuses all
+eight.
+
+**Both control sets hold** (measured over the 47 `.sf2` in `SF2/`):
+
+| control | result |
+|---|---|
+| files that located before the change | 22 — **0 moved, 0 lost** |
+| files newly located | 24, **all at `$1A22` N=39** — Stinsen plus 23 `_stin_*`/`_test_*` copies of it |
+| `PS_FALSE_LOCATES` (8 `SID/Laxity` files) | still refuse, 8/8 |
+
+**The gain is ONE SONG**, and that is worth stating plainly: the 24 new files
+are one tune and 23 edited derivatives at the identical table.
+
+**A consequence to know about.** Stinsen was the *only* file reaching the
+guarded `Laxity SF2 offset-table parser`, so locating it structurally leaves
+that reader with **zero subjects in `SF2/`** and its impossibility guard
+untested by this corpus. `test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard`
+now searches for a subject and **skips with that reason** rather than being
+re-pinned to a file that does not meet the guard.
+
 ## `$80–$9F` is a DURATION byte: `(b & $0F) + 1` frames, bit 4 a separate flag (2026-09-05)
 
 **Settled against the player's own 6502 code**, not against another module in
