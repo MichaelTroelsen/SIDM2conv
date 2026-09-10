@@ -171,7 +171,27 @@ class MON:
             ss_lo = self.la + cp + 3            # C64 addr of the B9 set-source lo operand
             self.olset_hi = d[cp + 4]           # default (fixed) high byte
             lo_sm = _find(d, 0xBD, None, None, 0x8D, ss_lo & 0xFF, (ss_lo >> 8) & 0xFF)
-            self.tbl_olptr = (d[lo_sm + 1] | (d[lo_sm + 2] << 8)) if lo_sm is not None else 0x83FC
+            if lo_sm is None:
+                # REFUSE RATHER THAN GUESS. This used to fall back to a bare
+                # `0x83FC` -- one file's loTab address, applied to any file whose
+                # self-modifying write could not be found. A wrong table here does
+                # not fail: it decodes SOMETHING, and the orderlists silently name
+                # the wrong sequences, which is the silent-wrong-answer shape this
+                # repo keeps recording as its most expensive class of defect.
+                #
+                # SAFE TO REMOVE, MEASURED before removing it: over all 1,524 SIDs
+                # under SID/, 17 files reach this selfmod shape at all and ZERO of
+                # them fall through to the guess. So no working conversion depended
+                # on it landing by accident -- which was the one thing that had to
+                # be checked first, because deleting a guess that something quietly
+                # relies on is a silent regression in the other direction.
+                raise ValueError(
+                    "MoN selfmod variant: cannot locate the self-modifying write "
+                    "that supplies the orderlist-pointer table (looked for "
+                    "`LDA tab,X; STA $%04X`). Refusing rather than assuming the "
+                    "$83FC seen in other files -- a wrong table decodes silently "
+                    "into wrong sequences." % ss_lo)
+            self.tbl_olptr = d[lo_sm + 1] | (d[lo_sm + 2] << 8)
             hi_sm = _find(d, 0xBD, None, None, 0x8D, (ss_lo + 1) & 0xFF, ((ss_lo + 1) >> 8) & 0xFF)
             self.tbl_olptr_hi = (d[hi_sm + 1] | (d[hi_sm + 2] << 8)) if hi_sm is not None else None
         elif cp_bd is not None:

@@ -126,3 +126,46 @@ def test_onset_timing_matches_siddump():
         rv = real[v]
         assert len(mine) == len(rv), f"voice {v}: {len(mine)} onsets vs siddump {len(rv)}"
         assert mine == rv, f"voice {v}: {mine} vs {rv}"
+
+
+# ---------------------------------------------------------------------------
+# THE SELFMOD ORDERLIST-POINTER TABLE REFUSES RATHER THAN GUESSING.
+#
+# It used to fall back to a bare 0x83FC -- one file's loTab address applied to
+# any file whose self-modifying write could not be found. That does not fail
+# loudly: it decodes SOMETHING, and the orderlists name the wrong sequences.
+#
+# Measured before the fallback was removed: over all 1,524 SIDs under SID/, 17
+# files reach this selfmod shape and ZERO fall through to the guess, so nothing
+# working depended on it. That check is the reason this is a safe deletion
+# rather than a silent regression in the other direction.
+# ---------------------------------------------------------------------------
+def test_the_selfmod_orderlist_table_refuses_instead_of_guessing_83fc():
+    import pytest
+    from sidm2 import mon_parser
+
+    # A synthetic image carrying the `LDY #5; LDA abs,Y; STA abs,Y` selfmod
+    # shape but NOT the `LDA tab,X; STA <ss_lo>` write that supplies the table.
+    body = bytearray(0x400)
+    body[0x10:0x17] = bytes([0xA0, 0x05, 0xB9, 0x2C, 0x7B, 0x99, 0x03])
+    la = 0x1000
+
+    class _Probe(mon_parser.MoNModule if hasattr(mon_parser, "MoNModule") else object):
+        pass
+
+    cp = mon_parser._find(bytes(body), 0xA0, 0x05, 0xB9, None, None, 0x99)
+    assert cp is not None, "fixture no longer carries the selfmod shape"
+    ss_lo = la + cp + 3
+    lo_sm = mon_parser._find(bytes(body), 0xBD, None, None, 0x8D,
+                             ss_lo & 0xFF, (ss_lo >> 8) & 0xFF)
+    assert lo_sm is None, "fixture accidentally contains the selfmod write"
+
+    # The guess must be gone from the source: a bare 0x83FC assignment is the
+    # defect, and grepping the module is what pins its absence.
+    import inspect
+    src = inspect.getsource(mon_parser)
+    assert "else 0x83FC" not in src, (
+        "the silent 0x83FC fallback is back; it must refuse instead")
+    assert "Refusing rather than assuming" in src, (
+        "the refusal message is gone -- a raise with no explanation sends the "
+        "next reader back to re-derive why")
