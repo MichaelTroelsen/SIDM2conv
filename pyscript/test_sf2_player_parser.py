@@ -329,3 +329,64 @@ def test_only_driver11_loads_at_0d7e_the_rest_load_at_0dfe():
     assert set(by_load) == {0x0D7E, 0x0DFE}, {hex(k): v for k, v in by_load.items()}
     assert all(n.startswith("Driver 11 ") for n in by_load[0x0D7E]), by_load[0x0D7E]
     assert not any(n.startswith("Driver 11 ") for n in by_load[0x0DFE]), by_load[0x0DFE]
+
+
+# ---------------------------------------------------------------------------
+# THE SEQUENCE-EXTRACTION QUARANTINE (2026-09-09).
+#
+# Decided by a human against a measurement, not on suspicion:
+#   1. NOTHING REACHING THIS PATH IS AN SF2 EXPORT. 46 tree SIDs carry the
+#      $1337 marker; 37 also get driver_type == 'driver11' and pass the gate.
+#      All 37 got driver11 from the FALLBACK DEFAULT -- reason string 'Standard
+#      SF2 driver for maximum compatibility' -- and ZERO were positively
+#      identified as SF2-exported. They are native rips: Hubbard 14,
+#      Bjerregaard/DMC 5, Gray 3, Shogoon/HardTrack 3, Gallefoss 3, Tel 2.
+#   2. THE RESULT WAS DISCARDED. Converting with the refusal guard present
+#      (parser returns nothing) and removed (parser returns garbage) gave
+#      byte-identical output on three files -- 17,957 / 25,566 / 19,542 bytes
+#      -- and on the first the parser had emitted 254 sequences, four of them
+#      non-trivial with illegal values, without moving the .sf2 by one byte.
+#
+# NOT quarantined: the TABLE-reading half. That measurement covered sequences.
+# ---------------------------------------------------------------------------
+import inspect as _inspect
+from sidm2 import sf2_player_parser as _spp
+
+
+def test_the_sequence_extraction_is_not_called_from_either_path():
+    """Both call sites are gone. Restoring either makes this fail.
+
+    `_extract_sequences_from_sf2` itself is deliberately LEFT IN THE FILE --
+    the repair task would rewrite it -- so the check is that nothing CALLS it,
+    not that it is absent.
+    """
+    src = _inspect.getsource(_spp)
+    assert "def _extract_sequences_from_sf2" in src, (
+        "the method itself should still exist for the repair task")
+    calls = [ln for ln in src.splitlines()
+             if "_extract_sequences_from_sf2(" in ln and "def " not in ln]
+    assert not calls, (
+        "sequence extraction is quarantined but is still called:\n  "
+        + "\n  ".join(c.strip() for c in calls))
+
+
+def test_the_quarantine_says_why_at_the_code():
+    """A bare deletion sends the next reader to the run log to find out why.
+
+    The measurement has to be AT the code, or the next person to see an empty
+    `sequences` list re-derives it -- which is how this path came to be trusted
+    in the first place.
+    """
+    src = _inspect.getsource(_spp)
+    assert "quarantined" in src.lower(), "no quarantine note at the code"
+    for token in ("17,957", "0 of 37", "byte-for-byte"):
+        assert token in src, (
+            "the quarantine note omits %r -- it must carry the measurement, "
+            "not just the verdict" % token)
+
+
+def test_the_table_reading_half_is_untouched():
+    """The carve-out: the byte-identical measurement covered sequences only."""
+    src = _inspect.getsource(_spp)
+    assert "_parse_sf2_tables" in src
+    assert "find_table_by_reference" in src

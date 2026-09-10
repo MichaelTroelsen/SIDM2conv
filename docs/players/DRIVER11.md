@@ -3,11 +3,11 @@
 **Player:** SID Factory II's own Driver 11 (any SF2-exported file)
 **Registry key:** `driver11`
 **Driver:** `sf2driver11_00.prg`
-**Accuracy:** **100%** for SF2-exported files (by construction — see below); **safe default**
+**Accuracy:** **UNEVIDENCED for SF2-exported files** — the "100% by construction" claim is RETRACTED (2026-09-09); **safe default** otherwise. See "The 100% claim" below.
 for unknown players. Canonical figures: `docs/reference/ACCURACY_MATRIX.md`.
 **Corpus:** round-trip test files; the fallback for anything unrecognised
 
-When a SID was **exported from SID Factory II**, it already uses Driver 11's structure — so converting it back to SF2 with Driver 11 preserves the exact tables and gives **100%** fidelity. Driver 11 is also the **safe default** when the player can't be identified.
+When a SID was **exported from SID Factory II**, it already uses Driver 11's structure — so converting it back to SF2 with Driver 11 should preserve the exact tables. THAT SENTENCE IS NOT EVIDENCE FOR A NUMBER, and the **100%** it used to assert is retracted (2026-09-09). Two measurements say why. FIRST, the population is empty: of 46 tree SIDs carrying the $1337 marker, 37 pass the gate and **all 37 got driver11 from the FALLBACK DEFAULT** (reason string "Standard SF2 driver for maximum compatibility") — **zero** were positively identified as SF2-exported. They are native rips (Hubbard 14, Bjerregaard/DMC 5, Gray 3, Shogoon/HardTrack 3, Gallefoss 3, Tel 2). SECOND, the mechanism the sentence names is not running: sequence extraction was measured byte-for-byte on 3 files with the parser returning garbage versus nothing, and the output was IDENTICAL (17,957 / 25,566 / 19,542 bytes) — so it is now quarantined. Whatever fidelity this path has on a genuine export, no file in this tree demonstrates it. Driver 11 remains the **safe default** when the player cannot be identified.
 
 ---
 

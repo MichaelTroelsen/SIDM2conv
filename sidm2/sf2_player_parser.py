@@ -537,16 +537,43 @@ class SF2PlayerParser:
         sequences: List[List[SequenceEvent]] = []
         orderlists: List[List[Tuple[int, int]]] = []
 
-        try:
-            # Use the SID's own C64 data which contains embedded SF2 structure
-            # Format: load_addr (2 bytes) + C64 data
-            sid_data_with_addr = bytes([self.load_address & 0xFF, (self.load_address >> 8) & 0xFF]) + self.c64_data
-            sequences, orderlists = self._extract_sequences_from_sf2(sid_data_with_addr, self.load_address)
-            logger.info(f"Extracted {len([s for s in sequences if len(s) > 1])} non-empty sequences from SID's embedded data")
-            logger.info(f"Extracted {sum(len(ol) for ol in orderlists)} total orderlist entries across {len(orderlists)} voices")
-        except Exception as e:
-            logger.warning(f"Failed to extract sequences from SID's embedded SF2 data: {e}")
-            # Keep empty sequences/orderlists on error
+        # SEQUENCE EXTRACTION IS QUARANTINED, by a human decision taken
+        # 2026-09-09 against a measurement, not on suspicion. Two findings, both
+        # negative, and either one alone would justify this:
+        #
+        # 1. NOTHING REACHING THIS PATH IS AN SF2 EXPORT. 46 SIDs in the tree
+        #    carry the $1337 marker and 37 also get driver_type == 'driver11',
+        #    so 37 pass the gate. ALL 37 got driver11 from the FALLBACK DEFAULT
+        #    -- DriverSelector's reason string is 'Standard SF2 driver for
+        #    maximum compatibility' on every one -- and ZERO were positively
+        #    identified as SF2-exported. They are native rips: Hubbard 14,
+        #    Bjerregaard/DMC 5, Gray 3, Shogoon/HardTrack 3, Gallefoss 3, Tel 2.
+        #
+        # 2. THE RESULT WAS DISCARDED ANYWAY, measured BYTE-FOR-BYTE on three
+        #    files. Converting with the refusal guard present (parser returns
+        #    nothing) and with it removed (parser returns garbage) produced
+        #    identical output: 17,957 / 25,566 / 19,542 bytes. On the first of
+        #    those the parser emitted 254 sequences, four of them non-trivial
+        #    with illegal values such as instrument=$11 command=$A9, and the
+        #    .sf2 did not move by one byte.
+        #
+        # So this ran, produced garbage, and changed nothing. Leaving it running
+        # costs the time and buys a log line that says a native Hubbard rip was
+        # SF2-exported.
+        #
+        # WHAT IS **NOT** QUARANTINED: the TABLE-reading half above
+        # (instruments, wave, pulse, filter). The byte-identical measurement
+        # covers the SEQUENCE path only, and deleting the tables on that
+        # evidence would be over-reaching past what was measured.
+        #
+        # The gate that misroutes native rips into this branch at all is a
+        # SEPARATE open task, gate-treats-the-driver11-fallback-as-an-sf2-
+        # identification; sidm2/conversion_pipeline.py is deliberately not
+        # touched here.
+        logger.info(
+            "SF2 sequence extraction is quarantined (measured 2026-09-09: its "
+            "output was discarded byte-for-byte on 3 files, and 0 of 37 files "
+            "reaching this path are SF2 exports). Tables are still read.")
 
         return ExtractedData(
             header=self.psid_header,
@@ -610,14 +637,19 @@ class SF2PlayerParser:
             sequences: List[List[SequenceEvent]] = []
             orderlists: List[List[Tuple[int, int]]] = []
 
-            try:
-                # Create SID data with load address header (same format as SF2 file)
-                sid_data_with_addr = bytes([self.load_address & 0xFF, (self.load_address >> 8) & 0xFF]) + self.c64_data
-                sequences, orderlists = self._extract_sequences_from_sf2(sid_data_with_addr, self.load_address)
-                logger.info(f"Successfully extracted {len([s for s in sequences if len(s) > 1])} sequences and {sum(len(ol) for ol in orderlists)} orderlist entries from SID")
-            except Exception as e:
-                logger.warning(f"Failed to extract sequences without marker: {e}")
-                # Keep empty sequences/orderlists on error
+            # QUARANTINED -- the second of the two call sites, and the weaker
+            # case of the two: it runs on a file that does not even carry the
+            # $1337 marker the branch above looks for, so "SF2-exported SIDs
+            # contain the sequence data at standard offsets" is being applied to
+            # a file with no evidence it is an SF2 export at all. See
+            # _build_extracted_data for the measurement that quarantines both.
+            # The call is DELETED rather than disabled in place: a dead branch
+            # kept behind `if False` reads as maintained code and rots.
+            # sf2-player-parser-locate-then-decode-then-duration is the task
+            # that would re-enable it, and it would want a rewrite regardless.
+            logger.info("SF2 sequence extraction is quarantined (see "
+                        "sf2_player_parser._build_extracted_data for the "
+                        "measurement); returning no sequences")
 
         # Return data with extracted sequences (or empty if extraction failed)
         return ExtractedData(
