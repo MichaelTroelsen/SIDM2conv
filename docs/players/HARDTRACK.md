@@ -1969,6 +1969,64 @@ Measured inside part 1's own 24 s span (from its `.span` sidecar — at 30 s the
 onset counts do not even match, 253 vs 208, and any order-based alignment is
 meaningless). Voice 1 is count-matched 152 == 152 there.
 
+> **AND THE MEMBERSHIP OF "law" vs "clean" IS NOT STABLE — 5 of 8 spot-checked
+> files sit on the OTHER side from the 2026-09-04 table below.** Measured today
+> with `--onsets note`, voice 1, each inside its own `.span`:
+>
+> | song | 2026-09-04 table | sweep 2026-09-10 | shift% / identity% |
+> |---|---|---|---|
+> | `Griffin_Score` | law-exact | **clean** | 41.4 / 98.6 |
+> | `Intrigue` | law-exact | **clean** | 39.2 / 98.7 |
+> | `For_Astoria_6` | law-exact | **clean** | 32.1 / 99.6 |
+> | `Tribute_to_Laxity` | clean | **law** | 100.0 / 12.5 |
+> | `Arizona_Dream` | clean | **law** | 100.0 / 52.3 |
+> | `Sling` | clean | clean | 13.9 / 98.6 |
+> | `Shogoon-Rave` | law-exact | **ambiguous** | 100.0 / 93.5 |
+> | `Teekkno` | law-exact | **ambiguous** | 100.0 / 99.0 |
+>
+> **This matters for any fix**, because `Griffin_Score` is one of the two files
+> named as a regression control on the grounds that the builder already corrects
+> it — and the two measurements disagree about whether it needs correcting at
+> all. Do not edit the sequencer walk until the control set is settled: a fix
+> validated against contested controls can ship the defect into the files the
+> controls were chosen to protect.
+>
+> **A both-high row is now reported `ambiguous` and excluded from the LAW
+> count.** `shift` and `identity` ask opposite questions, so a row scoring high
+> on both answers neither — a sufficiently periodic original satisfies the shift
+> trivially. `MIN_DISTINCT` cannot screen them (they carry 3–6 distinct values).
+> The corpus figure is therefore **17 of 33 discriminating rows, not 20**, with
+> `Shogoon-Rave`, `Teekkno` and `What_Can_I_Say_Crap` moved to `ambiguous` —
+> and `Shogoon-Rave` is the file the law was originally attributed on.
+
+> **QUOTE THE ONSET READING WITH THE NUMBER (2026-09-10).** This corpus gives
+> **two** answers and the difference is one flag, not a regression:
+>
+> | `--onsets` | LAW at exactly 100.0% | clean controls |
+> |---|---|---|
+> | `note` (the reading the law was stated over, and now the DEFAULT) | **20 of 33** | 6 |
+> | `gate` (rises of `$D404` bit 0) | **0 of 33** | 22 |
+>
+> Under `gate` the build reproduces the original's gaps — `identity` reads
+> 100.0 on 26 of 27 scored songs — and once `gg == og`, the rate of
+> `gg[i] == og[i+1]` is *algebraically* the rate of `og[i] == og[i+1]`, the
+> **original's own self-shift**. The build drops out of the number, so it stops
+> being a test of anything. `MIN_DISTINCT` cannot screen that: the degenerate
+> files carry 3–6 distinct values. **Periodicity, not flatness, is what kills
+> the discrimination.**
+>
+> Under `note` the two hypotheses separate cleanly — `Tribute_to_Laxity` scores
+> shift **100.0** while its original is only **12.9%** self-shifted, and `Sling`
+> shows the inverse (shift 13.9, identity 98.6).
+>
+> **A bare run used to print the `gate` figure**, and three separate cycles
+> recorded `LAW: 0 of 33` as a refutation of a law that holds on 20 of 33. The
+> default is now `note`, the run prints `onset definition:` on its first line,
+> and both are pinned by `pyscript/test_hardtrack_duration_law_sweep.py`.
+> Nothing about the parser or the corpus changed between the two figures:
+> `git diff` across that commit range is empty for the parser, the builder and
+> the sweep, and all 313 artifacts predate both runs.
+
 The decisive test is on the gap SEQUENCE, not its histogram:
 
 ```

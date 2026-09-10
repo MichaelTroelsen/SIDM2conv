@@ -53,6 +53,12 @@ MIN_N = 8
 #: shift from an identity, so the row is flagged rather than scored.
 MIN_DISTINCT = 3
 
+#: A row whose `shift` AND `identity` are BOTH at or above this cannot
+#: discriminate between the law and its negation, however many distinct
+#: values it carries -- see `measure`. Such rows are reported separately
+#: and are NOT counted toward the LAW total.
+AMBIG_BOTH = 90.0
+
 
 def gate_onsets(frames, voice, f0, f1):
     """Gate-RISE frames for `voice` within [f0, f1)."""
@@ -154,6 +160,20 @@ def measure(stem, orig, part, voice, tmpdir, kind="gate"):
         row["status"] = "few"
     elif row["distinct"] < MIN_DISTINCT:
         row["status"] = "flat"
+    elif (row["shift"] or 0) >= AMBIG_BOTH and (row["identity"] or 0) >= AMBIG_BOTH:
+        # BOTH HIGH MEANS THE MEASURE CANNOT DISCRIMINATE, and this is the guard
+        # MIN_DISTINCT cannot provide. `shift` and `identity` ask opposite
+        # questions; a row answering YES to both is answering neither, because a
+        # sufficiently PERIODIC original satisfies the shift trivially -- the
+        # module docstring says so and nothing enforced it until now.
+        #
+        # Distinctness cannot see this: the degenerate rows carry 3 to 6
+        # distinct values. Teekkno reads shift 100.0 AND identity 99.0 over 524
+        # gaps, and was counted toward the headline LAW figure; Shogoon-Rave,
+        # the file the law was originally attributed on, reads 100.0 / 93.5.
+        # Tribute_to_Laxity (100.0 / 12.5) is what a discriminating row looks
+        # like.
+        row["status"] = "ambiguous"
     else:
         row["status"] = "ok"
     return row
@@ -164,9 +184,26 @@ def main(argv=None):
     ap.add_argument("--voice", type=int, default=1,
                     help="0-based voice (default 1, the voice the law was found on)")
     ap.add_argument("--json", help="write the rows here as JSON")
-    ap.add_argument("--onsets", choices=("gate", "note"), default="gate",
-                    help="onset definition: gate rises (default) or siddump's "
-                         "unbracketed NOTE rows -- the law was stated over 'note'")
+    # DEFAULT IS "note", CHANGED 2026-09-10, AND THE REASON IS THE WHOLE POINT.
+    # It used to be "gate", and a bare run therefore printed LAW: 0 of 33 --
+    # which reads exactly like a refutation and was recorded as one across three
+    # separate cycles. It is not. Under gate rises the build reproduces the
+    # original's gaps (identity 100.0 on 26 of 27 scored), and when gg == og the
+    # rate of gg[i] == og[i+1] is ALGEBRAICALLY the original's own self-shift
+    # rate -- the build drops out of the number entirely.
+    #
+    # Same corpus, same artifacts, same script, --onsets note: LAW 20 of 33 with
+    # 6 clean controls, reproducing the recorded figure song for song.
+    # Tribute_to_Laxity settles which reading is informative: shift 100.0 while
+    # the original is only 12.9% self-shifted.
+    #
+    # MIN_DISTINCT cannot screen the degenerate case -- those files carry 3 to 6
+    # distinct values. PERIODICITY, not flatness, is what destroys it.
+    ap.add_argument("--onsets", choices=("gate", "note"), default="note",
+                    help="onset definition: siddump's unbracketed NOTE rows "
+                         "(default -- the reading the law was stated over and "
+                         "the one that discriminates), or gate rises, where the "
+                         "measure is degenerate whenever identity is high")
     ap.add_argument("--only", nargs="*", help="restrict to these song stems")
     a = ap.parse_args(argv)
 
@@ -201,7 +238,15 @@ def main(argv=None):
              sum(r["status"] == "few" for r in rows),
              sum(r["status"] == "flat" for r in rows),
              sum(r["status"] in ("silent", "no-span") for r in rows)))
-    print("LAW  gg[i]==og[i+1] at EXACTLY 100.0%%: %d" % len(law))
+    ambig = [r for r in rows if r["status"] == "ambiguous"]
+    print("LAW  gg[i]==og[i+1] at EXACTLY 100.0%%: %d   (discriminating rows only)"
+          % len(law))
+    print("AMBIGUOUS  shift AND identity both >=%.0f: %d  (%s)"
+          % (AMBIG_BOTH, len(ambig),
+             ", ".join(r["song"] for r in ambig) or "none"))
+    if ambig:
+        print("  ^ NOT counted as law OR clean: a periodic original satisfies the")
+        print("    shift trivially, so these rows answer neither question.")
     print("CLEAN  identity>=90 and shift<90     : %d  (%s)"
           % (len(clean), ", ".join(r["song"] for r in clean) or "none"))
     if a.json:
