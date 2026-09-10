@@ -53,17 +53,48 @@ def looks_like_a_path(entry: str) -> bool:
     return bool(_PATH_SHAPED.search(entry)) or not entry
 
 
-def _opened_entries():
-    """(line number, record id, opened entry) for every entry in the log."""
-    if not LOG.exists():
+def _last_record_per_id(log_path=LOG):
+    """(line number, record) for the LAST line carrying each record id.
+
+    A record can be superseded by a later one with the same id, and that is
+    exactly what /whattask (step 2b) and hooks/digest.js both read -- only the
+    last record's `opened` array is ever folded into a plan. A superseded
+    record's `opened` entries cannot cause the harm this file guards against,
+    so the path check must not see them either.
+    """
+    if not log_path.exists():
+        return {}
+    latest = {}
+    with log_path.open(encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            latest[rec.get("id")] = (n, rec)
+    return latest
+
+
+def _opened_entries(log_path=LOG):
+    """(line number, record id, opened entry) for every entry in the log,
+    across ALL records -- used only where every historical entry matters
+    (the frozen-exceptions test), never for the path check."""
+    if not log_path.exists():
         return
-    with LOG.open(encoding="utf-8") as fh:
+    with log_path.open(encoding="utf-8") as fh:
         for n, line in enumerate(fh, 1):
             if not line.strip():
                 continue
             rec = json.loads(line)
             for entry in (rec.get("opened") or []):
                 yield n, rec.get("id"), entry
+
+
+def _opened_entries_last_per_id(log_path=LOG):
+    """(line number, record id, opened entry), scoped to each id's LAST
+    record -- what /whattask and hooks/digest.js actually read."""
+    for n, rec in _last_record_per_id(log_path).values():
+        for entry in (rec.get("opened") or []):
+            yield n, rec.get("id"), entry
 
 
 pytestmark = pytest.mark.skipif(
@@ -86,9 +117,16 @@ def test_the_predicate_actually_discriminates():
     assert not looks_like_a_path("graphify-guide-into-docs-index")
 
 
-def test_no_NEW_opened_entry_is_a_filesystem_path():
-    """The rule, for everything except the four frozen historical records."""
-    offenders = [(n, i, e) for n, i, e in _opened_entries()
+def test_no_NEW_opened_entry_is_a_filesystem_path(log_path=LOG):
+    """The rule, for everything except the four frozen historical records.
+
+    Scoped to each id's LAST record: a record superseded by a later one with
+    the same id has its `opened` array read by nothing downstream (/whattask
+    step 2b and hooks/digest.js both read last-record-per-id), so a
+    superseded record's path-shaped entries cannot cause the harm this test
+    guards against and must not be flagged.
+    """
+    offenders = [(n, i, e) for n, i, e in _opened_entries_last_per_id(log_path)
                  if looks_like_a_path(e) and e not in KNOWN_PATH_ENTRIES]
     assert not offenders, (
         "an `opened` entry is a path, not a task id -- /whattask will fold it into "
