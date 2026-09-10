@@ -69,6 +69,8 @@ from sidm2.sf2_player_parser import SF2PlayerParser
 from sidm2.sf2_parser import (
     SF2_FILE_ID,
     BLOCK_DESCRIPTOR as SF2_BLOCK_DESCRIPTOR,
+    SF2DriverInfo,
+    parse_sf2_blocks,
 )
 
 # Import configuration system
@@ -488,6 +490,46 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
 SF2_MAGIC_LE = struct.pack('<H', SF2_FILE_ID)   # $1337 little-endian
 
 
+def sf2_declared_driver(c64_data: bytes, load_address: int) -> Optional[str]:
+    """The driver an SF2 image NAMES IN ITS OWN HEADER, or None.
+
+    This is the positive identification the export gate needs, and it lives
+    inside the file rather than in any decoder's opinion of it: an SF2 image
+    carries a driver descriptor block, and `parse_sf2_blocks` already walks the
+    chain to populate it. Callers must have checked `has_sf2_structure` first --
+    that is what guarantees the payload after the PRG load address IS an SF2
+    file, which is exactly what this function then re-wraps and parses.
+
+    THE NAME IS IN C64 SCREEN CODES, not ASCII: $01-$1A are A-Z, $20 is space.
+    Reading it as latin-1 gives 'D	 11.00', which is why
+    this normalises rather than returning the raw bytes. Anything outside the
+    letter range and printable ASCII becomes '?' rather than being dropped, so a
+    garbled descriptor cannot silently normalise into a name that matches.
+
+    Returns the normalised, stripped name (e.g. 'DRIVER 11.00 - THE STANDARD',
+    'LAXITY', 'ROMUZAK'), or None when the chain does not parse or names nothing.
+    """
+    sf2_bytes = bytes([load_address & 0xFF, (load_address >> 8) & 0xFF]) + bytes(c64_data)
+    info = SF2DriverInfo()
+    try:
+        parse_sf2_blocks(sf2_bytes, info)
+    except Exception:
+        return None
+    raw = getattr(info, 'driver_name', None)
+    if not raw:
+        return None
+    out = []
+    for ch in raw:
+        code = ord(ch)
+        if 1 <= code <= 26:
+            out.append(chr(ord('A') + code - 1))
+        elif 32 <= code < 127:
+            out.append(chr(code))
+        else:
+            out.append('?')
+    return ''.join(out).strip() or None
+
+
 def has_sf2_structure(c64_data: bytes) -> bool:
     """True only for C64 data that really is an SF2 image.
 
@@ -552,11 +594,33 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     else:
         logger.debug(f"Using manually specified driver: {driver_type}")
 
-    # Determine which analyzer to use based on driver selection and SF2 magic
-    # SF2-exported files (have magic marker AND driver11) use SF2PlayerParser
-    # Laxity files (driver=laxity) use LaxityPlayerAnalyzer
-    # Other files fallback to Laxity analyzer for table extraction
-    is_sf2_exported = has_sf2_magic and driver_type == 'driver11'
+    # WHICH ANALYZER READS THIS FILE. The SF2 player parser is written for
+    # Driver 11's table geometry, so it may only run on a file that IS a
+    # Driver 11 export -- and until 2026-09-10 the test for that was
+    # `has_sf2_magic and driver_type == 'driver11'`, which is wrong twice.
+    #
+    # WRONG ONCE: `driver_type` comes from DriverSelector, i.e. from player-id,
+    # and driver11 is ALSO its FALLBACK when nothing is recognised (reason
+    # string 'Standard SF2 driver for maximum compatibility'). So the second
+    # conjunct read `magic AND (nothing known)`.
+    #
+    # WRONG TWICE, and this is the half that decides the fix: the file SAYS
+    # WHICH DRIVER IT CARRIES. An SF2 image holds a driver descriptor block
+    # naming it, and sf2_declared_driver() below reads it. Measured over the
+    # four files the old gate refused: two declare LAXITY (refusing them is
+    # RIGHT, and for a reason nothing had established), one declares
+    # DRIVER 11.00 (refused WRONGLY), and one declares DRIVER 15.00 - TINY
+    # MARK I, a third case a driver11-or-not conjunct cannot express at all.
+    #
+    # WHY THE POPULATION MOVED TOO, per the 2026-09-10 decision. Two candidate
+    # narrowings were each measured against a 150-file sample and each rejected
+    # ~97% of it -- but that sample was our own BUILD ARTIFACTS: of 6,590
+    # SF2-structured .sid files on disk, 6,246 are under out/, 342 under bin/,
+    # and ZERO under SID/. Against the corpus anyone actually converts this gate
+    # has never fired, so the artifact denominator was the wrong thing to
+    # measure against and the narrowing is free.
+    declared = sf2_declared_driver(c64_data, load_address) if has_sf2_magic else None
+    is_sf2_exported = declared is not None and declared.startswith('DRIVER 11')
 
     if config.extraction.verbose or logger.level <= logging.INFO:
         logger.info("=" * 60)

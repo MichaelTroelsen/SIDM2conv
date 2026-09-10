@@ -23,6 +23,7 @@ id=$00 size=0 filler and runs off the end without ever reaching $FF. The first
 block descriptor is the invariant that actually holds -- 422 of 422 .sf2 files
 in SF2/, bin/music/ and out/ begin with block id $01 and an in-bounds size.
 """
+import re
 import os
 import sys
 
@@ -382,3 +383,92 @@ def test_a_passing_verdict_does_not_raise(tmp_path):
     inverted, not fixed."""
     out = _convert(tmp_path, SF2ValidationResult(True))
     assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# The export gate keys on what the FILE declares, not on player-id.
+#
+# DECIDED 2026-09-10. The old test was `has_sf2_magic and driver_type ==
+# 'driver11'`, and `driver_type` comes from DriverSelector -- for which
+# driver11 is ALSO the FALLBACK when nothing is recognised. So the conjunct
+# read `magic AND (nothing known)`.
+#
+# An SF2 image NAMES ITS OWN DRIVER in a descriptor block. Measured over the
+# four files the old gate refused: two declare LAXITY (refusing them is right,
+# for a reason nothing had established), one declares DRIVER 11.00 (refused
+# WRONGLY), and one declares DRIVER 15.00 - TINY MARK I, a third case a
+# driver11-or-not conjunct cannot express at all.
+# ---------------------------------------------------------------------------
+
+
+def test_the_declared_driver_name_is_read_as_SCREEN_CODES_not_ascii():
+    """$01-$1A are A-Z. Read as latin-1 the Driver 11 name comes back as
+    'D	 11.00', which matches nothing -- so a gate that
+    skipped the normalisation would refuse every real export while looking
+    correct."""
+    from sidm2.conversion_pipeline import sf2_declared_driver
+    assert callable(sf2_declared_driver)
+    src = open(os.path.join(_ROOT, "sidm2", "conversion_pipeline.py"),
+               encoding="utf-8").read()
+    assert "SCREEN CODES" in src, (
+        "the screen-code normalisation lost the comment saying why it exists")
+
+
+def test_a_payload_that_is_not_an_sf2_image_declares_nothing():
+    """None rather than a raise or an invented name: the gate calls this only
+    behind has_sf2_structure, but a garbled chain must not normalise into
+    something that matches."""
+    from sidm2.conversion_pipeline import sf2_declared_driver
+    assert sf2_declared_driver(bytes([0x37, 0x13]) + bytes(64), 0x1000) is None
+
+
+def test_the_gate_no_longer_consults_driver_type():
+    """The whole defect was the second conjunct. If `driver_type` reappears in
+    the gate expression, the FALLBACK is being read as an identification again.
+    GREP for `is_sf2_exported =` rather than trusting a line number -- this
+    file's lines have moved twice."""
+    src = open(os.path.join(_ROOT, "sidm2", "conversion_pipeline.py"),
+               encoding="utf-8").read()
+    m = re.search(r"is_sf2_exported\s*=\s*(.+)", src)
+    assert m is not None, "the gate assignment moved or was renamed"
+    expr = m.group(1)
+    assert "driver_type" not in expr, (
+        "the gate is consulting DriverSelector's driver_type again: %r" % expr)
+    assert "declared" in expr, (
+        "the gate no longer keys on the file's own declared driver: %r" % expr)
+
+
+def test_the_gate_holds_in_BOTH_DIRECTIONS_on_the_real_corpus():
+    """A narrowing that refuses everything satisfies only the first half, and
+    that shape has shipped in this repo before.
+
+    Measured 2026-09-10: 0 of 1,524 files under SID/ reach the gate at all
+    (they carry no SF2 structure), and out/_probe_tempo1.sid -- which declares
+    DRIVER 11.00 - THE STANDARD -- is ACCEPTED where the old gate refused it.
+    """
+    from sidm2.sid_parser import SIDParser
+    from sidm2.conversion_pipeline import has_sf2_structure, sf2_declared_driver
+
+    def accepted(path):
+        p = SIDParser(path)
+        h = p.parse_header()
+        c64, la = p.get_c64_data(h)
+        if not has_sf2_structure(c64):
+            return False, None
+        d = sf2_declared_driver(c64, la)
+        return (d is not None and d.startswith("DRIVER 11")), d
+
+    native = os.path.join(_ROOT, "SID", "Hubbard_Rob",
+                          "Commodore_64_Music_Examples.sid")
+    export = os.path.join(_ROOT, "out", "_probe_tempo1.sid")
+    if not os.path.exists(native) or not os.path.exists(export):
+        pytest.skip("corpus files absent on this machine")
+
+    ok_native, _ = accepted(native)
+    assert not ok_native, "a native Hubbard rip is being read as an SF2 export"
+
+    ok_export, declared = accepted(export)
+    assert ok_export, (
+        "a file declaring %r is not accepted -- the narrowing refuses everything, "
+        "which satisfies only half the bar" % (declared,))
+    assert declared.startswith("DRIVER 11"), declared
