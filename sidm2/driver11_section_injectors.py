@@ -422,6 +422,30 @@ def inject_sequences(output: bytearray, data, driver_info, load_address: int) ->
         # passes `sequences=[]`, so the native Laxity path does NOT -- which is
         # why the 99.93-100% figure is unaffected by this.
         # Pinned by pyscript/test_driver11_section_injectors.py.
+        #
+        # AND AS OF 2026-09-10 THE FLATTENING IS UNREACHABLE, which changes what
+        # this constant means without changing a line of it. The fork
+        # sf2-exported-100pct-fork-decision took branch (a) and QUARANTINED
+        # _extract_sequences_from_sf2 at both of its call sites, and that was
+        # the only producer of a non-empty `data.sequences` on this path. So
+        # the guard one layer up -- `if data.sequences and
+        # driver_info.sequence_start` -- is now False on every conversion.
+        #
+        # MEASURED, with its vacuity control, because "0 calls" and "my probe
+        # never installed" report the same number: instrumenting this function
+        # and converting six SF2-structured .sid images through --driver
+        # driver11 (three from out/sdi, three from bin/_lx_*) gives 6 of 6
+        # conversions SUCCEEDED and inject_sequences called 0 times. The
+        # control then calls the dispatcher with a hand-built two-event
+        # sequence and the same probe fires once, seeing 2 events -- so the
+        # zero is unreachability, not a dead probe.
+        #
+        # WHAT THAT DOES AND DOES NOT MEAN. It does NOT make this correct: the
+        # code still flattens every note to duration 0 if it ever runs again,
+        # and the upstream decode is still the real fix. It does mean no
+        # shipped artifact currently carries the defect, so this is a latent
+        # bug behind a quarantine rather than a live one -- and if branch (b)
+        # is ever taken, this constant becomes live again on the same commit.
         DEFAULT_DURATION = 0x80
 
         for event in seq:

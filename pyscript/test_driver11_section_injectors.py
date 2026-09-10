@@ -197,3 +197,37 @@ def test_reading_that_same_run_as_FIXED_TRIPLES_is_incoherent():
         "a triple reading now yields %d legal instrument bytes of %d -- if this "
         "ever becomes non-zero the refutation needs re-deriving, not editing"
         % (len(legal), len(triples)))
+
+
+def test_the_quarantine_is_what_makes_the_flattening_unreachable():
+    """The verdict above says the defect is LATENT, not live. That rests on one
+    fact outside this module -- the sequence extraction being quarantined -- and
+    if that comes back, this file's "unreachable" note is wrong the same day.
+
+    So pin the CAUSE rather than the effect. Asserting "inject_sequences is
+    never called" would be the wrong test: it would fail the moment someone
+    legitimately restores a producer, which is branch (b) landing, not a
+    regression.
+    """
+    parser = open(os.path.join(_ROOT, "sidm2", "sf2_player_parser.py"),
+                  encoding="utf-8").read()
+    assert "_extract_sequences_from_sf2" in parser, (
+        "the method is gone entirely -- the repair task can no longer restore it")
+    called = re.findall(r"^\s*[^#\n]*self\._extract_sequences_from_sf2\(", parser, re.M)
+    assert not called, (
+        "the sequence extraction is being CALLED again (%d site(s)), so "
+        "data.sequences can be non-empty and the DEFAULT_DURATION flattening "
+        "in driver11_section_injectors is LIVE, not latent. Re-measure the "
+        "reachability note there before trusting it." % len(called))
+
+
+def test_the_unreachability_note_carries_its_measurement_and_its_control():
+    """A bare 'this is unreachable' rots. The numbers and the vacuity control
+    are what let the next reader re-run it instead of believing it, so a
+    deletion of the note has to fail rather than pass quietly."""
+    inj = open(SRC, encoding="utf-8").read()
+    for token in ("UNREACHABLE", "called 0 times", "vacuity control",
+                  "6 of 6", "branch (a)"):
+        assert token in inj, (
+            "the reachability note lost %r -- it is the half that makes the "
+            "claim checkable" % token)
