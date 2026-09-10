@@ -694,8 +694,9 @@ def test_structural_is_reserved_for_the_pointer_table():
 
 
 def test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard():
-    """The counter-example the impossibility guard actually needs -- and it has
-    LOST ITS SUBJECT, which is recorded here rather than papered over.
+    """The counter-example the impossibility guard actually needs -- and the
+    SF2/ corpus has none, but the WIDER corpus does. A found subject beats the
+    skip this test used to print.
 
     test_a_located_file_may_legitimately_exceed_its_default_sequence_length uses
     Cycles -- but Cycles LOCATES, and the located reader
@@ -703,57 +704,78 @@ def test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard():
     pointer-bounded decode cannot run away. So that test proves the dsl claim and
     proves nothing about the guard: its file never meets it.
 
-    Stinsens_Last_Night_of_89 DID: it routed through the guarded
-    `Laxity SF2 offset-table parser` with dsl 65 and a longest sequence of 647 --
-    ten times the dsl -- for 1,762 entries in 13,449 bytes.
+    Stinsens_Last_Night_of_89 used to be the subject: it routed through the
+    guarded `Laxity SF2 offset-table parser` with dsl 65 and a longest sequence
+    of 647 -- ten times the dsl. Since 904e91e the orderlist-gap screen in
+    laxity_locate_seq_table locates Stinsens' table at $1A22 (N=39), so the
+    file now takes the STRUCTURAL path and never reaches the guard. Measured
+    over the 47 .sf2 in SF2/ at this head: ZERO files reach
+    `Laxity SF2 offset-table parser` -- the one remaining non-structural file,
+    _test_commando.sf2, reaches `indexed sequence table` instead. So SF2/ alone
+    has no subject any more (see test_every_decoded_file_carries_provenance's
+    docstring for that count).
 
-    IT NO LONGER DOES, and the reason is a fix rather than a regression: the
-    orderlist-gap screen in laxity_locate_seq_table now locates Stinsens' table
-    at $1A22 (N=39, its bodies sitting 97 bytes past the table behind three
-    whole voice orderlists), so the file takes the STRUCTURAL path and never
-    reaches the guard. Measured over the 47 .sf2 in SF2/ at this head: ZERO
-    files reach `Laxity SF2 offset-table parser`. The one remaining
-    non-structural file, _test_commando.sf2, reaches `indexed sequence table`.
+    THE WIDER CORPUS DOES. SID/Laxity/ (286 native .sid files, not .sf2 --
+    SF2Parser refuses anything whose bytes don't open with the SF2 magic
+    0x1337, so those files can only enter this test by being CONVERTED first,
+    never read directly) was converted file-by-file with
+    `sidm2.conversion_pipeline.convert_laxity_to_sf2` and searched the same way
+    the retired skip message described. 52 of 286 reach
+    `Laxity SF2 offset-table parser`, and most clear 5x dsl by a wide margin
+    (e.g. Aids_Trouble: dsl 129, longest sequence 11,250 -- 87x). This test
+    pins ONE of them, Alliance.sid: dsl 55, longest sequence 12,451 -- 226x,
+    reproduced live below rather than hard-coded, so a change to the converter
+    or the locator that alters those numbers fails here loudly instead of
+    silently going stale.
 
-    So this test SEARCHES for a subject instead of naming one, and SKIPS when
-    the corpus has none. That is deliberate in both directions: it must not be
-    re-pinned to a passing file that does not meet the guard (that would be a
-    false green over an untested guard), and it must not be deleted (the moment
-    any file routes through that reader again, this revives on its own and
-    checks it). Until then, READ THIS AS: the offset-table parser's
-    impossibility guard is UNTESTED by this corpus.
+    If a future locate fix (the same shape as 904e91e) ever routes Alliance
+    structurally too, THIS TEST WILL FAIL on the reader-string assertion below,
+    not silently pass on a decode that no longer meets the guard -- re-run the
+    search (`git log` for this commit's message names the method) and swap in
+    whichever file still reaches the guard with a 5x-exceeding sequence.
     """
-    files = _all_sf2s()
-    if len(files) < 10:
-        pytest.skip("no SF2 corpus on this machine")
-    subject = None
-    for f in files:
-        p = _parsed(f)
-        if p is None or not p.sequences:
-            continue
-        prov = getattr(p, "sequence_provenance", None) or {}
-        if prov.get("structural"):
-            continue
-        if prov.get("reader") != "Laxity SF2 offset-table parser":
-            continue
-        dsl = getattr(p.music_data_info, "default_sequence_length", 0) or 0
-        lengths = [len(v) for v in p.sequences.values()]
-        if dsl and lengths and max(lengths) > dsl * 5:
-            subject = (f, p, dsl, lengths)
-            break
+    sid_path = os.path.join(_ROOT, "SID", "Laxity", "Alliance.sid")
+    if not os.path.isfile(sid_path):
+        pytest.skip("SID/Laxity/Alliance.sid not present on this machine")
 
-    if subject is None:
-        pytest.skip(
-            "NO SUBJECT: no file in SF2/ reaches the guarded "
-            "'Laxity SF2 offset-table parser' with a sequence exceeding 5x its "
-            "dsl. Stinsens_Last_Night_of_89 was the only one and now locates "
-            "structurally. The guard is untested by this corpus -- not passing.")
+    try:
+        from sidm2.conversion_pipeline import convert_laxity_to_sf2
+    except Exception as exc:                                  # noqa: BLE001
+        pytest.skip("conversion pipeline unavailable: %r" % exc)
 
-    f, p, dsl, lengths = subject
-    assert max(lengths) > dsl * 5, (os.path.basename(f), max(lengths), dsl)
+    import tempfile
+    import io
+    import contextlib
+
+    with tempfile.TemporaryDirectory() as td:
+        out_path = os.path.join(td, "Alliance_laxity.sf2")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            ok = convert_laxity_to_sf2(sid_path, out_path)
+        assert ok and os.path.isfile(out_path), (
+            "Alliance.sid failed to convert -- the subject depends on this "
+            "succeeding: %r" % buf.getvalue()[-800:])
+
+        p = _parsed(out_path)
+
+    assert p is not None and p.sequences, "Alliance converted but did not decode"
+    prov = getattr(p, "sequence_provenance", None) or {}
+    assert prov.get("reader") == "Laxity SF2 offset-table parser", (
+        "Alliance no longer reaches the guarded reader -- it reached %r "
+        "instead. This is the exact way Stinsens_Last_Night_of_89 stopped "
+        "being a subject (it started locating structurally); if that is what "
+        "happened here too, pick a new subject from the 52-file search "
+        "described in this test's docstring rather than loosening this "
+        "assertion." % (prov,))
+    assert prov.get("structural") is False, prov
+
+    dsl = getattr(p.music_data_info, "default_sequence_length", 0) or 0
+    lengths = [len(v) for v in p.sequences.values()]
+    assert dsl and lengths and max(lengths) > dsl * 5, (
+        "Alliance.sid: dsl=%r lengths=%r -- no longer exceeds 5x dsl" % (dsl, lengths))
     assert not getattr(p, "sequence_refusals", None), (
-        "the guard refused a legitimate decode in %s: %r"
-        % (os.path.basename(f), p.sequence_refusals))
+        "the guard refused a legitimate decode in Alliance.sid: %r"
+        % (p.sequence_refusals,))
 
 
 def test_every_heuristic_reader_in_the_dispatch_is_guarded():

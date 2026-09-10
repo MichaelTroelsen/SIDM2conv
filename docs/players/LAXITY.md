@@ -235,12 +235,41 @@ eight.
 **The gain is ONE SONG**, and that is worth stating plainly: the 24 new files
 are one tune and 23 edited derivatives at the identical table.
 
-**A consequence to know about.** Stinsen was the *only* file reaching the
-guarded `Laxity SF2 offset-table parser`, so locating it structurally leaves
-that reader with **zero subjects in `SF2/`** and its impossibility guard
-untested by this corpus. `test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard`
-now searches for a subject and **skips with that reason** rather than being
-re-pinned to a file that does not meet the guard.
+**A consequence to know about, RESOLVED.** Stinsen was the *only* file in
+`SF2/` reaching the guarded `Laxity SF2 offset-table parser`, so locating it
+structurally left that reader with **zero subjects in `SF2/`** (still true:
+measured again at this head, 0 of the 47 `.sf2` in `SF2/` reach it; the one
+remaining non-structural file, `_test_commando.sf2`, reaches
+`indexed sequence table` instead). `SF2/` is a build **output** directory, not
+the whole corpus, and the reader is exercised by decoding a **converted** SID,
+so the search moved to the wider input corpus instead of stopping at an empty
+output directory.
+
+**Denominator: 286 of 286 `SID/Laxity/*.sid` converted** with
+`sidm2.conversion_pipeline.convert_laxity_to_sf2` (2026-09-10) and each
+resulting in-memory SF2 parsed and checked for provenance. **52 of 286 reach
+`Laxity SF2 offset-table parser`** (non-structural), and most clear 5x their
+own `default_sequence_length` by a wide margin — `Aids_Trouble` (dsl 129,
+longest sequence 11,250, 87x), `Alliance` (dsl 55, longest sequence 12,451,
+226x), `Cool_as_Wize_Title` (dsl 105, longest sequence 16,015, 152x) among
+them. So the guard is **not dead code and not untested any more**: it has a
+real, reproducible subject outside `SF2/`, and none of the 52 tripped the
+impossibility refusal (`sequence_refusals` empty on all of them) — the guard
+lets every one of these large-but-possible decodes through, which is the
+behavior it exists to have.
+
+`test_a_dsl_exceeding_file_still_decodes_THROUGH_the_guard` no longer skips.
+It converts `SID/Laxity/Alliance.sid` on the fly (via the same
+`convert_laxity_to_sf2` call, into a temp dir — nothing is checked into `SF2/`
+for this), asserts the resulting provenance `reader` string is exactly
+`"Laxity SF2 offset-table parser"` (not merely that the file decodes),
+asserts `structural is False`, asserts the longest sequence exceeds 5x the
+file's `default_sequence_length`, and asserts `sequence_refusals` is empty. If
+a future locate fix ever routes Alliance structurally too (the same shape as
+904e91e did to Stinsen), this test fails loudly on the reader-string
+assertion — the fix is to re-run the 286-file search above and swap in
+whichever of the other 51 files still reaches the guard, not to loosen the
+assertion.
 
 ## `$80–$9F` is a DURATION byte: `(b & $0F) + 1` frames, bit 4 a separate flag (2026-09-05)
 
