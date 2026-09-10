@@ -569,8 +569,36 @@ def main():
         traces = (F.per_frame(SID, ['-a0', f'-t{secs}']),
                   BM.filter_trace(SID, 0, secs),
                   BM.passband_trace(SID, 0, secs))
+        # WITHIN-FRAME onsets (DEFAULT here since 2026-09-10; SDI_WF=0 reverts),
+        # mirroring DMC's DMC_WF shape. FOUR of the five under-detecting SDI
+        # files retrigger by writing gate OFF then ON inside ONE play call, so
+        # the end-of-frame state reads 1->1 and the state-based scan misses
+        # EVERY such retrigger -- the note builds legato, the envelope never
+        # re-attacks, and every per-frame register metric still reads 100%.
+        #
+        # MEASURED, and QUOTE THE WINDOW WITH THE NUMBER: first 700 frames on
+        # BOTH sides (siddump run at -t15 and truncated to <700), each file's
+        # busiest voice, state -> within_frame vs siddump's own note onsets:
+        #     Sveitser_Ost   1 -> 67  vs 67   EXACT
+        #     Jessie_Jazz    1 -> 70  vs 70   EXACT
+        #     Twin_Peaks     1 -> 59  vs 59   EXACT
+        #     Psycho_II      4 -> 66  vs 66   EXACT
+        #     Culture_Mix_1 47 -> 47  vs 47   control, UNMOVED
+        #     Lame          23 -> 24  vs 25   control, +1
+        # Leaving siddump at its own 750-frame window while measure_onsets runs
+        # 700 makes all four read 4 ABOVE siddump and the Culture_Mix_1 control
+        # look broken. That is the window mismatch, not an over-detection.
+        #
+        # NEVERENDING_STORY IS OUT OF SCOPE and stays 15 vs 117 in BOTH modes:
+        # it is the self-IRQ file, which no py65 replay drives.
+        #
+        # SDI-LOCAL ON PURPOSE. measure_onsets is imported by nine builders and
+        # its own docstring says flipping the DEFAULT re-times every song in all
+        # nine -- a corpus-rebuild decision, not a detector one. This passes the
+        # flag at the SDI call site instead, so the other eight are untouched.
         onsets = measure_onsets(d, la, h.init_address, h.play_address,
-                                len(traces[0]))
+                                len(traces[0]),
+                                within_frame=os.environ.get("SDI_WF", "1") != "0")
         # onset-agreement gate vs siddump (multispeed/self-IRQ emulate too slow)
         real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
         rows = onset_gate_rows(real, onsets)

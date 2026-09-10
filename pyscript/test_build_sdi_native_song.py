@@ -338,3 +338,52 @@ class TestFiltAnchorDefault(unittest.TestCase):
         self.assertIn('if "FILT_ANCHOR" not in os.environ:', src)
         self.assertIn("BM.FILT_ANCHOR = 1", src)
         self.assertNotIn('os.environ["FILT_ANCHOR"]', src)
+
+
+class TestWithinFrameOnsetsAreOptInAtTheSdiCallSite(unittest.TestCase):
+    """SDI_WF: within-frame onset detection, ON by default HERE and nowhere else.
+
+    Four of the five under-detecting SDI files retrigger by writing gate OFF
+    then ON inside ONE play call, so the end-of-frame register state reads
+    1->1 and the state-based scan misses EVERY such retrigger. Measured over
+    the FIRST 700 FRAMES ON BOTH SIDES (siddump at -t15, truncated to <700),
+    each file's busiest voice, state -> within_frame vs siddump:
+
+        Sveitser_Ost   1 -> 67 vs 67 EXACT     Culture_Mix_1 47 -> 47 vs 47 (control)
+        Jessie_Jazz    1 -> 70 vs 70 EXACT     Lame          23 -> 24 vs 25 (control)
+        Twin_Peaks     1 -> 59 vs 59 EXACT
+        Psycho_II      4 -> 66 vs 66 EXACT
+
+    QUOTE THE WINDOW. Leaving siddump at its own 750-frame window while
+    measure_onsets runs 700 makes all four read 4 ABOVE siddump and the
+    Culture_Mix_1 control look broken -- a window mismatch, not an
+    over-detection. That mistake was made and caught while writing this.
+
+    WHY IT MUST STAY AT THE CALL SITE: measure_onsets is imported by NINE
+    builders and its own docstring says flipping the DEFAULT re-times every
+    song in all nine, which is a corpus-rebuild decision rather than a
+    detector one. So this pins BOTH halves -- the SDI call passes the flag,
+    and sidm2/dmc_parser.py's signature default stays False.
+    """
+
+    def test_the_sdi_call_site_passes_within_frame_from_SDI_WF(self):
+        src = open(os.path.join(os.path.dirname(__file__), "..", "bin",
+                                "build_sdi_native_song.py"), encoding="utf-8").read()
+        tree = ast.parse(src)
+        calls = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call)
+                 and getattr(n.func, "id", None) == "measure_onsets"]
+        self.assertTrue(calls, "no measure_onsets call in the SDI builder")
+        for c in calls:
+            kw = {k.arg: k for k in c.keywords}
+            self.assertIn("within_frame", kw,
+                          "the SDI call must pass within_frame explicitly")
+            self.assertIn("SDI_WF", ast.dump(kw["within_frame"].value),
+                          "within_frame must come from the SDI_WF override")
+
+    def test_the_shared_detector_default_is_still_state_based(self):
+        import inspect
+        from sidm2.dmc_parser import measure_onsets as mo
+        sig = inspect.signature(mo)
+        self.assertIs(sig.parameters["within_frame"].default, False,
+                      "flipping the SHARED default re-times all nine builders")
