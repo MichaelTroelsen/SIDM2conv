@@ -67,7 +67,21 @@ WARNING **THAT REPLACEMENT IS ALSO REFUTED, measured 2026-08-17** (`sidm2/native
 Because `dmc` and `mon` accept everything, a first-match dispatcher would misroute **every** file to whichever of them the order reaches first, silently. `dispatch()` therefore defaults to reporting ALL accepting families so a collision is visible; `first_match` is opt-in and currently unsafe.
 
 **RE-MEASURED 2026-09-11, and the headline figure has MOVED: exactly-one-and-correct
-is 2 of 48, not 0 of 48.** Same 8 probed corpora, same n=48 (6 files each), run
+is 2 of 48, not 0 of 48.** **REPRODUCIBLE SINCE 2026-09-11 — run
+`py -3 pyscript/native_dispatch_sweep.py` and it prints the table below plus
+THE 48 FILENAMES IT DREW.** That last part is the repair, not a courtesy: the
+2026-08-17 run recorded its sample only as "6 spread across each corpus" and the
+re-measure took the first 6 alphabetically, so neither could be reproduced and
+three per-probe movements could not be told apart from sampling noise. The sweep
+now states its own rule (`--schedule first|random`, `--seed`, `--per-corpus`) and
+lists every file, so a later run can repeat the draw or deliberately change it.
+
+It also REFUSES rather than reporting a zero it cannot justify: if no probe
+accepts any file, that is a harness failure — `dmc` and `mon` accept nearly
+everything by construction — so the sweep exits non-zero with that said, instead
+of publishing `0 of N`. That guard exists because this exact figure was once
+produced by a throwaway probe that invented `rank()`'s return shape, read
+nothing, and printed a confident zero. Same 8 probed corpora, same n=48 (6 files each), run
 through `sidm2.native_dispatch.rank()` at this head:
 
 | measure | 2026-08-17 | 2026-09-11 |

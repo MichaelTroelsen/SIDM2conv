@@ -2121,6 +2121,67 @@ assert gg[i] == og[i+1]                 # 150/151
 assert (ours[k] − orig[k]) == og[k] − 3 # 151/151
 ```
 
+### CPU GROUND TRUTH, 2026-09-11: the sequencer walk is CONFIRMED against real 6502, so the off-by-one is NOT in the walk
+
+The duration task has asked four times for the `simulate()` fetch/dispatch model to
+be **tested against disassembly ground truth rather than acted on**. That test is
+now done, against the real player in `Tribute_to_Laxity` loaded in RetroDebugger,
+and **the parser passes on every point checked**:
+
+| fact | real 6502 | `simulate()` |
+|---|---|---|
+| play entry | `$1003 JMP $10DE` | — |
+| tempo divider | **SELF-MODIFYING CODE**: `$111B` is the *immediate operand* of `LDA #$nn` at `$111A`; `$10E9 DEC $111B`, reloaded with the song's speed when it goes negative | `ctr` counter, reset to `speed` |
+| row boundary | `ctr==0` → `BEQ $1128` (dispatch) | `if ctr == 0:` dispatch |
+| command prefetch | `ctr==1` → `JMP $1205` (fetch next) | `elif ctr == 1:` fetch next |
+| pattern fetch | `LDY $101B,X` / `INC $101B,X` / `LDA ($FB),Y` — fetch at the OLD index, then advance | `byte(pat_ptr + pat_idx)`, `pat_idx += 1` |
+| new pattern | `LDY #$00` / `INC $101B,X` / `LDA ($FB),Y` → byte 0, index becomes 1 | `v.cmd = byte(pat_ptr)`, `v.pat_idx = 1` |
+| pointer tables | `LDA $1967,Y` / `LDA $1999,Y` | `pattern_lo=$1967`, `pattern_hi=$1999` |
+| commands | `CMP #$60/$61/$62/$63/$64` | `CMD_TIE/GATE_OFF/RESET/SLIDE/PORTA` |
+| terminators | `CMP #$FF` (pattern end *and* order end), `CMP #$FE` (order hold) | `PATTERN_END`/`ORDER_END` `$FF`, `ORDER_HOLD` `$FE` |
+
+**That is the fifth mechanism cleared, and the most important one**, because it was
+the last candidate *inside* the parser. The walk reads the stream in the same order
+the CPU does, with the same indices, the same constants and the same two-phase
+`ctr` structure. **So a one-note-early duration cannot originate in the sequencer
+walk** — which redirects the search to whatever assigns durations *from* that walk
+(`voice_events`' gap fill, or the native builder's row placement), not to the walk
+itself.
+
+### REFUTED 2026-09-11: it is not a player-variant split either
+
+`Tribute_to_Laxity` and `Sling` (a LAW file and a CLEAN file) turn out to run
+**different player variants** — Tribute has an `LDA $16E5 / BEQ` gate before the
+tempo `DEC` that Sling does not. That looked like the data-dependent branch. It is
+not. Fingerprinting the play-entry prologue of every settled file:
+
+| variant | LAW | CLEAN |
+|---|---:|---:|
+| `plain` (`CE` = `DEC` immediately after the prologue) | **15** | **6** |
+| `gated` (`AD .. F0` before the `DEC`) | 1 (`Tribute_to_Laxity`) | 0 |
+
+**`plain` covers 15 LAW files and ALL 6 CLEAN files**, so the variant cannot be the
+discriminator; `Tribute_to_Laxity` is a lone outlier that this page already flags as
+"the odd third player variant". The relocation sub-split crosses both groups too
+(play `$10DD`: LAW 11 / CLEAN 2; play `$10D8`: LAW 3 / CLEAN 4).
+
+**Nor is it the tempo.** Speed: LAW `{2:11, 3:3, 4:2}`, CLEAN `{2:3, 4:1, 5:1, 6:1}`.
+Both groups carry speed 2 and speed 4, so it does not separate them — only the weak
+trend that the two slowest tunes (5, 6) are CLEAN and that no LAW file exceeds 4.
+
+**A CONTROL THAT WAS NOT CONTROLLED, recorded because it nearly produced a sixth
+wrong mechanism.** `Tribute_to_Laxity` was chosen as the LAW half of a "controlled
+pair" because it is tie-based like `Sling`, controlling for the rest/tie encoding —
+but it is the one file in the settled set running a different player. Any pair
+involving it confounds variant with verdict. Use `Jazzloor` or `Illmatic_end`
+(LAW, `plain`, `$10D8`) against `Sling` or `Griffin_Score` (CLEAN, `plain`, `$10D8`)
+instead: same variant, same relocation, opposite verdict.
+
+**One file in the LAW set is not even a `$1000` rip.** `Timsoft_Intro` loads at
+`$4000`, so `$1003` is outside its image and the play entry is elsewhere. It was
+excluded from the fingerprint rather than forced, and it should be excluded from any
+future pair selection until its entry is located.
+
 ### REFUTED 2026-09-11: the law is NOT a rest-vs-tie split
 
 The obvious data-dependent mechanism — **the only explicit duration byte in the
