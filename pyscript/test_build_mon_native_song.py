@@ -639,3 +639,100 @@ def test_the_screen_can_be_switched_off(monkeypatch, capsys):
     monkeypatch.setenv("MON_NO_VOICE_SCREEN", "1")
     mod._screen_voices("ignored.sf2", _frames([9, 9, 9]), 0, 200, 1, 3)
     assert capsys.readouterr().out == ""
+
+
+# ---------------------------------------------------------------------------
+# The closing $7f row is a JUMP TO A ROW, and aiming it at a repeating CYCLE is
+# what keeps a per-frame arpeggio inside the driver's 256-row WAVE table. Before
+# this, the jump always went to the LAST run -- freezing on the settled waveform
+# and forcing every repetition to be stored. SDI's `Sugarhill` spent 256 rows on
+# an exact period-3 arpeggio and REFUSED THE WHOLE BUILD; 14 SDI files fail that
+# way, and the music is not what exceeds the table, the packing is.
+#
+# The 256 itself is the DRIVER's (8-bit row index, hard-coded 256 column stride
+# in drivers_src/common/sf2_native_driver.asm) and is NOT moved by any of this.
+
+def _walk_wave_table(rows, n):
+    """Expand a packed WAVE program the way the driver walks it.
+
+    Each row holds its waveform for `count` frames; a $7f row jumps to the row
+    named in col1. This is the consumer's view -- a packer that shortens the
+    table is only correct if THIS still yields the original frames.
+    """
+    out, y, guard = [], 0, 0
+    while len(out) < n:
+        guard += 1
+        assert guard < 100_000, "wave program made no progress"
+        w, c = rows[y]
+        if w == 0x7F:
+            y = c
+            continue
+        out.extend([w] * c)
+        y += 1
+        if y >= len(rows):
+            y = len(rows) - 1
+    return out[:n]
+
+
+def test_a_cyclic_wave_tail_packs_to_the_cycle_not_every_repetition():
+    import build_mon_native_song as B
+    # Sugarhill's measured shape: 4 attack frames, then an exact period-3
+    # arpeggio ($14,$80,$40) for the rest of a 256-frame note.
+    wfs = [0x41, 0x41, 0x81, 0x11] + [0x14, 0x80, 0x40] * 84
+    assert len(wfs) == 256
+    rows = B._rle_wave_impl(list(wfs))
+    # 3 attack rows ($41 x2 is ONE run) + 3 cycle rows + 1 jump. The old packer
+    # emitted 254 runs plus a jump and blew the 256-row table.
+    assert len(rows) == 7, rows
+    assert rows[-1][0] == 0x7F
+    assert rows[-1][1] == 3, "the jump must land on the cycle's first row"
+    assert len(rows) <= 256, "must fit the driver's WAVE table"
+    # and it must still PLAY as the original frames
+    assert _walk_wave_table(rows, len(wfs)) == wfs
+
+
+def test_a_program_with_no_cycle_keeps_the_old_freeze_on_the_settled_run():
+    import build_mon_native_song as B
+    # Strictly ramping: no tail repeats, so there is no cycle to aim at and the
+    # jump must still freeze on the last run. A packer that "finds" a cycle here
+    # would loop a program the original never loops.
+    wfs = [0x10 + i for i in range(40)]
+    rows = B._rle_wave_impl(list(wfs))
+    assert rows[-1] == (0x7F, len(rows) - 2), rows[-3:]
+    assert _walk_wave_table(rows, len(wfs)) == wfs
+
+
+def test_the_long_gate_off_run_still_packs_to_two_rows():
+    import build_mon_native_song as B
+    # The RLE's original win, which must not regress: $41 then $40 x48.
+    wfs = [0x41] + [0x40] * 48
+    rows = B._rle_wave_impl(list(wfs))
+    assert len(rows) == 3, rows
+    assert _walk_wave_table(rows, len(wfs)) == wfs
+
+
+def test_packing_round_trips_for_every_shape_including_random_programs():
+    """The property that matters: pack-then-walk == the original frames.
+
+    A shorter table is worthless if it plays something else, and `Sugarhill` is
+    one file -- these random programs are what stop a cycle detector that happens
+    to be right on an arpeggio from being wrong on everything else.
+    """
+    import random
+    import build_mon_native_song as B
+    cases = [
+        [0x41, 0x41, 0x81, 0x11] + [0x14, 0x80, 0x40] * 84,
+        [0x14, 0x80, 0x40] * 50,
+        [0x10 + i for i in range(40)],
+        [0x41] + [0x40] * 48,
+        [0x41, 0x40] * 30,
+        [0x41] * 60,
+        [0x41],
+    ]
+    rng = random.Random(7)          # seeded: a flaky corpus test is worse than none
+    for _ in range(400):
+        cases.append([rng.choice([0x10, 0x11, 0x14, 0x40, 0x41, 0x80, 0x81])
+                      for _ in range(rng.randint(1, 90))])
+    for wfs in cases:
+        rows = B._rle_wave_impl(list(wfs))
+        assert _walk_wave_table(rows, len(wfs)) == wfs, wfs[:24]
