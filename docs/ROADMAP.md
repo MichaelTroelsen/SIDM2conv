@@ -66,6 +66,51 @@ WARNING **THAT REPLACEMENT IS ALSO REFUTED, measured 2026-08-17** (`sidm2/native
 
 Because `dmc` and `mon` accept everything, a first-match dispatcher would misroute **every** file to whichever of them the order reaches first, silently. `dispatch()` therefore defaults to reporting ALL accepting families so a collision is visible; `first_match` is opt-in and currently unsafe.
 
+**RE-MEASURED 2026-09-11, and the headline figure has MOVED: exactly-one-and-correct
+is 2 of 48, not 0 of 48.** Same 8 probed corpora, same n=48 (6 files each), run
+through `sidm2.native_dispatch.rank()` at this head:
+
+| measure | 2026-08-17 | 2026-09-11 |
+|---|---:|---:|
+| exactly-one-and-correct (`accepted == [own family]`) | 0 of 48 | **2 of 48** |
+| `best` == own family | not recorded | 5 of 48 |
+| confident AND correct | not recorded | 5 of 6 confident |
+
+Per-probe accept rate over those 48 files, which is the number the design rests on:
+
+| probe | accepts | 2026-08-17 said |
+|---|---:|---|
+| `mon` | **48 (100%)** | accepts all 48 |
+| `dmc` | **46 (96%)** | accepts all 48 |
+| `hubbard` | 6 (12%) | its own 6 + 2 false positives |
+| `hardtrack` | 2 (4%) | no probe yet |
+| `soundmonitor` | 2 (4%) | 3 of its 6 + 1 Matt Gray FP |
+| `sdi` | 1 (2%) | 2 of its 6 + 1 HardTrack FP |
+| `mattgray` | 1 (2%) | **accepts nothing, anywhere** |
+| `blackbird` | 0 | 1 of its 6 |
+
+**THE DESIGN CONCLUSION IS UNCHANGED AND IS THE PART TO KEEP.** `mon` still
+accepts every file and `dmc` all but two, so a first-match dispatcher would still
+misroute silently and `first_match` must stay opt-in and unsafe. That finding is
+robust to the sampling question below; the exact counts are not.
+
+**READ THE COMPARISON WITH ITS SAMPLING CAVEAT — it is not strictly
+like-for-like.** The 2026-08-17 run describes its files as "6 spread across each
+corpus"; this run takes the first 6 alphabetically per corpus. So the per-probe
+movements (`mattgray` 0 → 1, `blackbird` 1 → 0, `sdi` 3 → 1) may be sampling
+rather than drift, and must not be quoted as behaviour change. The two figures
+that do NOT depend on which six files are chosen — `mon` at 100% and `dmc` at
+96% — are the ones the argument uses.
+
+**AND THE REASON THIS DRIFTED UNNOTICED: THE AUDIT CANNOT BE RE-RUN FROM THE
+TREE.** `sidm2/native_dispatch.py` exposes `rank()` and `dispatch()` but has no
+`__main__`, no CLI and no sweep entry, and no tracked script reproduces the
+"0 of 48" or the "734 files" figures — so for three weeks the only way to
+challenge them was to disbelieve them. This is the same failure
+`pyscript/hardtrack_duration_law_sweep.py` and `pyscript/sdi_native_sweep.py`
+were each promoted to fix, recurring in a third place. **The repair is a tracked
+sweep script, not a doc edit**, and it is the open half of A4's evidence problem.
+
 The remaining shape is **rank by evidence strength, not by boolean accept**: prefer the probes that have real predicates, and score the rest (decoded note counts, table plausibility) rather than treating "did not raise" as a verdict.
 
 **Wired as an advisory, 2026-08-21 — not a router, and that is the design, not a stopgap.** `sidm2/conversion_pipeline.py`'s `native_builder_for()` calls `DriverSelector.identify_native_builder()`, which runs `native_dispatch.rank()` and returns `{family, builder, confident, why, candidates}` or `None`. `DriverSelector.select_driver()` attaches the result to the `DriverSelection` it already built — `native_family` / `native_builder` / `native_confident` / `native_why` — via a `NATIVE_BUILDERS` mapping (probed family name → `bin/build_<family>_native_song.py`) that is deliberately a *second* table, not a merge into `PLAYER_REGISTRY`: the registry maps a player-id string to a driver this package can run in-process, `NATIVE_BUILDERS` maps a probed family to a standalone script.
