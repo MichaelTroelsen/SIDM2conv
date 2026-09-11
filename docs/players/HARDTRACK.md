@@ -1969,35 +1969,84 @@ Measured inside part 1's own 24 s span (from its `.span` sidecar — at 30 s the
 onset counts do not even match, 253 vs 208, and any order-based alignment is
 meaningless). Voice 1 is count-matched 152 == 152 there.
 
-> **AND THE MEMBERSHIP OF "law" vs "clean" IS NOT STABLE — 5 of 8 spot-checked
-> files sit on the OTHER side from the 2026-09-04 table below.** Measured today
-> with `--onsets note`, voice 1, each inside its own `.span`:
+> **SETTLED 2026-09-11: THE CONTROL SET IS NOT CONTESTED, THE 2026-09-04 TABLE
+> IS REFUTED.** The membership question is closed, and the way it closed matters
+> more than the answer: the two relations in play are **equivalent by
+> telescoping**, so they could never have disagreed on one series in one window.
 >
-> | song | 2026-09-04 table | sweep 2026-09-10 | shift% / identity% |
-> |---|---|---|---|
-> | `Griffin_Score` | law-exact | **clean** | 41.4 / 98.6 |
-> | `Intrigue` | law-exact | **clean** | 39.2 / 98.7 |
-> | `For_Astoria_6` | law-exact | **clean** | 32.1 / 99.6 |
-> | `Tribute_to_Laxity` | clean | **law** | 100.0 / 12.5 |
-> | `Arizona_Dream` | clean | **law** | 100.0 / 52.3 |
-> | `Sling` | clean | clean | 13.9 / 98.6 |
-> | `Shogoon-Rave` | law-exact | **ambiguous** | 100.0 / 93.5 |
-> | `Teekkno` | law-exact | **ambiguous** | 100.0 / 99.0 |
+> From the 2026-09-04 relation `ours[k] − orig[k] == og[k] + C` holding at every
+> `k`, the 2026-09-10 relation follows with `C` cancelling:
 >
-> **This matters for any fix**, because `Griffin_Score` is one of the two files
-> named as a regression control on the grounds that the builder already corrects
-> it — and the two measurements disagree about whether it needs correcting at
-> all. Do not edit the sequencer walk until the control set is settled: a fix
-> validated against contested controls can ship the defect into the files the
-> controls were chosen to protect.
+> ```
+> gg[k] = ours[k+1] − ours[k] = (orig[k+1] + og[k+1]) − (orig[k] + og[k]) = og[k+1]
+> ```
 >
-> **A both-high row is now reported `ambiguous` and excluded from the LAW
-> count.** `shift` and `identity` ask opposite questions, so a row scoring high
-> on both answers neither — a sufficiently periodic original satisfies the shift
+> Both relations are now computed side by side by
+> `pyscript/hardtrack_duration_law_sweep.py` (`offsetlaw%` and `C` columns, `C`
+> swept over −12..+12 per file, never assumed), and the run prints the
+> disagreement count **whether or not it is zero**:
+>
+> ```
+> RELATIONS  gg[i]==og[i+1] vs offset[k]==og[k]-3, same series and
+>            window: 0 of 29 rows DISAGREE
+> ```
+>
+> **0 of 29.** So the 2026-09-04 verdicts for `Griffin_Score`, `Intrigue` and
+> `For_Astoria_6` are wrong under *their own relation*, measured today on
+> artifacts that have **not been rebuilt since** (mtimes 2026-09-04 16:48–16:49):
+>
+> | song | 2026-09-04 table | settled 2026-09-11 | shift% / identity% | best C / offsetlaw% |
+> |---|---|---|---|---|
+> | `Griffin_Score` | law-exact | **clean** | 41.4 / 98.6 | −9 / 50.7 |
+> | `Intrigue` | law-exact | **clean** | 39.2 / 98.7 | −12 / 0.0 |
+> | `For_Astoria_6` | law-exact | **clean** | 32.1 / 99.6 | −9 / 65.8 |
+> | `Tribute_to_Laxity` | clean | **law** | 100.0 / 12.5 | **−3 / 100.0** |
+> | `Sling` | clean | clean | 13.9 / 98.6 | −10 / 21.9 |
+> | `Shogoon-Rave` | law-exact | **ambiguous** | 100.0 / 93.5 | −3 / 100.0 |
+> | `Teekkno` | law-exact | **ambiguous** | 100.0 / 99.0 | −3 / 100.0 |
+>
+> A best fit of −9, −10 or −12 is **not the law at another constant** — it is the
+> sweep reporting that nothing fits (`Intrigue` fits −12 at 0.0%).
+>
+> **`Arizona_Dream` was never a disagreement at all.** Its artifact is dated
+> **2026-09-05 14:55**, a day *after* the table, so its `clean → law` move is a
+> REBUILD, not a re-measurement — as is `Love_tune_2`'s (2026-09-05 07:16) move
+> off the UNCOMPARABLE list. Those two are the only part-01 artifacts in the
+> corpus that postdate the table. **Check artifact mtimes before calling two
+> readings of "the same corpus" a contradiction.**
+>
+> **WHY THE TABLE COULD NOT BE DEFENDED: its script was never tracked.** The
+> 2026-09-04 C-sweep exists nowhere in the tree, so for six days the only way to
+> challenge it was to disbelieve it. That is the failure the sweep's own
+> docstring names — *"an audit that cannot be re-run is how that survived a
+> cycle"* — recurring one level up, in the audit that replaced it. The relation
+> is now IN the tracked sweep, which is the actual repair.
+>
+> **THE SETTLED CONTROL SET** (`--onsets note`, voice 1, each file inside its own
+> `.span`, 26 of 33 scored):
+>
+> | verdict | n | songs |
+> |---|---|---|
+> | **LAW** (shift 100.0, C = −3 at 100.0%, identity < 90) | **17** | Altered_States_Tune_1, Arizona_Dream, Astoria_7_tune_2, Domagareflexow, Hopscotch, Illmatic_end, Jazz_and_Weird_Tekno, Jazzloor, Love_tune_3, Muminki_Rooooolz, Muza_Do_Dema, Ritual_II_tune_1, Rune-T_Noter, Timsoft_Intro, Tribute_to_Laxity, Walk_to_Soul, Zakplus |
+> | **CLEAN — use these as regression controls** | **6** | Altered_States_Tune_2, For_Astoria_6, **Griffin_Score**, Intrigue, Love_tune_2, Sling |
+> | ambiguous (both ≥ 90, discriminates nothing) | 3 | Shogoon-Rave, Teekkno, What_Can_I_Say_Crap |
+> | neither | 3 | Fun_Factory (69.7/67.6), If_I_Was_a_Rich_Man (88.7/74.6), Love_tune_5 (76.5/50.0) |
+> | `few` / silent | 4 | Ritual_II_tune_2 (n=2), Takisobie (n=7), Trance (n=5), Something_to_Eat |
+>
+> `Griffin_Score` **is** a legitimate clean control after all — but not for the
+> reason the old note gave. It is clean because the builder reproduces the
+> original's gaps on it (identity 98.6), not because the builder "corrects" a
+> law it was never subject to. Prefer `For_Astoria_6` (n=271) and `Sling` (n=72)
+> as the highest-powered controls.
+>
+> **`Shogoon-Rave`, the file the law was FIRST attributed on, still cannot
+> support it** (100.0 / 93.5 — both high). 17 other files can.
+>
+> **A both-high row is reported `ambiguous` and excluded from the LAW count.**
+> `shift` and `identity` ask opposite questions, so a row scoring high on both
+> answers neither — a sufficiently periodic original satisfies the shift
 > trivially. `MIN_DISTINCT` cannot screen them (they carry 3–6 distinct values).
-> The corpus figure is therefore **17 of 33 discriminating rows, not 20**, with
-> `Shogoon-Rave`, `Teekkno` and `What_Can_I_Say_Crap` moved to `ambiguous` —
-> and `Shogoon-Rave` is the file the law was originally attributed on.
+> The corpus figure is **17 of 33**, not 20.
 
 > **QUOTE THE ONSET READING WITH THE NUMBER (2026-09-10).** This corpus gives
 > **two** answers and the difference is one flag, not a regression:
@@ -2072,8 +2121,46 @@ assert gg[i] == og[i+1]                 # 150/151
 assert (ours[k] − orig[k]) == og[k] − 3 # 151/151
 ```
 
-**Not fixed here.** The fix belongs in whatever assigns per-note durations for
-the HardTrack sequencer walk, and this task carried no writable path to it.
+### REFUTED 2026-09-11: the law is NOT a rest-vs-tie split
+
+The obvious data-dependent mechanism — **the only explicit duration byte in the
+format is `CMD_REST`'s operand (`$67`, length in rows)**, so if the real encoding
+placed that byte *before* the note it belongs to, a parser attributing it to the
+**preceding** note would hold every note for its successor's length, exactly the
+law, and tie-only songs would be untouched — **does not survive the census.**
+Counted over every pattern voice 1's orderlist reaches:
+
+| class | rest-based songs | tie-based songs |
+|---|---|---|
+| **LAW** (17) | 12 — Altered_States_Tune_1, Arizona_Dream, Astoria_7_tune_2, Domagareflexow, Hopscotch, Love_tune_3, Muminki_Rooooolz, Muza_Do_Dema, Ritual_II_tune_1, Rune-T_Noter, Walk_to_Soul, Zakplus | 5 — Illmatic_end, Jazz_and_Weird_Tekno, Jazzloor, Timsoft_Intro, Tribute_to_Laxity |
+| **CLEAN** (6) | 2 — For_Astoria_6, Love_tune_2 | 4 — Altered_States_Tune_2, Griffin_Score, Intrigue, Sling |
+
+The law crosses both families and so does clean, so the defect is in neither
+command's handling. **This is the third plausible mechanism killed by a census**
+rather than by reasoning, after `lateness = gap − 5` and "mis-ordered durations".
+
+**One structural fact worth keeping from it:** a HardTrack module's voice uses
+rests **XOR** ties, never both — every one of the 23 songs counted reads either
+`rest > 0, tie == 0` or `tie > 0, rest == 0`. That is two distinct note-length
+encodings in one format, which is worth knowing before any future change touches
+either path.
+
+**And the fix site is still NOT identified.** The `ctr == 1` / `ctr == 0`
+fetch/dispatch pipeline in `simulate()` was re-derived frame by frame and is
+**one FRAME early, not one ROW**: for `speed = 5` (`fpt = 6`) a note dispatched
+at `ctr == 0` of frame *f* has its successor fetched at *f+5* and dispatched at
+*f+6*, which is exactly one row. A rest of `N` occupies exactly `N` rows by the
+same trace. So the candidate the previous cycle named is **not** the defect, and
+the row walk has no visible off-by-one — which is consistent with it being
+correct on 6 files.
+
+**Not fixed here, and this is now a deliberate refusal rather than a missing
+path.** The control set is settled, so a fix could finally be validated — but
+three mechanisms are refuted, the walk traces clean, and what remains is a
+data-dependent branch no static reading has located. The next attempt needs CPU
+ground truth (`docs/guides/RETRODEBUGGER_GUIDE.md` — breakpoint the pattern-byte
+fetch on a LAW file and a CLEAN file and diff the fetch order), **not** another
+plausible edit validated against the controls. Shipping one would be the fourth.
 
 ---
 

@@ -298,3 +298,81 @@ def test_the_ambiguous_rows_are_excluded_from_the_law_count_not_just_labelled():
     assert 'law = [r for r in ok if r["shift"] == 100.0]' in src, (
         "the LAW count no longer derives from the `ok` set, so an ambiguous row "
         "may be counted again")
+
+
+# ---------------------------------------------------------------------------
+# THE SECOND RELATION, AND WHY IT IS HERE AT ALL
+# ---------------------------------------------------------------------------
+
+def test_the_two_relations_are_equivalent_on_a_CONSTRUCTED_law_series():
+    """BEHAVIOURAL, and the point of recovering the 2026-09-04 relation.
+
+    The corpus table dated 2026-09-04 measured `offset[k] == og[k] + C` with C
+    swept per file; the 2026-09-10 sweep measured `gg[i] == og[i+1]`. They are
+    equivalent by telescoping -- C cancels -- so they CANNOT split on one series
+    in one window. Build a series that satisfies the law exactly and assert both
+    relations see it, because the equivalence is what makes a future split
+    diagnostic of the INPUTS rather than of the law.
+    """
+    import hardtrack_duration_law_sweep as S
+
+    # an original with a deliberately NON-periodic gap sequence, so `identity`
+    # cannot pass by accident the way a uniform grid lets it
+    og = [5, 10, 5, 20, 10, 5, 15, 5, 10, 20, 5, 10]
+    orig = [100]
+    for g in og:
+        orig.append(orig[-1] + g)
+    # ours holds each note for its SUCCESSOR's length, at the documented -3 lead
+    ours = [orig[k] + og[k] + S.LEAD_C for k in range(len(og))]
+
+    gg = S.gaps(ours)
+    sm, sn = S.agreement(gg, S.gaps(orig)[1:])
+    assert sn >= S.MIN_N, sn
+    assert 100.0 * sm / sn == 100.0, (sm, sn)
+
+    C, hits, n = S.best_offset_c(ours, orig, S.gaps(orig))
+    assert C == S.LEAD_C, C
+    assert hits == n, (hits, n)
+
+    # and the control: identity must NOT also be high, or the series could not
+    # have discriminated the law from its negation in the first place
+    im, inn = S.agreement(gg, S.gaps(orig))
+    assert 100.0 * im / inn < S.AMBIG_BOTH, 100.0 * im / inn
+
+
+def test_the_relation_crosscheck_is_NOT_asked_of_an_underpowered_row():
+    """The first version of this cross-check flagged exactly two rows --
+    Ritual_II_tune_2 (n=2) and Trance (n=5) -- and neither was a disagreement
+    about the law. Below MIN_N `best_offset_c` DECLINES (C is None) while
+    `shift` still divides by its 2 gaps and prints a confident 100.0, so the
+    comparison reports a split whose only content is that one side refused.
+    `None` means not asked and must stay distinguishable from False."""
+    import hardtrack_duration_law_sweep as S
+
+    short = [0, 5, 10]                      # 2 gaps, well under MIN_N
+    C, hits, n = S.best_offset_c(short, short, S.gaps(short))
+    assert C is None, (
+        "best_offset_c fitted a constant to %d notes; below MIN_N it must "
+        "decline, or the cross-check reads its refusal as a disagreement" % n)
+
+    src = open(os.path.join(os.path.dirname(__file__),
+                            "hardtrack_duration_law_sweep.py"), encoding="utf-8").read()
+    assert "None if sn < MIN_N else" in src, (
+        "the cross-check is no longer gated on MIN_N, so every underpowered row "
+        "will be reported as a relation disagreement again")
+    assert 'r.get("relations_agree") is not None' in src, (
+        "the denominator counts rows that were never asked, which makes the "
+        "headline '0 of 32' instead of '0 of 29' and overstates the coverage")
+
+
+def test_the_crosscheck_result_is_REPORTED_even_when_it_is_zero():
+    """A check that only speaks up when it fires is indistinguishable from a
+    check that is not running -- which is how the 2026-09-04 table stood
+    unchallenged for six days."""
+    src = open(os.path.join(os.path.dirname(__file__),
+                            "hardtrack_duration_law_sweep.py"), encoding="utf-8").read()
+    assert "RELATIONS" in src, "the cross-check no longer prints a headline"
+    assert "DISAGREE" in src
+    i = src.index("RELATIONS")
+    assert "if split:" in src[i:], (
+        "the explanatory text must be conditional, but the COUNT must not be")

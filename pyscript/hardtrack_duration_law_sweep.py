@@ -59,6 +59,13 @@ MIN_DISTINCT = 3
 #: and are NOT counted toward the LAW total.
 AMBIG_BOTH = 90.0
 
+#: The render lead the law is stated at: `offset[k] == og[k] - 3`. Swept over
+#: -12..+12 per file rather than assumed, and it comes back -3 on every law row
+#: independently -- a row whose best fit is some other C is not the law at a
+#: different constant, it is a row the law does not describe (Intrigue fits
+#: -12 at 0.0%, which is the sweep reporting that nothing fits).
+LEAD_C = -3
+
 
 def gate_onsets(frames, voice, f0, f1):
     """Gate-RISE frames for `voice` within [f0, f1)."""
@@ -95,6 +102,40 @@ def agreement(a, b):
     caller cannot accidentally average two rows of different weight."""
     n = min(len(a), len(b))
     return sum(x == y for x, y in zip(a[:n], b[:n])), n
+
+
+def best_offset_c(ours, orig, og):
+    """THE 2026-09-04 RELATION, recovered: `offset[k] == og[k] + C`, C swept.
+
+    The original corpus table was measured this way -- per-note ABSOLUTE
+    position, count-matched, with C swept per file -- and its script was never
+    tracked. That is the whole reason a table claiming `law-exact` on
+    Griffin_Score, Intrigue and For_Astoria_6 could not be defended when the
+    gap-shift sweep read them CLEAN: there was nothing left to re-run.
+
+    It is computed here BESIDE `shift` rather than instead of it, because the two
+    are equivalent by telescoping and that equivalence is the check. From
+    `ours[k] - orig[k] == og[k] + C` at every k,
+
+        gg[k] = ours[k+1] - ours[k] = (orig[k+1] + og[k+1]) - (orig[k] + og[k])
+              = og[k+1]
+
+    -- C cancels. So a row cannot be law-exact under one relation and clean
+    under the other ON THE SAME SERIES IN THE SAME WINDOW. When they disagree
+    the series or the window differs, never the law, and `measure` says so.
+
+    Returns (C, hits, n). C is None when the counts leave too few notes to fit.
+    """
+    n = min(len(ours), len(orig), len(og))
+    if n < MIN_N:
+        return (None, 0, n)
+    off = [ours[k] - orig[k] for k in range(n)]
+    best = (None, -1, n)
+    for C in range(-12, 13):
+        h = sum(off[k] == og[k] + C for k in range(n))
+        if h > best[1]:
+            best = (C, h, n)
+    return best
 
 
 def _probe(sf2_path, tmpdir):
@@ -152,10 +193,27 @@ def measure(stem, orig, part, voice, tmpdir, kind="gate"):
         return dict(song=stem, status="silent", secs=int(secs))
     sm, sn = agreement(gg, og[1:])          # THE LAW: ours i == original's i+1
     im, inn = agreement(gg, og)             # the control: ours i == original's i
+    oc, oh, on = best_offset_c(po, oo, og)
     row = dict(song=stem, secs=int(secs), n=sn, counts=counts,
                shift=(100.0 * sm / sn if sn else None),
                identity=(100.0 * im / inn if inn else None),
+               offset_c=oc, offset_law=(100.0 * oh / on if on else None),
                distinct=len(set(og)))
+    # THE CROSS-CHECK, not a second opinion: the relations are equivalent by
+    # telescoping (see `best_offset_c`), so a split verdict means the two runs
+    # were not over the same series or the same window. Name it on the row
+    # rather than printing two numbers and letting a reader pick.
+    # ONLY ON A ROW BIG ENOUGH FOR BOTH RELATIONS TO HAVE AN OPINION. Below
+    # MIN_N `best_offset_c` declines and returns C=None, while `shift` still
+    # divides by its 2 or 5 gaps and prints a confident 100.0 -- so comparing
+    # them there reports a DISAGREEMENT whose real content is that one side
+    # refused. Measured: Ritual_II_tune_2 (n=2) and Trance (n=5) were the only
+    # two rows the first version of this check flagged, and neither is a
+    # disagreement about the law. `None` means "not asked", which must stay
+    # distinguishable from False.
+    row["relations_agree"] = (
+        None if sn < MIN_N else
+        (row["shift"] == 100.0) == (oc == LEAD_C and row["offset_law"] == 100.0))
     if sn < MIN_N:
         row["status"] = "few"
     elif row["distinct"] < MIN_DISTINCT:
@@ -217,16 +275,20 @@ def main(argv=None):
     rows = []
     with tempfile.TemporaryDirectory(prefix="ht_law_") as tmp:
         print("onset definition: %s" % a.onsets)
-        print("%-28s %5s %5s %8s %9s %5s  %s"
-              % ("song", "span", "n", "shift%", "identity%", "dist", "status"))
+        print("%-28s %5s %5s %8s %9s %5s %10s %5s  %s"
+              % ("song", "span", "n", "shift%", "identity%", "dist",
+                 "offsetlaw%", "C", "status"))
         for stem, orig, part in todo:
             r = measure(stem, orig, part, a.voice, tmp, a.onsets)
             rows.append(r)
-            print("%-28s %5s %5s %8s %9s %5s  %s"
+            print("%-28s %5s %5s %8s %9s %5s %10s %5s  %s"
                   % (r["song"], r.get("secs", "-"), r.get("n", "-"),
                      "-" if r.get("shift") is None else "%.1f" % r["shift"],
                      "-" if r.get("identity") is None else "%.1f" % r["identity"],
-                     r.get("distinct", "-"), r["status"]))
+                     r.get("distinct", "-"),
+                     "-" if r.get("offset_law") is None else "%.1f" % r["offset_law"],
+                     "-" if r.get("offset_c") is None else "%d" % r["offset_c"],
+                     r["status"]))
 
     ok = [r for r in rows if r["status"] == "ok"]
     law = [r for r in ok if r["shift"] == 100.0]
@@ -249,6 +311,23 @@ def main(argv=None):
         print("    shift trivially, so these rows answer neither question.")
     print("CLEAN  identity>=90 and shift<90     : %d  (%s)"
           % (len(clean), ", ".join(r["song"] for r in clean) or "none"))
+
+    # THE CROSS-CHECK IS A HEADLINE, NOT A COLUMN. A reader comparing `shift`
+    # against `offsetlaw` by eye is how the 2026-09-04 table went unchallenged
+    # for six days, so the disagreement count is printed whether it is zero or
+    # not -- a check that only speaks up when it fires is indistinguishable from
+    # a check that is not running.
+    split = [r for r in rows if r.get("relations_agree") is False]
+    print("RELATIONS  gg[i]==og[i+1] vs offset[k]==og[k]%+d, same series and"
+          % LEAD_C)
+    print("           window: %d of %d rows DISAGREE%s"
+          % (len(split), sum(r.get("relations_agree") is not None
+                             for r in rows),
+             (" (%s)" % ", ".join(r["song"] for r in split)) if split else ""))
+    if split:
+        print("  ^ The relations are EQUIVALENT by telescoping, so a disagreement")
+        print("    is in the SERIES or the WINDOW, not in the law. Do not pick the")
+        print("    more convenient number -- find out which input differs.")
     if a.json:
         json.dump(rows, open(a.json, "w", encoding="utf-8"), indent=1)
         print("wrote", a.json)
