@@ -1296,6 +1296,15 @@ the attribution falls to the builder.
 One file, same flags, before-and-after a rebuild — that is the cleanest evidence
 that the rebuild is what moved these rows.
 
+> ⚠️ **RETRACTED 2026-09-11 — the paragraph above is WRONG and so is the
+> conclusion it carries.** This page never recorded `Funk_Facet` at 100.0%: it
+> records **99.0%** twice (the newly-established table below, and the
+> passband-in-key status note above), both times as *"real, marginal"* and as
+> *surviving a rebuild unchanged*. So the move was 99.0 → 98.9, not 100.0 → 98.9.
+> See **"The 8 passband failures are NOT a regression"** at the end of this page:
+> the same rebuild took `Arabia`, `Juba-Jazz` and `Tanks_3000` — all three
+> recorded here as *real* failures — to **100.0%**.
+
 **What is NOT established, and must not be asserted:** *why*. `SDI_WF` changed
 onset detection, which changes note placement, which changes the frames a filter
 program is compared over — a plausible route from the rebuild to a passband
@@ -1489,3 +1498,200 @@ period, then one cycle-aware RLE clears all 14 and the "unbuilt" verdict holds
 corpus-wide. If any file instead shows genuinely incompressible content summing
 past 256 across several instruments, that file -- and only that file -- is a real
 driver-ceiling case and needs the 16-bit-index driver change.
+
+## The 8 passband failures are NOT a regression — the rebuild IMPROVED the corpus, 2026-09-11
+
+The previous section on this page attributed eight new `FAILED` rows to the
+`SDI_WF` rebuild and called the builder at fault. **That attribution is refuted.**
+Three independent measurements kill it, and the first one kills its own evidence.
+
+### The flag is exonerated, and the experiment that exonerated it was nearly vacuous
+
+The prescribed settling experiment was: rebuild one of the eight with `SDI_WF=0`
+and re-score. Done, on `Funk_Facet`:
+
+```
+$ SDI_WF=0 py -3 bin/build_sdi_native_song.py SID/Gallefoss_Glenn/Funk_Facet.sid
+  emulated onsets vs trace: 175/176 (OK)   voices 99.9/99.9/99.9
+$ py -3 pyscript/passband_check.py --player sdi --files Funk_Facet
+  Funk_Facet  LP/LP+HP  LP/LP+HP  115 115 1  98.9  100%/13a  <== mode mismatch
+```
+
+Still 98.9%. But the decisive detail is one the experiment was not designed to
+produce: **both `.sf2` artifacts came back BYTE-IDENTICAL to the `SDI_WF=1`
+build.** The flag changes nothing for this file, so this experiment *could not
+have discriminated* whatever the answer. It returns the right verdict —
+`SDI_WF` is not the cause — for the wrong reason, and a future run must check
+that the flag actually moves the bytes before reading a re-score as evidence.
+**Verify a probe can fail before believing it passed.**
+
+### The 100.0% the attribution rested on was never recorded
+
+The claim was *"this page already recorded `Funk_Facet` at 100.0%, it now reads
+98.9%"*. This page records **99.0%** — twice, in the newly-established table and
+in the passband-in-key status note — both times as **"real, marginal"** and as
+**surviving a rebuild unchanged**, with the mechanism already named: *gate-anchored
+filter dispatch drops a `$D418` write that arrives between note-ons;*
+*`Funk_Facet`'s is 1 frame pre-onset and arrives late (12 audible frames).*
+
+So `Funk_Facet` moved **0.1 of a point**, 99.0 → 98.9, across a threshold that is
+a hard `pct < 99.0`. It did not regress. It **crossed a cliff**.
+
+### The same rebuild FIXED three recorded failures
+
+| file | recorded on this page | after the rebuild |
+|---|---:|---:|
+| `Juba-Jazz` | **52.8%** — real | **100.0%** |
+| `Tanks_3000` | **94.9%** — real, static where the original modulates 12× | **100.0%** |
+| `Arabia` | **97.8%** — real | **100.0%** |
+| `Funk_Facet` | **99.0%** — real, marginal | 98.9% |
+| `Finish_Line` | 100.0% | 100.0% |
+| `Homebrew` | 100.0% | 100.0% |
+
+Of the six files in that table, **four improved, two held, one fell by 0.1**. A
+rebuild that takes a 52.8% to 100.0% is not the rebuild that "introduced eight
+failures".
+
+### All eight failures are ONE already-diagnosed defect, at its mildest
+
+```
+file         original    ours        oChg dChg off  agree  routed
+Commies      LP/LP+HP    LP/LP+HP      30   30   0   98.9  100%/15a
+Curse        LP/LP+HP    LP/LP+HP      18   18   0   98.7  100%/4a
+Eastbottom   LP/LP+HP    LP/LP+HP      42   42   0   98.5  100%/21a
+Everytime    LP/LP+HP    LP/LP+HP      38   52   0   98.1  100%/26a   <== the one outlier
+Funk_Facet   LP/LP+HP    LP/LP+HP     115  115   1   98.9  100%/13a
+Painful      LP/LP+BP    LP/LP+BP      29   29   0   98.9  100%/15a
+Virtual      LP/LP+BP    LP/LP+BP      28   28   0   99.0  100%/14a
+Zoophyte     LP/LP+BP    LP/LP+BP      33   33   0   98.8  100%/17a
+```
+
+Every row selects **exactly the same mode set as the original** — the `original`
+and `ours` columns are identical strings on all eight — and seven of the eight
+emit **exactly the same number of transitions** (`oChg == dChg`). Nothing here is
+a wrong passband or a collapsed filter. A handful of transitions land a few
+frames off, 4–26 audible frames per file. That is the *gate-anchored late `$D418`*
+mechanism this page already diagnosed on `Funk_Facet`, seen at its mild end
+across eight files.
+
+Two caveats that a future reader needs:
+
+* **`Everytime` is the one genuine outlier** — 38 changes in the original against
+  **52** in ours. Extra transitions, not late ones, is a different shape and may
+  be a different defect. It has the worst score of the eight (98.1%) and the most
+  audible mismatches (26). Check it separately.
+* **`Virtual` prints `99.0` and still fails**, because the classifier tests
+  `pct < 99.0` against the unrounded value while the column prints one decimal.
+  Do not read `99.0` in a `FAILED` list as a tie — it is below the threshold.
+
+### What is established, and what is not
+
+**Established:** `SDI_WF` is not the cause (and could not have been, for this
+file). The 100.0% premise was a misreading. The rebuild moved three recorded real
+failures to 100.0%. All eight failures share one signature, already named on this
+page. All eight lie in **[98.1%, 99.0%)**, so any `--min` at or below 98.1 passes
+every one of them — the count of 8 is produced by where the threshold sits, not by
+a new defect.
+
+**NOT established, and not to be asserted:** whether the other seven were above
+99.0% before the rebuild. `Funk_Facet` is the only one of the eight with a prior
+recorded figure, and the pre-rebuild artifacts were overwritten, so there is
+nothing left to re-score. All eight were built at commit `15102a1` with the same
+flags as the *passing* controls `Arabia` and `Homebrew`, so build configuration
+does not separate them — the failure is content-dependent.
+
+**The next measurement, if anyone wants the eight closed rather than explained:**
+it is the gate-anchored dispatch fix, not a rebuild. `Everytime` first, because
+its extra-transition shape is the one this section could not fold into the
+mechanism.
+
+### One denominator note, because this page keeps having to make it
+
+The coverage moved **279 → 293 → 294** across these three rounds while the same
+8 files stayed unexercised. `271/279`, `277/293` and `278/294` are three different
+denominators. Fifteen builds entered the corpus between the first and the last, so
+**no two of those fractions are comparable as a rate of improvement**, and the
+`FAILED 0 → 8` step spans exactly that growth.
+
+## A cycle-aware wave RLE — Sugarhill and Rough_Boy build, 2026-09-11
+
+The 256-row WAVE ceiling section above diagnosed the 14 blocked files as **unbuilt,
+not unbuildable**: the packing spent 256 rows on content worth about 8. That
+packing is now fixed, and the two reproduced files build.
+
+### The change is one line of intent: aim the $7f jump at the CYCLE
+
+The driver's `$7f` row is a **jump to a row** (`lda WAVE+256,y ; col1 = jump
+target row`). `_rle_wave_impl` always aimed it at `len(rows)-1` — the last run —
+which freezes on the settled waveform and forces every repetition of a repeating
+tail to be stored. `_wave_loop_target` now finds the shortest period that repeats
+at the tail, walks it back to its true first row, truncates the repetitions and
+aims the jump there. With no repeating tail it returns `len(rows)-1` and the
+behaviour is exactly what it was.
+
+```
+Sugarhill's measured shape (4 attack frames + an exact period-3 arpeggio, 256 frames)
+  before:  254 runs + 1 jump   -> 255 rows, and at 323 rows for the real part it REFUSED
+  after:     3 runs + 3 cycle rows + 1 jump = 7 rows
+```
+
+### Both reproduced files now build
+
+```
+$ py -3 bin/build_sdi_native_song.py SID/Gallefoss_Glenn/Sugarhill.sid
+  packed into 3 adaptive part(s)      voices 91.0 / 98.1 / 79.9   RC=0
+     (was: ValueError: WAVE overflow: 323 rows > 256 -- build refused)
+$ py -3 bin/build_sdi_native_song.py SID/Gallefoss_Glenn/Rough_Boy.sid
+  packed into 13 adaptive part(s)     voices 99.0 / 97.5 / 100.0  RC=0
+     (was: ValueError: WAVE overflow: 265 rows > 256 -- build refused)
+```
+
+### The re-pack is behaviour-neutral where it fires on nothing — measured, 3 players
+
+A re-pack that silently moved a passing corpus would be worse than 14 files
+staying unbuilt, so this was checked across players rather than only on SDI:
+
+| player | file | parts | result |
+|---|---|---:|---|
+| SDI | `Homebrew` | 9 | **byte-identical** |
+| HardTrack | `Illmatic_end` | 9 | **byte-identical** |
+| DMC | `Alf_TV_Theme` | 9 (of 40) | **byte-identical** |
+
+27 parts, zero differing bytes. That is the expected shape: the new path fires
+only where a wave program's tail genuinely repeats, and a program with no
+repeating tail takes the identical old branch. The files it changes are the files
+that were refusing.
+
+Tests: 71 pass across `test_build_mon_native_song` (+4 new), `_dmc_`, `_sdi_`,
+`_romuzak_`, `_hardtrack_` and `test_native_build`. The new tests are
+sabotage-verified — aiming the jump one row past the cycle start fails two of
+them, and the revert restores green.
+
+### ⚠️ NOT yet established, and the DONE condition is not met
+
+* **Only 2 of the 14 are confirmed to build.** `Sugarhill` (323 rows) and
+  `Rough_Boy` (265) were the two ever reproduced; the other twelve are name-only
+  from the sweep's error map at roughly 20 minutes of emulated tracing each.
+* **The nine corpora are NOT rebuilt.** `emit_one` is reached by dmc, fc,
+  hardtrack, hubbard, mattgray, mon, myth, sdi and soundmonitor. Three
+  single-file spot checks are evidence, not the corpus proof the done-condition
+  asks for. **Do not quote this as behaviour-neutral across the corpus** — quote
+  the three files.
+
+### Correction: `_rle_wave_impl` exists ONCE, not twice
+
+A `/whattask` pass recorded that `_rle_wave_impl` lives in both
+`bin/build_mon_native_song.py` and `bin/build_dmc_native_song.py`, and widened
+this task's paths on that basis. **That is wrong.** `grep` for the definitions
+finds three, all in `build_mon_native_song.py`:
+
+```
+bin/build_mon_native_song.py:1097  def _rle_wave(wfs):
+bin/build_mon_native_song.py:1103  def _rle_wave_impl(wfs):
+bin/build_mon_native_song.py:1121  def _wave_prog_for(frames, v, onset, dur_f):
+```
+
+The two hits in the DMC builder are **prose inside comments** naming
+`_wave_prog_for`, not code. There is one encoder and it did not need to be
+de-duplicated. The earlier record that said "in `build_mon_native_song`" was
+right.
