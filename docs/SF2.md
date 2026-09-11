@@ -172,11 +172,11 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**966 songs built** across 15 native players (each song may span several SF2 parts).
+**982 songs built** across 15 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
-### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  74 songs / 1414 SF2 files
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  73 songs / 1115 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -184,84 +184,82 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Again Its JB | Johannes Bjerregaard | 1989 Upfront | 12 |
 | Alf TV Theme | Johannes Bjerregaard | 1988 Maniacs of Noise | 40 |
 | Balloon | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 1 |
-| Billie Jean | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 15 |
-| Blobby | Johannes Bjerregaard | 19?? Johannes Bjerregaard | 2 |
-| Blue Monday 88 | Johannes Bjerregaard | 1989 The Dominators | 7 |
-| Camel Riders Inc | Johannes Bjerregaard (The Jerk) | 1987 The Jerk | 12 |
-| Cant Stop | Johannes Bjerregaard | 1988 Upfront | 114 |
+| Billie Jean | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 9 |
+| Blobby | Johannes Bjerregaard | 19?? Johannes Bjerregaard | 1 |
+| Blue Monday 88 | Johannes Bjerregaard | 1989 The Dominators | 4 |
+| Camel Riders Inc | Johannes Bjerregaard (The Jerk) | 1987 The Jerk | 9 |
+| Cant Stop | Johannes Bjerregaard | 1988 Upfront | 18 |
 | Chase | Johannes Bjerregaard | 1988 Upfront | 15 |
-| Chase v2 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 11 |
+| Chase v2 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 1 |
 | Cute Tune | Johannes Bjerregaard | 1988-90 Johannes Bjerregaard | 32 |
 | Deel 2 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 8 |
 | Depeche Mode Songs | Johannes Bjerregaard | 1986 Danish Music Company | 6 |
-| DMC Demo IV tune 1 | Johannes Bjerregaard | 1988 Danish Music Company | 7 |
-| DMC Demo IV tune 2 | Johannes Bjerregaard | 1988 Danish Music Company | 15 |
-| DMC Demo IV tune 3 | Johannes Bjerregaard | 1988 Danish Music Company | 16 |
-| DMC Demo IV tune 5 | Johannes Bjerregaard | 1988 Danish Music Company | 4 |
-| Domino Dancing | Johannes Bjerregaard | 1988 Maniacs of Noise | 7 |
+| DMC Demo IV tune 1 | Johannes Bjerregaard | 1988 Danish Music Company | 5 |
+| DMC Demo IV tune 2 | Johannes Bjerregaard | 1988 Danish Music Company | 11 |
+| DMC Demo IV tune 3 | Johannes Bjerregaard | 1988 Danish Music Company | 11 |
+| DMC Demo IV tune 5 | Johannes Bjerregaard | 1988 Danish Music Company | 99 |
+| Domino Dancing | Johannes Bjerregaard | 1988 Maniacs of Noise | 5 |
 | Dragon Sword | Johannes Bjerregaard | 2018 Johannes Bjerregaard | 7 |
-| Dreaming | Johannes Bjerregaard | 1988 Danish Music Company | 15 |
-| Dreaming 2 | Johannes Bjerregaard | 1987 Danish Music Company | 28 |
+| Dreaming | Johannes Bjerregaard | 1988 Danish Music Company | 7 |
+| Dreaming 2 | Johannes Bjerregaard | 1987 Danish Music Company | 23 |
 | Dummy II | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 11 |
 | Dummynaytos | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 1 |
-| Eagles | Johannes Bjerregaard | 1987 Hewson | 7 |
+| Eagles | Johannes Bjerregaard | 1987 Hewson | 3 |
+| EMPTYTRACE CONTROL |  |  | 1 |
+| EMPTYTRACE V1 CONTROL |  |  | 1 |
 | Fat 6 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 23 |
 | Fat Complete 2 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 43 |
-| First Try PSX | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 47 |
-| Flimbos Quest main | Johannes Bjerregaard | 1990 System 3 | 34 |
+| First Try PSX | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 56 |
 | Fourth Dimension | Johannes Bjerregaard | 1988 Danish Music Company | 6 |
 | French Frites | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 64 |
 | Fruitbank | Johannes Bjerregaard | 1989 Mastertronic/Dig. Design | 11 |
 | Happy Jingle | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 2 |
 | Hit the Baze | Johannes Bjerregaard | 1988 Danish Music Company | 10 |
-| In the Mood | Johannes Bjerregaard | 1988 Triton Technology | 3 |
+| In the Mood | Johannes Bjerregaard | 1988 Triton Technology | 4 |
 | Jazz 1 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 31 |
 | Jazz 2 | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 32 |
 | Jazz 3 | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 1 |
 | Jazz 4 | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 34 |
-| Johannes Bjerregaard 01 | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 37 |
-| Kamikaze | Johannes Bjerregaard | 1990 Codemasters/Digital Design | 7 |
+| Johannes Bjerregaard 01 | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 41 |
 | M A C H | Johannes Bjerregaard | 1987 Starvision | 2 |
 | Mixerplot | Johannes Bjerregaard | 1989 Upfront | 9 |
 | MSI Demo | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 36 |
-| Music Demo | Johannes Bjerregaard | 1988 Maniacs of Noise | 32 |
-| Myth Demo | Johannes Bjerregaard | 1989 Maniacs of Noise | 11 |
-| Namnam Special | Johannes Bjerregaard | 1988 Danish Music Company | 20 |
-| Nightdawn | Johannes Bjerregaard | 1988 ACE Software/Magic Bytes | 121 |
-| Omega Force One | Johannes Bjerregaard | 1988 64'er/Markt & Technik | 25 |
+| Music Demo | Johannes Bjerregaard | 1988 Maniacs of Noise | 30 |
+| Myth Demo | Johannes Bjerregaard | 1989 Maniacs of Noise | 6 |
+| Namnam Special | Johannes Bjerregaard | 1988 Danish Music Company | 7 |
+| Omega Force One | Johannes Bjerregaard | 1988 64'er/Markt & Technik | 13 |
 | Predictable main | Johannes Bjerregaard | 1989 Bones/Maniacs of Noise | 4 |
 | Ragtime Anno 87 | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 3 |
 | Roadblaster | Johannes Bjerregaard | 19?? Johannes Bjerregaard | 1 |
-| Rockbuster | Johannes Bjerregaard | 1988 Danish Music Company | 17 |
+| Rockbuster | Johannes Bjerregaard | 1988 Danish Music Company | 5 |
 | Rosanna | Johannes Bjerregaard | 1989 Upfront | 40 |
-| Scandalous | Johannes Bjerregaard | 1989 The Dominators | 19 |
-| Shape | Johannes Bjerregaard | 1988 Upfront | 38 |
+| Scandalous | Johannes Bjerregaard | 1989 The Dominators | 7 |
+| Shape | Johannes Bjerregaard | 1988 Upfront | 28 |
 | Slimbo4 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 11 |
 | Soap Theme | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 30 |
-| Some Soul | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 29 |
+| Some Soul | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 26 |
 | Spacegame Music | Johannes Bjerregaard | 1987 The Main Force 2772 | 2 |
-| Special Agent | Johannes Bjerregaard | 1987 Firebird | 27 |
-| Spy vs Spy III | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 23 |
+| Special Agent | Johannes Bjerregaard | 1987 Firebird | 14 |
+| Spy vs Spy III | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 10 |
 | STII8 | Johannes Bjerregaard | 2014 Johannes Bjerregaard | 8 |
 | Stormlord | Johannes Bjerregaard & J. Tel | 1989 Hewson/Maniacs of Noise | 10 |
 | Stormlord V2 | Johannes Bjerregaard | 1989 Maniacs of Noise | 2 |
 | Sweet | Johannes Bjerregaard | 1988 Upfront/Starion | 10 |
-| Test | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 10 |
-| Thunder Force | Johannes Bjerregaard | 1987 Rack-It | 8 |
+| Test | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 7 |
+| Thunder Force | Johannes Bjerregaard | 1987 Rack-It | 3 |
 | Tiny Symphony | Johannes Bjerregaard | 1988 Danish Music Company | 5 |
-| Twilight Beyond | Johannes Bjerregaard | 1988 Danish Music Company | 4 |
+| Twilight Beyond | Johannes Bjerregaard | 1988 Danish Music Company | 1 |
 | Wanna Get Sick | Johannes Bjerregaard | 1989 Upfront | 7 |
-| When Will I Be Famous | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 40 |
-| Who Is Robb Vol 1 | Johannes Bjerregaard (The Jerk) | 198? The Jerk | 15 |
+| When Will I Be Famous | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 50 |
+| Who Is Robb Vol 1 | Johannes Bjerregaard (The Jerk) | 198? The Jerk | 12 |
 | Zoom | Johannes Bjerregaard | 1988 Discovery Software Int'l | 1 |
 
-### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  27 songs / 209 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  26 songs / 210 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
 | Children Songs sub0 | Jeroen Tel | 1988 Maniacs of Noise | 13 |
-| Cybernoid II sub0 | Jeroen Tel | 1988 Hewson | 18 |
-| Cybernoid II sub0 native |  |  | 1 |
+| Cybernoid II sub0 | Jeroen Tel | 1988 Hewson | 13 |
 | Cybernoid sub0 | Jeroen Tel | 1988 Hewson | 13 |
 | Daring Dots sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
 | G I Hero sub0 | Jeroen Tel | 1988 Maniacs of Noise | 17 |
@@ -274,7 +272,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Hawkeye sub3 | Jeroen Tel | 1988 Thalamus | 1 |
 | Hawkeye sub3 native |  |  | 1 |
 | Ice Age sub0 | Jeroen Tel | 1988 Maniacs of Noise | 21 |
-| Iets van JT sub0 | Jeroen Tel | 1988 Maniacs of Noise | 10 |
+| Iets van JT sub0 | Jeroen Tel | 1988 Maniacs of Noise | 12 |
 | M A C C sub0 | Jeroen Tel | 1988 Maniacs of Noise | 8 |
 | Myth sub0 | Jeroen Tel | 1989 System 3 | 8 |
 | Pal sine hoener tune 1 sub0 | Jeroen Tel | 2020 Offence | 3 |
@@ -283,11 +281,11 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Supremacy sub1 | Jeroen Tel | 1991 Virgin | 2 |
 | Supremacy sub2 | Jeroen Tel | 1991 Virgin | 10 |
 | Thats preview sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
-| Tomcat sub0 | Jeroen Tel | 1989 Digital L&M/Players | 3 |
+| Tomcat sub0 | Jeroen Tel | 1989 Digital L&M/Players | 8 |
 | Viool Tello sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
 | Wizzy sub0 | Jeroen Tel | 1988 Maniacs of Noise | 3 |
 
-### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 634 SF2 files
+### Rob Hubbard — Rob Hubbard  ·  `native`  ·  62 songs / 987 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -296,6 +294,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | 5 Title Tunes song2 | Rob Hubbard | 1985 Rob Hubbard | 2 |
 | 5 Title Tunes song3 | Rob Hubbard | 1985 Rob Hubbard | 2 |
 | 5 Title Tunes song4 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| ACE II song0 | Rob Hubbard | 1987 Cascade Games | 353 |
 | Action Biker song0 | Rob Hubbard | 1985 Mastertronic | 1 |
 | Action Biker song1 | Rob Hubbard | 1985 Mastertronic | 1 |
 | Action Biker song2 | Rob Hubbard | 1985 Mastertronic | 1 |
@@ -776,7 +775,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Zexest | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Zoophyte | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `native (Stage B)`  ·  281 songs / 5227 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `native (Stage B)`  ·  293 songs / 5114 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -796,24 +795,25 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Alone in Space native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 24 |
 | Ambient native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 3 |
 | Another Beginning native | Glenn Rune Gallefoss | 1998 SHAPE | 13 |
-| Arabia native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 8 |
+| Another Day in Paradize native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 3 |
+| Arabia native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 10 |
 | Arcane native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
 | Arnhild native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 22 |
 | Bahbar native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 30 |
-| Bahbar v native |  |  | 11 |
 | Banana Man native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 5 |
+| Banana native | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
 | Basselusk native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
 | Batman in Jp native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
 | Beginning native | Glenn Rune Gallefoss | 1999 SHAPE | 20 |
 | Beverly Kraven native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 2 |
-| Blowfish native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
+| Blowfish native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 8 |
 | Boiled Beans native | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 13 |
 | Bossa Butt native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
 | Bouncing native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 6 |
 | Buttlern native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 5 |
 | Calmdown II another one native | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 20 |
 | Calmdown Whats this native | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 1 |
-| Careless Whisper native | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 38 |
+| Careless Whisper native | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 39 |
 | Close preview native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 6 |
 | Club 69 native | Glenn Rune Gallefoss | 2004 SHAPE/Blues Muz' | 90 |
 | Coming Soon native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
@@ -823,8 +823,8 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Countdown to NIL native | Glenn Rune Gallefoss | 2000 SHAPE | 15 |
 | Country-Dip native | Glenn Rune Gallefoss (Shark) | 1995 Plush | 1 |
 | Crizz Crozz native | Glenn Rune Gallefoss | 1993 Digital Designs | 9 |
-| Culture Mix 1 native | Glenn Rune Gallefoss (Shark) | 1990 Collision | 4 |
-| Culture Mix 2 native | Glenn Rune Gallefoss (Shark) | 1990 Collision | 129 |
+| Culture Mix 1 native | Glenn Rune Gallefoss (Shark) | 1990 Collision | 1 |
+| Culture Mix 2 native | Glenn Rune Gallefoss (Shark) | 1990 Collision | 3 |
 | Curse native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 25 |
 | Dancing in the Moonlight native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 6 |
 | Danske-baaten native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
@@ -847,7 +847,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Domino Dancing native | Glenn Rune Gallefoss | 1993 Digital Designs | 10 |
 | Dorull native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
 | Dreadful native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 15 |
-| Dream native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 4 |
+| Dream native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
 | Dreamland native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 12 |
 | Eastbottom native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
 | Effect Freak native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
@@ -859,6 +859,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Everytime native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 7 |
 | Evil Within native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 13 |
 | Extreme native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 4 |
+| Fading Away native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 5 |
 | Faeries native | Glenn Rune Gallefoss | 2002 SHAPE/Blues Muz' | 28 |
 | Filthy Hit VE-4x native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 2 |
 | Fin Sang native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -880,8 +881,9 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Gracious native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 8 |
 | Granturismo native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
 | Graut native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 5 |
-| GT Groove native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 402 |
+| GT Groove native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 405 |
 | Guaranteed native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 6 |
+| Happy Birthday Tg-Acme native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 25 |
 | Hardcore native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 6 |
 | Heartbeat native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 9 |
 | Heartbit native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 6 |
@@ -889,6 +891,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | High Pressure native | Glenn Rune Gallefoss (Shark) | 1993 Regina | 53 |
 | Hithouse native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
 | Holy Daze native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 14 |
+| Holy Josh native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 4 |
 | Homebrew native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 9 |
 | House Fantasy native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 10 |
 | Hyperfool native | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 9 |
@@ -907,6 +910,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Jazzstones native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 11 |
 | Jazzy-d native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 16 |
 | JB Groove II native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 5 |
+| Jessie Jazz native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 7 |
 | Joikaboller native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 24 |
 | JS Beta Song native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | JS Fanfare native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 11 |
@@ -918,38 +922,40 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Kleptoekko native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
 | Koke Stek native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 6 |
 | Kururin native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 4 |
-| L-Forza long edit native | Glenn Rune Gallefoss | 2010 Recollection | 174 |
-| L-Forza Remix native | Glenn Rune Gallefoss | 2009 Byterapers | 126 |
-| Lame native | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 31 |
+| L-Forza long edit native | Glenn Rune Gallefoss | 2010 Recollection | 176 |
+| L-Forza Remix native | Glenn Rune Gallefoss | 2009 Byterapers | 127 |
+| Lame native | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
 | Lederhosen native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
-| Leon Latex native | Glenn Rune Gallefoss | 2007 SHAPE | 35 |
+| Leon Latex native | Glenn Rune Gallefoss | 2007 SHAPE | 36 |
 | Lethal Weapon native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 24 |
 | Lightforce native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 21 |
 | Little Bee native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
 | Long Ting native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 28 |
 | Looping native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Magic Moment native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 7 |
+| Max Mix 1 native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 3 |
 | Menthol native | Glenn Rune Gallefoss | 1993 Digital Designs | 8 |
 | Micro Mix native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 6 |
 | Microwave native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 7 |
 | Milkshake native | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 41 |
+| Mini Poelse native | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 3 |
 | Moi Funk native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 22 |
 | Mozell native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 7 |
+| Mummy native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Nasty Hombre native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 3 |
 | Nephritis native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 22 |
 | Neurotica short native | Glenn Rune Gallefoss | 1999 Onslaught | 7 |
-| Neverending Story native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 13 |
 | Nightjazz native | Glenn Rune Gallefoss | 1992 Blues Muz' | 1 |
 | NineOneOne native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 101 |
 | Nitro Dot native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 4 |
-| Noice native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 22 |
+| Noice native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 23 |
 | Norvegia thats a cheese native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 13 |
 | Ode to Bugg native | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 21 |
 | Oh Boy VE-2x native | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 1 |
 | Ohne Titel native | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 5 |
 | Oldie native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
-| Onkie Donkie native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 19 |
-| Opening native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 2 |
+| Onkie Donkie native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 3 |
+| Opening native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 4 |
 | Orbital native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 4 |
 | Organ Blues native | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 15 |
 | Other Day native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 32 |
@@ -969,7 +975,9 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Preview Zax native | Glenn Rune Gallefoss | 1993 Digital Designs | 2 |
 | Product native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 22 |
 | Promises native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
+| Psycho II native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 3 |
 | Psycho IV native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
+| Psycho native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 2 |
 | Pulstro native | Glenn Rune Gallefoss (Shark) | 1993 Regina | 1 |
 | Pultost VE-4x native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 4 |
 | Punkfunk native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 2 |
@@ -977,7 +985,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Quaternion native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 14 |
 | Quest native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 33 |
 | Rapture native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 2 |
-| Rar Takt native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 7 |
+| Rar Takt native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 8 |
 | Raw and Mean native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 10 |
 | Reaxion extended native | Glenn Rune Gallefoss | 2001 Commodore Zone | 24 |
 | Reaxion Extended Remix native | Glenn Rune Gallefoss | 2001 Commodore Zone | 11 |
@@ -987,11 +995,11 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Rocker native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 10 |
 | Rough Boy native | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 2 |
 | Sad Song native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 8 |
-| Sad Toob native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 4 |
+| Sad Toob native | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 9 |
 | Scene plus III native | Glenn Rune Gallefoss | 1998 FairLight | 54 |
 | Scimitars native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 31 |
 | Screaming native | Glenn Rune Gallefoss | 1993 Digital Designs | 14 |
-| Sharkie native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 4 |
+| Sharkie native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 5 |
 | Short Deel native | Glenn Rune Gallefoss | 2000 Nostalgia | 6 |
 | Short One native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 2 |
 | Short Zax native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
@@ -1005,16 +1013,18 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Solar Plexus native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 6 |
 | Sorrows native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 6 |
 | Sound Test native | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
+| Space Suit native | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
 | Spellbound native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 9 |
 | Stairway 1 native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
 | Stairway 2 native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
-| Stort Plaster native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz'/HVSC | 137 |
+| Stort Plaster native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz'/HVSC | 138 |
 | Strangers native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 6 |
 | Strangle native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz'/Onslaught | 6 |
 | Suburbia native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 2 |
 | Sugarhill native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 3 |
 | Super Galaxy preview native | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
 | Survival native | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 23 |
+| Sveitser Ost native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
 | Sweeper native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Sweet JB native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 12 |
 | Syk Sang native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 3 |
@@ -1043,6 +1053,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Trist native | Glenn Gallefoss & D. Bakewell | 1999 Blues Muz' | 13 |
 | Trooper native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 8 |
 | Tunfiskpizza native | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 6 |
+| Twin Peaks native | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
 | Tycoon 2 native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 21 |
 | Tycoon native | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 8 |
 | U May C native | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -1060,7 +1071,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Yeah native | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 21 |
 | Zap native | Glenn Rune Gallefoss | 2007 SHAPE/Blues Muz' | 1 |
 | Zexest native | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 3 |
-| Zoophyte native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 8 |
+| Zoophyte native | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 14 |
 
 ### Jeroen Kimmel (Hubbard-derived) — Jeroen Kimmel  ·  `Driver 11 (Stage A)`  ·  9 songs / 9 SF2 files
 
@@ -1165,10 +1176,11 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | What Can I Say Crap | Wojciech Radziejewski (Shogoon) | 1993 Elysium | 12 |
 | Zakplus | Wojciech Radziejewski (Shogoon) | 1999 Taboo | 6 |
 
-### Matt Gray — Matt Gray  ·  `native (Stage B)`  ·  37 songs / 78 SF2 files
+### Matt Gray — Matt Gray  ·  `native (Stage B)`  ·  42 songs / 104 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
+| Bangkok Knights Loader sub01 | Matt Gray | 1987 System 3 | 1 |
 | Driller sub01 | Matt Gray | 1987 Incentive | 1 |
 | Hunters Moon Remastered sub01 | Matt Gray | 2018 Thalamus Digital Publ. | 1 |
 | Hunters Moon Remastered sub02 | Matt Gray | 2018 Thalamus Digital Publ. | 1 |
@@ -1193,6 +1205,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Last Ninja 2 sub10 | Matt Gray | 1988 System 3 | 2 |
 | Last Ninja 2 sub11 | Matt Gray | 1988 System 3 | 1 |
 | Last Ninja 2 sub12 | Matt Gray | 1988 System 3 | 2 |
+| Make My Day sub01 | Matt Gray | 1988 The Power House | 1 |
 | Maze Mania sub01 | Matt Gray | 1989 Hewson | 2 |
 | Maze Mania sub02 | Matt Gray | 1989 Hewson | 8 |
 | Maze Mania sub03 | Matt Gray | 1989 Hewson | 1 |
@@ -1202,10 +1215,13 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Motocross sub02 | Matt Gray | 1989 Codemasters | 1 |
 | Motocross sub03 | Matt Gray | 1989 Codemasters | 1 |
 | Motocross sub04 | Matt Gray | 1989 Codemasters | 1 |
+| Pogo Stick Olympics sub01 | Matt Gray | 1987 Matt Gray | 2 |
+| THEC64-Hall of Fame sub01 | Matt Gray | 2018 Retro Games Limited | 21 |
 | Tusker sub00 | Matt Gray | 1989 System 3 | 1 |
 | Tusker sub01 | Matt Gray | 1989 System 3 | 2 |
 | Tusker sub02 | Matt Gray | 1989 System 3 | 1 |
 | Tusker sub03 | Matt Gray | 1989 System 3 | 1 |
+| Warriors sub01 | Matt Gray | 1987 Matt Gray | 1 |
 
 ### Future Composer — Michael Troelsen  ·  `native (Stage B)`  ·  5 songs / 19 SF2 files
 
@@ -1221,6 +1237,6 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ---
 
-*Generated 2026-07-09. Fidelity figures are the latest measured/documented values; native
+*Regenerated 2026-09-11 via `py -3 pyscript/gen_sf2_index.py`, after the SDI_WF corpus rebuild finished (`out/sdi` tree confirmed stable, no sweep running). SDI (native/Stage B) now counts **293 songs / 5114 SF2 files**; SDI (Driver 11/Stage A, from `SF2/`) counts **348 songs / 363 SF2 files** — both as of 2026-09-11. Fidelity figures are the latest measured/documented values; native
 builds live in `bin/` and are not yet registry-wired into the auto pipeline. For the method
 behind the numbers see [`docs/players/PLAYBOOK.md`](players/PLAYBOOK.md).*

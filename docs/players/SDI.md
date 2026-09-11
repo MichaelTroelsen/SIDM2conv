@@ -688,11 +688,152 @@ one file at a time.
 | refused | 62 | all one reason: `cannot be driven by measure_onsets (self-IRQ / multispeed)` |
 | errored | 117 | 98 `not an SDI play+3 rip`, 16 `WAVE overflow (>256 rows)`, 2 timeout, 1 `IndexError` |
 
-> ⚠️ **This 262 is stale.** `out/sdi` holds **281** distinct built songs as of
-> 2026-08-20 (see the dated section above `## Stage A`) — the gap is
-> unreconciled, not resolved by a fresh built/refused/errored count, because
-> the sweep that would have produced one did not run to completion. Do not
-> quote 262 as current without that caveat.
+> ⚠️ **This 262 is stale, and so is the 281 that superseded it.** As of
+> 2026-09-11, after the SDI_WF rebuild below finished (`out/sdi` confirmed
+> stable, no sweep running), `py -3 pyscript/gen_sf2_index.py` reports **293
+> songs / 5114 files** for native SDI Stage B — see the dated note further
+> down this page for the raw-glob cross-check (294/5118) and the built/refused/
+> errored split (`built 278 of 441`) from the same rebuild. Do not quote 262
+> or 281 as current.
+
+## SDI_WF corpus rebuild, 2026-09-11 — and why variant D did NOT improve
+
+**The whole 441-file corpus was rebuilt with the within-frame onset detector
+(`SDI_WF`) at its new default and re-swept**: `pyscript/sdi_native_sweep.py -j6`,
+111 minutes, `built 278 of 441`. The rebuild is confirmed on the ARTIFACTS, not
+on the sweep's own success report — the prior SDI rebuild died in under five
+minutes having written zero files, so the check is that **278 `_part01.sf2`
+carry today's mtime** (3,815 parts in total) and the part-01 population grew
+**286 → 294**.
+
+| variant | voices | median | =100 | <90 | previous (n, median) |
+|---|---:|---:|---:|---:|---|
+| A | 120 | 99.9 | 31 | 8 | 120, 99.9 |
+| B | 81 | 99.9 | 17 | 9 | 75, 99.9 |
+| C | 201 | **98.3** | 24 | **19** | 201, 98.1 |
+| D | 54 | **99.6** | 24 | **8** | 15, **89.9** |
+| DELTA | 21 | 99.9 | 4 | 0 | 21, 99.9 |
+| E | 339 | 99.7 | 62 | 17 | 336, 99.7 |
+| V | 18 | **97.8** | 0 | 2 | 18, 96.8 |
+| **ALL** | **834** | **99.7** | 162 | 63 | 786 |
+
+**READ VARIANT D CORRECTLY — its 89.9 → 99.6 is NOT nine points of improvement.**
+Its `<90` count is **unchanged at 8**. It was *8 of 15*; it is now *8 of 54*.
+The same eight broken voices are still broken; **39 additional voices entered the
+variant, all above 90, and diluted them**. Nothing was fixed in D — the
+population grew. Quoting "D improved from 89.9 to 99.6" would be the exact
+error the denominator rule exists to prevent, and the previous table's own
+warning ("D is 5 files; treat its median as a sample") is what made the growth
+visible.
+
+**WHERE THE COMPARISON *IS* LIKE-FOR-LIKE, it is a real but small gain.** Four
+variants have an unchanged `n`, so their numbers are directly comparable:
+A (n=120) flat at 99.9 with one more voice at exactly 100; **C (n=201) 98.1 →
+98.3 with `<90` falling 21 → 19**, i.e. two voices genuinely recovered;
+DELTA (n=21) unchanged; **V (n=18) 96.8 → 97.8**. B, D and E all grew, so their
+medians are not comparable against the earlier figures at all.
+
+**THE 115 ERRORS ARE NOT 115 DEFECTS**, and the split matters more than the
+total: **99** are `not an SDI play+3 rip (signatures missing)` — files that are
+not SDI at all and never could build; **14** are `WAVE overflow: N rows > 256`,
+a real builder ceiling (257–323 rows against a 256 cap), the same class as
+Hubbard's 128-sequence cap; **2** are `timeout after 1800s` (`End_94`,
+`Rectum`); and **1** (`Barbers_Adagio_64`) recorded a table border `+-------+`
+as its error string, which is the error-scraper defect already on record rather
+than a build failure.
+
+**THE TWO TIMEOUTS ARE A MEASUREMENT GAP, NOT A RESULT.** `End_94` and `Rectum`
+are the two longest decoded files in the corpus (the `span-desc` schedule runs
+them first, at 120,097 and 120,004 frames), so the per-file 1800s cap excludes
+precisely the heaviest material from every figure above. Raising the cap for
+those two is what would close it; until then the corpus median is over a corpus
+that is missing its two largest members.
+
+**48 refused**, all with the same reason: `this file cannot be driven by
+measure_onsets (self-IRQ / multispeed)`. Those stay in the scored denominator by
+decision — they are the evidence that `measure_onsets` under-detects, and
+quarantining them would delete the reason the onset fix exists.
+
+### Why the gate refuses these 48 — the NAMED mechanism, and the two files that are already in anyway
+
+The refusal reason string names two things at once ("self-IRQ / multispeed"),
+but the mechanism the gate is built to catch, and the one this corpus's whole
+onset-fix history traces back to, is **legato collapse in
+`measure_onsets`'s gate-rise detection** (`sidm2/dmc_parser.py:378`, the
+onset-agreement gate itself lives in `bin/build_sdi_native_song.py:590-615`).
+`measure_onsets` finds a note onset by scanning for a `$D404` gate bit
+0→1 rise in the **end-of-frame register state**. A player that retriggers a
+note by writing gate OFF then ON **inside one play call** never leaves that
+state visible — the frame reads 1→1 both before and after — so the
+state-based scan records nothing, the note appears to glide under one held
+gate (legato), the envelope never re-attacks in the model, and the onset
+count comes back far under siddump's own count for the same voice while every
+per-frame register metric still reads 100%. That is a **detector blind spot,
+not a property of the music**, which is exactly why these files are evidence
+for the fix rather than noise to remove.
+
+The evidence is a real emulated-vs-real onset count, measured per file on the
+voice carrying the notes, and it is what motivated shipping the within-frame
+detector (`SDI_WF`, default since 2026-09-10) in the first place
+(`sidm2/dmc_parser.py:393-407`, `bin/build_sdi_native_song.py:578-590`, first
+700 emulated frames vs. a siddump reference truncated to the same window):
+
+| file | state-based onsets | within-frame onsets | siddump reference | reading |
+|---|---:|---:|---:|---|
+| `Sveitser_Ost` | 1 | 67 | 67 | exact — legato collapse, fixed by `SDI_WF` |
+| `Jessie_Jazz` | 1 | 70 | 70 | exact — legato collapse, fixed by `SDI_WF` |
+| `Twin_Peaks` | 1 | 59 | 59 | exact — legato collapse, fixed by `SDI_WF` |
+| `Psycho_II` | 4 | 66 | 66 | exact — legato collapse, fixed by `SDI_WF` |
+| `Lame` | 23 | 24 | 25 | control, +1 — not a legato case |
+| `Culture_Mix_1` | 47 | 47 | 47 | **control, unmoved** — already agreed, proves `SDI_WF` doesn't over-detect |
+| `Neverending_Story` | 15 | 15 | 117 | **unchanged in both modes** — self-IRQ, not legato; no py65 replay drives it |
+
+Four of those five originally-under-detecting files are exactly the legato
+case and `SDI_WF` closed them — they build today. `Neverending_Story` is the
+one file on this list that is genuinely the *other* half of the reason
+string: a self-IRQ player that no py65-based replay (state-based or
+within-frame) can drive at all, so its 15-vs-117 gap is untouched by the
+fix, and `bin/build_sdi_native_song.py`'s own refusal message
+(`REFUSING to build: this file cannot be driven by measure_onsets (self-IRQ /
+multispeed)`, verbatim, 59/161 emulated onsets vs. trace when last probed —
+see the "phantom" note earlier on this page) is honest about that. The
+**48 refused in the 2026-09-11 SDI_WF rebuild are today's residual
+population after that fix**: the legato-class files it could reach are gone
+from the refused count, and what's left files under the same one reason
+string because the gate does not yet distinguish "self-IRQ, unreachable by
+either detector mode" from "still under-detecting for some other cause" —
+which is itself further evidence that the gate, not just the pre-`SDI_WF`
+detector, is where the next fix belongs. That is the case for the standing
+decision above: shrinking or quarantining the 48 would erase the very
+population this reasoning is built on.
+
+**Corpus-policy wrinkle — the 48 are not the only files failing this gate,
+and the policy is not uniform.** `Banana` and `Psycho` fail today's
+onset-drivability gate exactly like the 48 above (`Psycho` was itself one of
+the four the `SDI_WF` table's precursor measurement was run against, as
+`Psycho_II`'s sibling file), yet unlike the 48 they are **not sitting in
+"refused" with zero artifacts** — they already shipped, from an earlier build
+predating today's 85%-agreement gate: `out/sdi/Banana_native_part01.{sf2,sf2.prov,sf2.span,sid}`
+(4 files, 1 part) and `out/sdi/Psycho_native_part{01,02}.{sf2,sf2.prov,sf2.span,sid}`
+(8 files, 2 parts) — **12 files on disk between the two songs**, confirmed by
+directory listing on 2026-09-11, not the "24" figure floated in an earlier
+pass at this question; that earlier figure is not reproducible from what is
+on disk and should not be repeated. The point stands regardless of the exact
+count: those artifacts are not being rebuilt or re-verified by the current
+sweep (both songs are D-variant and appear in the 13-file "no artifact
+before or after" list a few sections up for the *loop-guard* fix, which is a
+different fix than `SDI_WF` — they never got as far as a fresh onset
+measurement under the current gate). **Decision, so it is not re-asked: the
+existing `Banana`/`Psycho` artifacts stay on disk, untouched and unscored by
+the current gate**, exactly as `Short_Deel` and `Bahbar_v` were kept above —
+this repo's policy has consistently been to keep what already shipped rather
+than delete evidence, not to hold every song to the gate version active on
+the day it happens to be re-swept. What the policy explicitly does **not**
+do is claim those 12 files pass today's 85% gate — they don't, and no
+sweep should report them as passing without re-running the onset check
+under `SDI_WF` first.
+
+---
 
 | variant | voices | median | =100 | <90 |
 |---|---:|---:|---:|---:|
@@ -857,6 +998,18 @@ walk fix) touches only D-decode code and none of these five are variant D, so
 this is confirmed a **separate, still-unexplained defect** — not a side
 effect of the walk fix, and not something this task's failed rebuild attempt
 could confirm or refute either way.
+
+> ⚠️ **The 281/262 figures above are now stale — re-derived 2026-09-11, after
+> the SDI_WF rebuild (see the dated section below) finished and the tree was
+> confirmed stable.** `py -3 pyscript/gen_sf2_index.py` (which walks `out/sdi`
+> the same way this page's counts always have) now reports **293 songs / 5114
+> files** for native SDI Stage B. A raw glob against `out/sdi` on the same day
+> counted `*_part01.sf2` = **294** and all `*.sf2` = **5118** — 1 song / 4
+> files more than the index script's figure; the `_diag*` scratch probe noted
+> above is no longer present on disk, so it does not explain the gap, and it
+> is not reconciled here. Do not quote 281 or 262 without this note. The
+> part-01 population's growth **286 → 294** across the rebuild is corroborated
+> independently in the dated section below.
 
 **Variant-D table below re-verified against disk today, unchanged** (as
 expected — nothing rebuilt): `Culture_Mix_1` 1 part, `Culture_Mix_2` 2,
