@@ -3,8 +3,10 @@
 `docs/plans/ABPAGE_PORT_PLAN.md` step 5 requires three observations in a real
 browser: (a) audio plays and switches, (b) the envelope canvas drew, (c) blind
 mode randomizes and tallies. The `claude-in-chrome` MCP that would make them is
-not connected on this machine, and `pyscript/abpage_browser_probe.py` was
-accepted as the substitute.
+still not connected on this machine, but as of 2026-09-11 Playwright is, and
+the three observations have now been made once by hand through it.
+`pyscript/abpage_browser_probe.py` remains the substitute for repeatable,
+human-free coverage.
 
 It is a PARTIAL substitute and these tests exist to keep that visible. Measured
 against the real served page (Angular, port 8730), the probe reports per-voice
@@ -88,4 +90,5 @@ def test_the_uncovered_observations_are_named_in_the_module_docstring():
     assert "NOT COVERED" in doc
     assert doc.count("NOT COVERED") >= 3, doc.count("NOT COVERED")
     assert "ABPAGE_PORT_PLAN" in doc
-    assert re.search(r"step 5 needs a human or the MCP", doc), doc[-400:]
+    assert re.search(r"step 5.{0,200}human or the MCP", doc, re.S), doc[-400:]
+    assert "nor is Playwright" not in doc, "docstring must not claim Playwright is unavailable"
