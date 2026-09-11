@@ -393,6 +393,15 @@ def main(argv=None):
                     pre[nm] = {"error": f"{type(e).__name__}: {e}"}
                 bad = " LAUNCH FAILURE" if pre[nm].get("infra") else ""
                 print(f"  ...{done}/{len(futs)} done ({nm}){bad}", flush=True)
+                # Update the journal HERE, in the main thread, as each future
+                # completes -- not after the `with` block exits, which does not
+                # happen until every future is done. Writing from inside the
+                # worker threads instead would race on the journal file (this
+                # loop, single-threaded via as_completed, does not).
+                _JOURNAL.update(done=done, last_file=nm)
+                if pre[nm].get("voices"):
+                    _JOURNAL["built"] += 1
+                write_journal()
                 # TOTAL, not consecutive -- see --infra-abort's help. Cancel what
                 # has not started: continuing past host exhaustion records files
                 # as failures they never had, which is the whole point of the
@@ -411,12 +420,19 @@ def main(argv=None):
                 pre[nm] = {"infra": "cancelled after launch failures"}
 
     for i, name in enumerate(corpus, 1):
-        rec = pre[name] if name in pre else build_one(name, a.timeout)
+        already_journaled = name in pre
+        rec = pre[name] if already_journaled else build_one(name, a.timeout)
         results[name] = rec
-        _JOURNAL.update(done=i, last_file=name)
-        if rec.get("voices"):
-            _JOURNAL["built"] += 1
-        write_journal()
+        # Under -j>1 this file's completion was already journaled (done/built
+        # counted, last_file set) inside the as_completed loop above, in
+        # completion order. Re-journaling it here, in corpus order, would
+        # double-count `built` and rewrite `last_file` out of order -- so only
+        # the serial path (jobs==1, nothing pre-computed) journals here.
+        if not already_journaled:
+            _JOURNAL.update(done=i, last_file=name)
+            if rec.get("voices"):
+                _JOURNAL["built"] += 1
+            write_journal()
         if rec.get("infra"):
             consec_infra += 1
             print(f"  [{i}/{len(corpus)}] {name:34s} {'?':5s} "

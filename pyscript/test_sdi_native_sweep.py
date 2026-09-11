@@ -249,6 +249,63 @@ def test_positive_control_a_sweep_that_DID_build_exits_zero(tmp_path, monkeypatc
     assert j["built"] == 1 and j["total"] == 1
 
 
+def test_the_journal_advances_DURING_a_parallel_run_not_only_at_the_end(monkeypatch):
+    """MEASURED 2026-09-11 during the 441-file rebuild: under -j>1 the journal
+    read done=0/built=0/last_file=null for the entire 111-minute run and only
+    jumped to the final totals at the very end. CAUSE: the ThreadPoolExecutor
+    `with` block did not return until every future completed, and the
+    journal-updating loop ran AFTER it -- so the journal was written once at
+    the start (zeros) and once at the end (final totals), no matter how long
+    the run took.
+
+    This test does not spawn a builder or care about wall-clock realism; it
+    proves the STRUCTURAL property: a fast file's completion must be
+    journaled before a slow file, running concurrently, finishes -- i.e. the
+    write happens as each future completes (in as_completed's main-thread
+    loop), not after the whole pool drains. Two synthetic files, one fast and
+    one slow, --jobs 2: if the journal is only updated after the executor's
+    `with` block exits, the fast file's write and the slow file's write are
+    both timestamped at (approximately) the slow file's finish time. If it
+    updates as each future completes, the fast file's write lands well before
+    the slow file's.
+    """
+    import time as _time
+
+    times = {}
+
+    def fake_build_one(name, timeout=1800):
+        delay = 0.02 if name == "Fast" else 0.35
+        _time.sleep(delay)
+        return {"variant": "A", "voices": [100.0, 100.0, 100.0], "parts": 1,
+                "onset_agree": (10, 10), "refused": None, "v_wrapper": False,
+                "n": [500, 500, 500], "rc": 0}
+
+    monkeypatch.setattr(S, "build_one", fake_build_one)
+
+    orig_write = S.write_journal
+
+    def spying_write():
+        lf = S._JOURNAL.get("last_file")
+        if lf and lf not in times:
+            times[lf] = _time.perf_counter()
+        orig_write()
+
+    monkeypatch.setattr(S, "write_journal", spying_write)
+
+    rc = S.main(["--files", "Fast", "Slow", "--jobs", "2",
+                 "--schedule", "corpus-order"])
+    assert rc == 0
+
+    assert set(times) == {"Fast", "Slow"}, times
+    gap = times["Slow"] - times["Fast"]
+    assert gap > 0.15, (
+        "the journal recorded 'Fast' and 'Slow' finishing only %.3fs apart, "
+        "which means both writes happened in one post-pool burst rather than "
+        "as each future actually completed (Fast should land ~0.02s in, "
+        "Slow ~0.35s in): %r" % (gap, times))
+
+
+
 # ---------------------------------------------------------------------------
 # THE SCHEDULER HAD NO TESTS AT ALL until 2026-09-05 -- `schedule_longest_first`
 # and `decoded_span` are the DEFAULT ordering for every sweep and no test file
