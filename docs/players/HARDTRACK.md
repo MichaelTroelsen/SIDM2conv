@@ -2547,3 +2547,115 @@ tracked file.
    listening pass~~ was run in v3.25.0 — see *Rung 4* above; it found no gross
    defect and a small real brightness/pitch-class difference, and is recorded as
    a baseline rather than a verdict. Rung 3 still needs the editor GUI.
+
+## The one-note shift is NOT in the parser and NOT in the shim — it is downstream, 2026-09-11
+
+The sequencer walk was confirmed against real 6502 at `fcf3203`. This pass tests
+the next two layers down and **exonerates both**, leaving one place for the
+defect to be.
+
+### First: what the law actually says, in absolute positions
+
+`shift` measures `gg[i] == og[i+1]` on gaps. Telescoped through `best_offset_c`'s
+relation, that is a statement about absolute onsets:
+
+```
+offset[k] == og[k] - 3   with og[k] = orig[k+1] - orig[k]
+  =>  ours[k] == orig[k+1] - 3
+```
+
+Measured directly on the onset frames rather than inferred (voice 1, each file in
+its own `.span` window):
+
+```
+LAW    Jazzloor       ours[k] == orig[k+1] - 3   48 of 48   (100.0%)
+       Illmatic_end   ours[k] == orig[k+1] - 3   20 of 20   (100.0%)
+CLEAN  Griffin_Score  ours[k] == orig[k]   - 3   71 of 72   ( 98.6%)
+       Sling          ours[k] == orig[k]   - 3   73 of 74   ( 98.6%)
+```
+
+Both classes carry the **same** `-3` and the **same note count** on both sides.
+The only difference between a LAW file and a CLEAN one is the **index**: `k+1`
+against `k`. It is a pure one-note shift of the whole voice — not a drift, not a
+tempo error, and not a partial one. On the CLEAN files `k = 0` is the single
+miss, which is the start-of-render frame and not part of the law.
+
+The `-3` also stops being mysterious. Under "each note gets its successor's
+duration", `ours[k] = ours[0] + orig[k+1] - orig[1]`, and with `ours[0] = 1` and
+`orig[1] = 4` that is exactly `orig[k+1] - 3`.
+
+### The parser is CORRECT on LAW files — 100.0%, on both classes
+
+Two alignment faults have to be cleared before this comparison means anything,
+and both were live:
+
+* **siddump reports one phantom onset at frame 0** (it force-displays every
+  register on its first row — `CLAUDE.md`'s standing caveat). Drop `oo[0]`.
+* **legato notes do not retrigger the gate**, so they are parser `Event`s with no
+  siddump onset. Filter `e.legato`.
+
+With both cleared the counts match exactly — 48/48, 20/20, 71/71, 73/73 — and
+the result is unambiguous:
+
+```
+                     parser[j] == original_real[j] - 3
+Jazzloor      (LAW)     48 of 48   100.0%
+Illmatic_end  (LAW)     20 of 20   100.0%
+Griffin_Score (CLEAN)   71 of 71   100.0%
+Sling         (CLEAN)   73 of 73   100.0%
+```
+
+**The parser places every note of a LAW file exactly where the original does.**
+The `-3` is a constant of the parser's own frame arithmetic, present on both
+classes, not a render artifact.
+
+> ⚠️ **An earlier form of this same probe read the opposite**, and the reason is
+> worth keeping: comparing *all* parser notes to *all* siddump onsets index-by-index,
+> with counts of 51 vs 49 and 79 vs 72, made the CLEAN files look shifted and the
+> LAW files look clean. Both sequences live on the same `fpt` grid, so an offset
+> fit over misaligned series still returns a confident high percentage. **Equal
+> counts on both sides is the precondition for reading an index relation at all.**
+
+### The shim is correct too — its rows track the parser exactly
+
+`HardTrackShim` accumulates `MONEvent.dur` into row positions. Compared against
+the parser's own `Event.frame`, with no siddump anywhere in the loop:
+
+```
+                builder row frame  vs  parser frame
+Jazzloor      51 notes, constant +2
+Illmatic_end  30 notes, constant +2
+Griffin_Score 79 notes, constant +2
+Sling         73 notes, constant +2
+```
+
+Note counts identical, offset **uniform and identical on LAW and CLEAN**. The +2
+is `PIPE`, the note-on pipeline constant folded into `onset_delay`. So the
+gate-off folding at `build_hardtrack_native_song.py:149`
+(`out[-1].dur += e.dur`) does **not** introduce the shift.
+
+### So it is downstream of the shim
+
+`HardTrackShim` is handed to `BM.build_native_song` in
+**`bin/build_mon_native_song.py`** (`build_hardtrack_native_song.py:249`, `:294`).
+Everything upstream of that call is now measured correct on LAW files; the render
+that comes out of it is shifted by one note. That is the remaining interval.
+
+**The prime suspect, not yet tested:** the note-merge block at
+`bin/build_mon_native_song.py:2080-2104`, where `tk += ev.dur` occurs inside
+several branches and `edur = tk + ev.dur - etk` recomputes an effective duration
+across a merge. A merge that advances `tk` past an event while attributing its
+duration to the neighbouring note produces exactly a one-note shift. Note this is
+the engine **shared by nine builders**, so whatever is found there must be checked
+against the other players before it is changed.
+
+**Not done here, deliberately:** `bin/build_mon_native_song.py` is outside this
+task's declared writable paths, so this pass stopped at naming the interval rather
+than widening into a file shared by every native builder.
+
+### Mechanisms now refuted: EIGHT
+
+Six were already dead (`lateness = gap-5`; mis-ordered durations; rest-vs-tie; the
+`ctr` fetch/dispatch pipeline; player variant; tempo). This pass adds **the parser's
+note placement** and **the shim's row accumulation**, both at exactly 100.0% on
+LAW files. Do not re-propose any of the eight.
