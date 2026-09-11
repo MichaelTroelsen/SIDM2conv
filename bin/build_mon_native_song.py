@@ -1114,45 +1114,8 @@ def _rle_wave_impl(wfs):
         else:
             runs.append([w, 1])
     rows = [(w & 0xFF, c) for w, c in runs]
-    rows.append((0x7F, _wave_loop_target(rows)))
+    rows.append((0x7F, len(rows) - 1))          # loop to the settled run
     return rows
-
-
-def _wave_loop_target(rows):
-    """Which row the closing $7f jumps back to: the start of a repeating CYCLE
-    when the program ends in one, else the settled run (the historical behaviour).
-
-    The driver's $7f row is a JUMP TO A ROW (`lda WAVE+256,y ; col1 = jump target
-    row`), so a program whose tail repeats does not need that tail spelled out --
-    it needs the jump aimed at the cycle's first row. Jumping to `len(rows)-1`
-    instead, which is what this always did, freezes on the last waveform and
-    forces every repetition to be stored: SDI's `Sugarhill` spent 256 rows on an
-    exact period-3 arpeggio carrying about 8 rows of information, overflowed the
-    driver's 256-row WAVE table, and REFUSED THE WHOLE BUILD. Fourteen SDI files
-    fail that way and the music is not what exceeds the table -- the packing is.
-
-    The cap is the DRIVER's and is not moved here: the row index is 8-bit and the
-    column stride is a hard-coded 256 in `drivers_src/common/sf2_native_driver.asm`.
-
-    Returns an index into `rows` (the jump row itself is appended after).
-    """
-    n = len(rows)
-    if n < 4:
-        return n - 1
-    # RLE has already merged equal adjacent waveforms, so rows[i] != rows[i+1]
-    # and a period of 1 cannot arise. Take the SHORTEST period that repeats at
-    # least twice at the tail -- the fundamental, not a multiple of it.
-    for p in range(2, n // 2 + 1):
-        if rows[n - p:] != rows[n - 2 * p:n - p]:
-            continue
-        # Walk the cycle back as far as it actually holds, so the jump lands on
-        # its true first row rather than on an arbitrary multiple of p.
-        start = n - 2 * p
-        while start - 1 >= 0 and rows[start - 1] == rows[start - 1 + p]:
-            start -= 1
-        del rows[start + p:]
-        return start
-    return n - 1
 
 
 def _wave_prog_for(frames, v, onset, dur_f):

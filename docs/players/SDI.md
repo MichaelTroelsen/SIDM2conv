@@ -1695,3 +1695,164 @@ The two hits in the DMC builder are **prose inside comments** naming
 `_wave_prog_for`, not code. There is one encoder and it did not need to be
 de-duplicated. The earlier record that said "in `build_mon_native_song`" was
 right.
+
+## The cycle-aware RLE measured over the full 441-file corpus, 2026-09-11
+
+A full sweep (`--jobs 4 --timeout 7200`, 157 min) settles most of what the
+previous section left open.
+
+### WAVE overflow: 16 → 1
+
+| error class | before | after |
+|---|---:|---:|
+| `not an SDI play+3 rip` (signatures missing) | 98 | 98 |
+| **`WAVE overflow: N rows > 256`** | **16** | **1** |
+| timeout at the 1800 s cap | 2 | 0 *(cap raised to 7200 s)* |
+| `IndexError` | 1 | 0 |
+| a mangled `+-------+` error string | 0 | 1 *(see below)* |
+| **errored, total** | **117** | **100** |
+
+`built` is **293** of 441 (refused 48, errored 100).
+
+**`Lederhosen` builds** — 13 parts, 98.4/100.0/96.3. It appeared twice in the
+previous sections, as a WAVE-overflow refusal *and* as the passband-unexercised
+row still carrying an August artifact. Both were the same fact and both resolve.
+
+**The survivor is a genuine ceiling case, exactly as predicted.**
+`RNA_Reset_Now_Asshole` still reports `WAVE overflow: 263 rows > 256`. The
+earlier diagnosis said explicitly that "genuinely incompressible content summing
+past 256 would make that file a real driver-ceiling case" — this is that file.
+Its wave program has no repeating tail for the packer to collapse, so it is not
+a packing failure and no cycle-aware encoder can rescue it. Lifting it needs
+16-bit row indexing in the driver.
+
+### The re-pack is NOT a corpus-wide no-op — and where it fires, it IMPROVED
+
+The earlier neutrality evidence (27 parts across three players, byte-identical)
+was a same-code rebuild and therefore weaker than it looked. This is a true
+**old-packer vs new-packer A/B**: revert `_wave_loop_target` to `return n-1`,
+rebuild, byte-compare.
+
+| file (variant B) | parts identical | differing | old → new |
+|---|---:|---:|---|
+| `Devotion` | 3 | 0 | 99.9/99.9/99.9 unchanged |
+| `Airwalk_II` | 4 | 0 | 100.0/81.3/99.8 unchanged |
+| **`Sad_Toob`** | 7 | **2** | **77.3/95.2/99.5 → 78.7/95.3/99.6** |
+
+So one file in three changed, and it changed **for the better** on all three
+voices. That is the expected direction: aiming the `$7f` jump at the real cycle
+means a note whose program outlives its rows keeps arpeggiating, which is what
+the original does, where the old freeze held one waveform.
+
+⚠️ **Do not read "it improves things" as licence to skip the corpus proof.** One
+file is a sample, and a packer that improves three voices on one tune can still
+move a different player the wrong way.
+
+### One number this pass could NOT explain
+
+| variant | voices before → after | median before → after |
+|---|---|---|
+| A | 123 → 132 | 99.9 → 99.7 |
+| **B** | **84 → 84** | **99.9 → 99.8** |
+| C | 201 → 222 | 98.3 → 98.2 |
+| D / DELTA / E / V | unchanged | unchanged |
+
+A and C gained voices as the newly-built files entered, so their medians moved
+against a moving denominator and say nothing on their own — the trap this page
+has now had to name four times. **B gained no voices and still moved 0.1**,
+which a denominator cannot explain.
+
+It is NOT asserted to be a regression, and the reason is a limitation in the
+*baseline*, not in the measurement: the "B n=84, median 99.9" figure was
+stitched together from two different runs (a corpus sweep plus the separate
+two-longest-files run), so it is not a like-for-like comparison with a single
+441-file sweep. The A/B above also points the other way — the one B file where
+the packer fired went **up**. **The honest settling measurement is a full sweep
+with the packer reverted**, giving one clean baseline to subtract; that is
+another ~157 minutes and has not been run.
+
+### A reporting bug found in passing
+
+`Barbers_Adagio_64` records its error as the literal string `+-------+` — a
+fragment of a box-drawing table, not an error. Whatever the builder printed was
+parsed out of the wrong line. The file's real outcome is unknown, so it is
+neither a build nor a diagnosed failure; it is unmeasured. Not fixed here.
+
+## The cycle-aware wave RLE is REVERTED — it regressed 13 of 14 files it touched, 2026-09-11
+
+The previous section left one number unexplained: variant B's median moved
+99.9 → 99.8 with its voice count unchanged at 84, and it was *not* asserted to be
+a regression because the 99.9 baseline had been stitched from two different runs.
+**That caution was right and the benefit of the doubt was wrong.**
+
+### The measurement that settles it removes the baseline from the question
+
+Rebuild **the same 28 variant-B files** with `_wave_loop_target` reverted, and
+compare against the same 28 from the sweep. Same files, same denominator, only
+the packer differs — so no stitched baseline is involved at all.
+
+```
+files compared : 28 of 28
+files DIFFERING: 14
+OLD packer B median: 99.9  (n=84)
+NEW packer B median: 99.8  (n=84)
+NEW is WORSE on 13, BETTER on 1
+```
+
+| file | OLD (reverted) | NEW (committed) | Δ |
+|---|---|---|---:|
+| `Zoophyte` | 99.9 / **95.5** / 99.0 | 99.9 / **87.3** / 99.3 | −7.9 |
+| `Hyperfool` | **98.5 / 99.9 / 99.9** | **96.7 / 98.0 / 98.2** | −5.4 |
+| `Velomatrix` | **100.0 / 99.9** / 100.0 | **97.1 / 97.7** / 100.0 | −5.1 |
+| `JB_Groove_II` | **99.9** / 98.7 / 99.9 | **97.5** / 98.7 / 99.9 | −2.4 |
+| `Funk_Facet` | 99.9 / **99.9 / 99.9** | 99.9 / **97.9 / 99.7** | −2.2 |
+| `Tango` | 100.0 / **99.9 / 100.0** | 100.0 / **98.6 / 99.5** | −1.8 |
+| `Spellbound` | **100.0** / 99.7 / 90.3 | **98.5** / 99.7 / 90.3 | −1.5 |
+| `Kalkun_Yak` | 99.8 / **99.9** / 92.2 | 99.8 / **98.6** / 92.2 | −1.3 |
+| `Techno_Rave` | 99.6 / 100.0 / **99.9** | 99.6 / 100.0 / **99.1** | −0.8 |
+| `Computare_Maximus_Dominanus` | 100.0 / 100.0 / **86.4** | 100.0 / 100.0 / **85.8** | −0.6 |
+| `Vozza_Jazz` | 100.0 / **100.0** / 99.5 | 100.0 / **99.6** / 99.5 | −0.4 |
+| `Praiser` | 99.9 / **99.9** / 99.9 | 99.9 / **99.8** / 99.9 | −0.1 |
+| `Synchro` | **100.0** / 99.9 / 100.0 | **99.9** / 99.9 / 100.0 | −0.1 |
+| `Sad_Toob` | **77.3 / 95.2 / 99.5** | **78.7 / 95.3 / 99.6** | **+1.6** |
+
+**Reverted at this commit.** `_wave_loop_target` is gone, the four tests that
+pinned it are gone, and `pyscript/test_build_mon_native_song.py` is back to 21
+passing. `Zoophyte` rebuilt under the reverted packer returns to
+99.9 / 95.5 / 99.0, recovering the full 8.2 points.
+
+### What this costs, stated plainly
+
+The revert gives back the 15 files the change unblocked — WAVE overflow returns
+from 1 to 16. That is the trade the page's own rule already settled: *a re-pack
+that silently moves a passing corpus is worse than the files staying unbuilt.*
+Thirteen regressions against fifteen newly-built files is not a good trade when
+the thirteen are songs that already worked.
+
+### Why my earlier evidence pointed the wrong way — twice
+
+1. **`Sad_Toob` was the one file in 28 that improved**, and it was the file I
+   happened to sample. A single file is not a direction.
+2. **The three-player byte-identity check** (`Homebrew`, `Illmatic_end`,
+   `Alf_TV_Theme`, 27 parts) was real but unrepresentative: those three sit in
+   the half of the corpus the packer does not touch. **Half of variant B changes**
+   — the sample simply missed it.
+
+The structural argument I made ("the new branch only fires where a tail
+repeats, so byte-identity is the predicted result") was **true and still
+misleading**: it predicts *which* files change, not whether the change is an
+improvement. Where the tail does repeat, looping the cycle turns out to be worse
+than freezing on the settled waveform more often than not.
+
+### The right way to re-attempt it
+
+The idea is not dead — `Sad_Toob` shows a cycle-aware jump *can* help, and
+`RNA_Reset_Now_Asshole` (263 rows, no repeating tail) shows some files are a
+genuine driver ceiling regardless. A next attempt must be **gated per program**
+rather than applied unconditionally: emit the cycle jump only where it is needed
+to fit the table, and keep the freeze everywhere else. That confines the change
+to the files that currently refuse and cannot move a passing corpus at all.
+
+⚠️ `out/sdi` is MIXED as of this commit: the 28 variant-B files carry
+reverted-packer artifacts, the other ~265 built files still carry the
+cycle-aware build. **A full rebuild is owed before any SDI figure is quoted.**
