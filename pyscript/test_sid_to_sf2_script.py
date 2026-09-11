@@ -796,14 +796,25 @@ class TestSF2ExportedPath(unittest.TestCase):
         #
         # An SF2 file is [load_lo, load_hi, $37, $13, <block chain>], so after
         # SIDParser strips the 2-byte load address the marker is at C64-data offset
-        # 0 and the first block descriptor -- id $01, then a little-endian size --
-        # is at offset 2. Verified against an sf2_to_sid round trip of
+        # 0 and the first block descriptor -- id $01, then a single-byte size --
+        # is at offset 2/3. Verified against an sf2_to_sid round trip of
         # bin/music/Driver 11 Test - Arpeggio.sf2, whose C64 data starts
         # 37 13 01 25 00. See pyscript/test_conversion_pipeline.py.
-        c64_data = (b'\x37\x13'          # $1337 at offset 0, where a real one lives
-                    + b'\x01'            # BLOCK_DESCRIPTOR
-                    + b'\x05\x00'        # its size, little-endian, in bounds
-                    + b'\x00' * 1019)    # 1024 bytes total
+        #
+        # The gate (`sf2_declared_driver` in sidm2/conversion_pipeline.py) reads
+        # the descriptor block's BODY, not just the block-chain shape -- it needs
+        # a real driver name to positively identify a Driver 11 export. The body
+        # layout is [u8 type][u16 LE size][NUL-terminated name], and the name is
+        # in C64 SCREEN CODES, not ASCII ($01-$1A map to A-Z), so "DRIVER" is the
+        # bytes 0x04 0x12 0x09 0x16 0x05 0x12 -- the rest (digits/space/dash) are
+        # already printable ASCII and pass through unchanged.
+        descriptor_name = bytes([0x04, 0x12, 0x09, 0x16, 0x05, 0x12]) + b' 11.00 - THE STANDARD'
+        descriptor_body = b'\x00' + b'\x00\x15' + descriptor_name + b'\x00'
+        c64_data = (b'\x37\x13'                       # $1337 at offset 0
+                    + b'\x01'                          # BLOCK_DESCRIPTOR
+                    + bytes([len(descriptor_body)])    # single-byte block size
+                    + descriptor_body)
+        c64_data += b'\x00' * (1024 - len(c64_data))   # pad to 1024 bytes total
         mock_parser_inst.get_c64_data.return_value = (c64_data, 0x1000)
         mock_parser.return_value = mock_parser_inst
 

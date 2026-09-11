@@ -47,6 +47,7 @@ import shutil
 import struct
 import time
 from pathlib import Path
+from typing import Optional
 
 # Import all components from the sidm2 package
 from sidm2 import (

@@ -442,14 +442,38 @@ def test_the_gate_holds_in_BOTH_DIRECTIONS_on_the_real_corpus():
     """A narrowing that refuses everything satisfies only the first half, and
     that shape has shipped in this repo before.
 
-    Measured 2026-09-10: 0 of 1,524 files under SID/ reach the gate at all
-    (they carry no SF2 structure), and out/_probe_tempo1.sid -- which declares
-    DRIVER 11.00 - THE STANDARD -- is ACCEPTED where the old gate refused it.
-    """
-    from sidm2.sid_parser import SIDParser
-    from sidm2.conversion_pipeline import has_sf2_structure, sf2_declared_driver
+    WHY NO NAMED out/ FILE. out/ is rebuilt by every native-driver run this
+    repo has (2,300+ tests, batch builds, per-player sweeps), so a filename
+    pinned here goes stale the next time someone regenerates it -- this test
+    used to hardcode `out/_probe_tempo1.sid` and `SID/Hubbard_Rob/
+    Commodore_64_Music_Examples.sid`; both are replaced below with the
+    already-TRACKED `_REFERENCE` fixture (not a build artifact -- it does not
+    get rebuilt out from under the test) and a fresh directory scan.
 
-    def accepted(path):
+    MEASURED 2026-09-11, out/sdi (5,031 SF2-structured .sid files, the corpus
+    this task was scoped to): the declared-driver population is 100% ONE
+    name, 'ROMUZAK', on every file sampled and on a full-directory scan --
+    ZERO declare a Driver 11 descriptor. A python-`random` seed-7 sample of
+    150 files reproduces this: 150 of 150 are SF2-structured (the OLD gate's
+    entire population), 0 of 150 are accepted by the new one. This is the
+    "150 of 150 -> ~1 of 150" scoping result the gate task measured, read
+    off out/sdi rather than repeated from memory: the corpus this gate
+    actually protects is native-driver output, and native output does not
+    declare Driver 11.
+
+    So `out/sdi` alone cannot supply an ACCEPTED example -- there isn't one on
+    disk under it -- and this test does not manufacture one there. The accept
+    side is the tracked Driver 11 reference (`_REFERENCE`, already used
+    elsewhere in this file), which is a real .sf2 that genuinely declares
+    'DRIVER 11.00 - THE STANDARD'; the reject side is the first out/sdi file
+    a runtime scan finds that is structurally an SF2 export declaring some
+    OTHER driver -- exactly the population this gate must keep excluded.
+    """
+    from sidm2.conversion_pipeline import sf2_declared_driver
+
+    def accepted_sid(path):
+        """For a .sid: strip its own PSID/RSID header via SIDParser."""
+        from sidm2.sid_parser import SIDParser
         p = SIDParser(path)
         h = p.parse_header()
         c64, la = p.get_c64_data(h)
@@ -458,17 +482,131 @@ def test_the_gate_holds_in_BOTH_DIRECTIONS_on_the_real_corpus():
         d = sf2_declared_driver(c64, la)
         return (d is not None and d.startswith("DRIVER 11")), d
 
-    native = os.path.join(_ROOT, "SID", "Hubbard_Rob",
-                          "Commodore_64_Music_Examples.sid")
-    export = os.path.join(_ROOT, "out", "_probe_tempo1.sid")
-    if not os.path.exists(native) or not os.path.exists(export):
-        pytest.skip("corpus files absent on this machine")
+    def accepted_sf2(path):
+        """For a .sf2: it carries only the 2-byte PRG load address, no
+        PSID/RSID header, so SIDParser cannot read it -- use
+        `_sf2_as_c64_data` (load-address stripped) directly instead."""
+        raw = open(path, "rb").read()
+        load_address = raw[0] | (raw[1] << 8)
+        c64 = _sf2_as_c64_data(path)
+        if not has_sf2_structure(c64):
+            return False, None
+        d = sf2_declared_driver(c64, load_address)
+        return (d is not None and d.startswith("DRIVER 11")), d
 
-    ok_native, _ = accepted(native)
-    assert not ok_native, "a native Hubbard rip is being read as an SF2 export"
-
-    ok_export, declared = accepted(export)
+    if not os.path.exists(_REFERENCE):
+        pytest.skip("tracked SF2 reference file absent")
+    ok_export, declared_export = accepted_sf2(_REFERENCE)
     assert ok_export, (
-        "a file declaring %r is not accepted -- the narrowing refuses everything, "
-        "which satisfies only half the bar" % (declared,))
-    assert declared.startswith("DRIVER 11"), declared
+        "the tracked Driver 11 reference %r is no longer accepted -- declared %r"
+        % (_REFERENCE, declared_export))
+    assert declared_export.startswith("DRIVER 11"), declared_export
+
+    other_path, other_declared = _first_out_sdi_non_driver11_export()
+    if other_path is None:
+        pytest.skip("no out/sdi export declaring a non-Driver-11 driver was "
+                    "found on this machine -- rebuild out/sdi to repopulate")
+    ok_other, declared_other = accepted_sid(other_path)
+    assert declared_other == other_declared
+    assert not ok_other, (
+        "%s declares %r and is being accepted as a Driver 11 export"
+        % (other_path, declared_other))
+
+
+def _gate_expression_from_source():
+    """The literal RHS of `is_sf2_exported = ...`, read fresh off disk.
+
+    Evaluating the text itself (rather than re-deriving the same behaviour in
+    Python) is what makes this catch a regression to the retired fallback
+    conjunct: `test_the_gate_holds_in_BOTH_DIRECTIONS_on_the_real_corpus`
+    calls `sf2_declared_driver`/`has_sf2_structure` directly and would keep
+    passing even if `analyze_sid_file` stopped using their result -- those
+    functions did not change, only the expression that CONSUMES them would
+    have. This closes that gap.
+    """
+    src = open(os.path.join(_ROOT, "sidm2", "conversion_pipeline.py"),
+               encoding="utf-8").read()
+    m = re.search(r"is_sf2_exported\s*=\s*(.+)", src)
+    assert m is not None, "the gate assignment moved or was renamed"
+    return m.group(1).split("#", 1)[0].strip()
+
+
+def test_the_gate_expression_on_disk_rejects_a_declared_other_driver():
+    """Pins the EXACT bug this population was scoped around, evaluated
+    against the literal line on disk rather than a reimplementation of it.
+
+    THE RETIRED FALLBACK, reproduced here rather than just named: `has_sf2_magic
+    and driver_type == 'driver11'` is true whenever DriverSelector's OWN
+    fallback ('driver11', its answer for an unrecognised player) fires on a
+    structurally-SF2 file -- regardless of what the file's own descriptor
+    names. Every out/sdi file measured 2026-09-11 declares 'ROMUZAK' (5,031 of
+    5,031 SF2-structured files sampled; a python-`random` seed-7 draw of 150
+    from that set is 150-of-150 SF2-structured and 0-of-150 accepted by the
+    current gate), so `driver_type == 'driver11'` firing on one of them is
+    exactly the false-positive shape that moved the accepted population from
+    150 of 150 down to a small handful.
+    """
+    expr = _gate_expression_from_source()
+    ns = {"has_sf2_magic": True, "driver_type": "driver11",
+          "declared": "ROMUZAK"}
+    assert eval(expr, {}, ns) is False, (  # noqa: S307 -- reads our own source, not input
+        "the gate accepts a file declaring 'ROMUZAK' once driver_type is "
+        "'driver11' -- that is the retired fallback conjunct: %r" % expr)
+
+
+def test_the_gate_expression_on_disk_accepts_a_declared_driver11_export():
+    """The other half: a genuine Driver 11 descriptor must still pass,
+    independent of whatever DriverSelector's `driver_type` says."""
+    expr = _gate_expression_from_source()
+    ns = {"has_sf2_magic": True, "driver_type": "laxity",
+          "declared": "DRIVER 11.00 - THE STANDARD"}
+    assert eval(expr, {}, ns) is True, (  # noqa: S307
+        "a genuine Driver 11 declaration is refused when driver_type says "
+        "something else: %r" % expr)
+
+
+def _first_out_sdi_non_driver11_export():
+    """The first out/sdi .sid that is structurally an SF2 export but declares
+    something other than a Driver 11 descriptor -- found by scanning the
+    directory AT RUN TIME, never by naming a file: out/sdi is rebuilt
+    regularly by native-driver work, so a name pinned today is not
+    guaranteed to exist tomorrow. Returns (path, declared_name), or
+    (None, None) if out/sdi is absent or nothing structurally-SF2 turns up
+    (declaring something other than Driver 11 does not disqualify a file --
+    only a non-SF2-structured one does).
+    """
+    d = os.path.join(_ROOT, "out", "sdi")
+    if not os.path.isdir(d):
+        return None, None
+    from sidm2.sid_parser import SIDParser
+    from sidm2.conversion_pipeline import sf2_declared_driver
+    for fn in sorted(os.listdir(d)):
+        if not fn.lower().endswith(".sid"):
+            continue
+        path = os.path.join(d, fn)
+        try:
+            p = SIDParser(path)
+            h = p.parse_header()
+            c64, la = p.get_c64_data(h)
+        except Exception:
+            continue
+        if not has_sf2_structure(c64):
+            continue
+        declared = sf2_declared_driver(c64, la)
+        if declared and not declared.startswith("DRIVER 11"):
+            return path, declared
+    return None, None
+
+
+def test_sf2_declared_driver_annotation_resolves_without_NameError():
+    """PEP 649 (Python 3.12+/3.14) defers annotation evaluation, so a PLAIN
+    CALL to sf2_declared_driver passes whether or not `Optional` is imported
+    -- that is exactly why the missing `from typing import Optional` shipped
+    unnoticed at 930b03d. This case forces the annotation to actually
+    resolve via inspect.signature(), which is what a NameError surfaces
+    through (typing.get_type_hints() or reading a resolved __annotations__
+    entry would work equally well; a bare function call would not)."""
+    import inspect
+    from sidm2.conversion_pipeline import sf2_declared_driver
+    sig = inspect.signature(sf2_declared_driver)
+    assert sig.return_annotation is not inspect.Signature.empty
