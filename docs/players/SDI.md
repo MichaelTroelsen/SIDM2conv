@@ -1203,3 +1203,289 @@ being zero, **not** on any artifact being able to say which commit built it.
 The probe `.sid` files the tool writes beside each artifact are cleaned up by
 the tool itself: `out/sdi` is 15,397 entries before and after, with 0
 `_passband_probe_*.sid` left behind.
+
+---
+
+## `End_94` and `Rectum` build fine — the 1800 s cap was the only thing stopping them, and the medians do NOT move (2026-09-11, task `sdi-two-longest-files-timeout-at-1800s`)
+
+The 2026-09-11 corpus sweep recorded `timeout after 1800s` for exactly two files,
+and they are the corpus's two LONGEST decoded songs (`End_94` 120,097 frames,
+`Rectum` 120,004 — the `span-desc` schedule runs them first). That made the
+exclusion **biased rather than random**: every per-variant median above was over a
+corpus missing its two heaviest members.
+
+**Re-run with the cap raised to 7200 s — both BUILD.** No code changed; only
+`--timeout`.
+
+| file | variant | voice medians | parts |
+|---|---|---|---:|
+| `End_94` | B | 100.0 / 99.8 / 99.8 | **1192** |
+| `Rectum` | A | 97.9 / 100.0 / 100.0 | 72 |
+
+`built 2 refused 0 errored 0`. So **they are not a structural ceiling** — the only
+thing excluding them was a per-file wall-clock limit, and both finish inside 7200 s.
+The pair took **60.6 min** together; each necessarily exceeds 1800 s, since both hit
+that cap in the full sweep.
+
+### And the answer to the question the bias raised: nothing moves
+
+| variant | without the two | with them |
+|---|---|---|
+| A | n=120 med 99.9 | n=123 med **99.9** |
+| B | n=81 med 99.9 | n=84 med **99.9** |
+| C / D / DELTA / E / V | unchanged | unchanged |
+| **ALL** | n=834 med **99.70** | n=840 med **99.70** |
+| voices below 90 | 63 | **63** |
+
+Six voices enter and **not one figure changes** — not a variant median, not the
+corpus median, not the below-90 count. The two largest songs in the corpus score
+in line with it.
+
+**That is a real negative result, not a non-finding.** The concern was legitimate:
+a biased exclusion CAN move a median, and nothing about "these are the two longest
+files" told us which way. It had to be measured. Having been measured, every
+per-variant figure recorded at `e044bf1` stands as written, and the 278-built
+denominator is the one to quote — now with the two timeouts accounted for rather
+than silently absent.
+
+### Two things this leaves behind
+
+- **`End_94` emits 1192 parts**, far the largest in the corpus (next is
+  `GT_Groove` at 405). Whether an SF2 of that part count is usable in SF2II at all
+  is a separate open question, already on the backlog.
+- **The sweep records no per-file wall-clock.** Its JSON carries `n`,
+  `onset_agree`, `parts`, `rc`, `refused`, `v_wrapper`, `variant`, `voices` — and
+  no duration, so "quote each file's own wall-clock" cannot be satisfied from the
+  run. Only the pair's 60.6 min is available. That gap is already a known backlog
+  item; it is why a timeout this close to the limit could not be sized in advance.
+
+---
+
+## Passband after the SDI_WF rebuild: 277 of 293, and EIGHT NEW FAILURES that are the builder's (2026-09-11, task `sdi-passband-failures`)
+
+**Every passband figure above this line predates the 2026-09-11 corpus rebuild and
+is superseded.** `out/sdi` was rebuilt wholesale at `e044bf1` (278 of 441 built),
+so a row scored against a pre-rebuild artifact says nothing about what ships now.
+Re-run: `py -3 pyscript/passband_check.py --player sdi -j 4`.
+
+| | before (2026-08-22) | after the rebuild |
+|---|---:|---:|
+| select the original's passband | 271 of 279 | **277 of 293** |
+| unexercised (not counted either way) | 8 | 8 |
+| **FAILED** | **0** | **8** |
+
+`277 + 8 + 8 = 293`. **Do not read 271 → 277 as an improvement**: the denominator
+grew by 14 at the same time, which is the whole reason the previous section's
+"numerator is unchanged at 271" warning existed. The figure that actually moved,
+and the one worth acting on, is **FAILED going from 0 to 8**.
+
+### The 8 failures are the BUILDER's, by passband_check's own rule
+
+`Commies` 98.9 · `Curse` 98.7 · `Eastbottom` 98.5 · `Everytime` 98.1 ·
+`Funk_Facet` 98.9 · `Painful` 98.9 · `Virtual` 99.0 · `Zoophyte` 98.8
+
+All eight are **marginal** — 98.1–99.0% against a 99.0 `--min` — so none is a
+collapsed filter; they are near-misses. But the tool prints *"rebuild these
+first; if it survives a rebuild the builder is at fault, not the artifact"*, and
+**that rebuild has already happened**: all eight artifacts carry 2026-09-11
+mtimes (08:10–08:54), built by the sweep itself. So the escape hatch is spent and
+the attribution falls to the builder.
+
+`Funk_Facet` is the sharpest single case, because this page already recorded it at
+**100.0%** once the SDI-scoped filter flags were defaulted on. It now reads 98.9%.
+One file, same flags, before-and-after a rebuild — that is the cleanest evidence
+that the rebuild is what moved these rows.
+
+**What is NOT established, and must not be asserted:** *why*. `SDI_WF` changed
+onset detection, which changes note placement, which changes the frames a filter
+program is compared over — a plausible route from the rebuild to a passband
+near-miss, and no more than plausible. **The settling measurement** is to rebuild
+one of the eight with `SDI_WF=0` and re-score it: if it returns above 99.0%, the
+onset change is the cause; if it does not, the cause is elsewhere in the rebuild
+and the flag is exonerated. That is one file and one re-score, not a corpus pass.
+`Virtual` and `Zoophyte` additionally print `<== mode mismatch` with 28/28 and
+33/33 mismatching frames, so they may be a second, distinct defect rather than the
+same near-miss — check them separately.
+
+### The 8 unexercised ARE a real ceiling, and two of them explain themselves
+
+`Another_Beginning` · `Beginning` · `Beverly_Kraven` · `Holy_Daze` ·
+`Invention_1` · `Kururin` · `Lederhosen` · `Short_Deel`
+
+These cannot be improved by building: the original never routes a voice through
+the filter and never selects a passband inside the window, so **there is nothing
+to reproduce**. The tool's own suggestion to widen `--seconds` would cross a part
+boundary, which is the over-run the `.span` guard exists to prevent — widening
+MANUFACTURES disagreement rather than revealing filter behaviour. They are
+correctly *not counted either way* rather than scored as failures.
+
+Six of the eight carry 2026-09-11 mtimes. The two that do not are the interesting
+ones, and both are explained elsewhere on this page rather than being anomalies:
+
+- **`Lederhosen` (2026-08-18)** is one of the **14 WAVE-overflow files** — the
+  rebuild *refused* it (`ValueError: WAVE overflow: 264 rows > 256`), so it still
+  carries its August artifact. Its passband row and its build refusal are the same
+  fact seen from two directions.
+- **`Short_Deel` (2026-08-17)** sits at 84.1% onset agreement against an 85% gate,
+  and a recorded decision keeps it in the corpus precisely because it is
+  *unexercised* rather than failing.
+
+**So the ceiling question splits.** The 8 unexercised are a genuine, measured
+ceiling with current inputs and should stop being re-litigated. The 8 failures are
+not a ceiling at all — they are a regression the rebuild introduced, and they are
+the actionable half.
+
+---
+
+## The 256-row WAVE ceiling is the NATIVE DRIVER's, and the 14 files it blocks are UNBUILT, not unbuildable (2026-09-11, task `sdi-wave-overflow-256-row-ceiling`)
+
+14 of the 441 files in `SID/Gallefoss_Glenn` (`ls SID/Gallefoss_Glenn/*.sid | wc -l`
+-> 441) die with `ValueError: WAVE overflow: N rows > 256`, N 257-323. **Diagnosis
+only** -- the builder and parser were read-only for this task, and the answer below
+implies a change to code nine builders share, so nothing was changed.
+
+### Reproduction, and where the raise actually lives
+
+```
+py -3 bin/build_sdi_native_song.py SID/Gallefoss_Glenn/Sugarhill.sid
+  part 1/270 (0-80s) ... part 6/270 (132-132s) SDI Stage B: ...
+  File "bin/build_sdi_native_song.py", line 411, in build_song   BM.emit_one(...)
+  File "bin/build_mon_native_song.py",  line 2662, in emit_one   RN.gen_includes_song(...)
+  File "bin/build_romuzak_native_song.py", line 184, in gen_includes_song
+ValueError: WAVE overflow: 323 rows > 256
+  build refused: discarded 6 staged part(s), disk unchanged
+```
+
+The raise is **not in the SDI builder**. `build_sdi_native_song` imports
+`build_mon_native_song as BM`, which imports `build_romuzak_native_song as RN`,
+and `RN.gen_includes_song` is what lays the wave table -- so this defect is
+reached identically by every builder on that chain. Sugarhill reproduces the
+worst N in the list (323). All 14 names resolve to real files (checked
+individually). Two of the 14 were **re-derived** rather than trusted:
+`Sugarhill` -> `323 rows > 256` and `Rough_Boy` -> `265 rows > 256`, both by
+running the builder above. The remaining 12 N values are carried from the sweep's
+error map, **not** re-measured here — each run costs ~20 minutes of emulated
+tracing, so a 14-file re-derivation is a batch job, not an inline check.
+
+### WHOSE CEILING: the native driver's, and it is architectural
+
+**Not the SF2 format.** The table descriptor's row count is a **16-bit** field --
+`sidm2/sf2_header_generator.py:121`, `data.extend(struct.pack("<H", self.rows))`.
+The format can declare 65535 rows. `docs/reference/SF2_FORMAT_SPEC.md:79` does
+list `| Wave | $0B03 | 256 | 128 entries x 2 bytes |`, but that is **Driver 11's**
+own fixed block (256 *bytes*, 128 rows) -- a different and smaller number that
+says nothing about the native driver's relocated tables, which are declared
+`rows=256, columns=2` at `sf2_header_generator.py:391`.
+
+**The native driver, `drivers_src/common/sf2_native_driver.asm`.** The row index
+is an 8-bit quantity in four independent places:
+
+| line | code | what it fixes |
+|---|---|---|
+| 134 | `VWI = $1800 ; per-voice current wave-program row (3)` | 3 bytes = **one byte per voice** -- the running row counter |
+| 136 | `VIWAVE = $1806 ; per-voice instrument wave-program start row (3)` | 1 byte per voice |
+| 421 | `lda WAVE,y` | the row lives in **Y**, an 8-bit register |
+| 424 | `lda WAVE+256,y` | the column stride **256 is a hard-coded assembly constant** |
+| 424-425 | `lda WAVE+256,y` / `tay` | the `$7F` jump target is **one byte** |
+| ~470 | `ldy ws_row` / `iny` / `tya` / `sta VWI,x` | the advance wraps at 256 |
+
+Row 256 is therefore not addressable, and the byte where row 256 of column 0
+would sit **is** row 0 of column 1. Lifting the cap is not a constant bump: it
+needs 16-bit indexing inside the per-frame `wave_step` loop, plus wider
+`VWI`/`VIWAVE`/`INSTR_WAVE`/jump-target fields.
+
+**The builder only mirrors it.** `sidm2/sf2_caps.py`: `CAP_TBL = 256  # WAVE /
+FILTER table rows (each)`. `bin/build_romuzak_driver_full.py:81-86`:
+`gen.wave_columns = 2` then `gen.pulse_addr = gen.wave_addr + 2 * 256`. The
+generated `drivers_src/romuzak/layout.inc` confirms the geometry arithmetically:
+`WAVE = $3800`, `PULSE = $3a00` -- exactly `$200` = 2 columns x 256 rows, with no
+slack. So `CAP_TBL` is a faithful restatement of the driver, **not** a packing
+choice someone picked.
+
+This is the same shape as the Hubbard precedent and was established the same way
+-- `docs/players/HUBBARD.md:308`, "it needs **153** sequences, Driver 11's pointer
+table holds **128**" -- the cap is read out of the consuming driver's own table,
+and the verdict stays "not fixed / open" rather than "impossible".
+
+### HARD CAP OR PER-PART? Per part -- but splitting is already EXHAUSTED
+
+Each emitted part gets its own wave table, so the 256 is per-part and
+`build_song`'s `fits()` probe already tests `nw <= CAP_TBL`
+(`bin/build_sdi_native_song.py:371`). Instrumenting that loop read-only
+(replicating the bounds walk and comparing the `count_only` probe against the
+real layout) gives, for Sugarhill:
+
+```
+PROBE floor=1 bounds=270
+part  1 win=0-4000    shrunk=0 probe nw=110 fits=True  REAL_wave_rows=110
+part  2 win=4000-6100 shrunk=0 probe nw=132 fits=True  REAL_wave_rows=132
+part  3 win=6100-6600 shrunk=0 probe nw=159 fits=True  REAL_wave_rows=159
+part  4 win=6600-6625 shrunk=2 probe nw= 91 fits=True  REAL_wave_rows= 91
+part  5 win=6625-6637 shrunk=3 probe nw= 85 fits=True  REAL_wave_rows= 85
+part  6 win=6637-6649 shrunk=3 probe nw= 81 fits=True  REAL_wave_rows= 81
+part  7 win=6649-6650 shrunk=6 probe nw=323 fits=False REAL_wave_rows=323
+```
+
+Two things settle the question. First, **part 7's window is ONE FRAME** -- it
+shrank 6x to the `_floor`, still did not fit, and was emitted anyway via the
+documented floor escape ("a window that still will not fit at one row is emitted
+as before rather than looping forever", `build_sdi_native_song.py:396-404`). There
+is no narrower window, so **no split can fix this**: a per-note wave program's
+length is set by the note's `dur_f`, not by the part window. Second, probe and
+layout **agree exactly** (323 == 323), so this is *not* the DMC
+probe-disagrees-with-layout class (`2bdbb71`) that the floor escape was written
+for -- the packer is being told the truth and has nothing left to do with it.
+
+### WHY 323: one instrument spends the entire table on a 3-row loop
+
+Part 7's three instruments need **2 / 65 / 256** rows. One instrument alone fills
+the table. Dumping that 256-row program:
+
+```
+instr 2: 256 rows
+  distinct consecutive runs = 256   (RLE can collapse nothing)
+  distinct row values = 8 -> [(9,1),(20,1),(64,1),(64,2),(65,1),(127,254),(128,1),(129,1)]
+  first 12 rows: (9,1) (129,1) (65,1) (64,2) (20,1) (128,1) (64,1) (20,1) (128,1) (64,1) (20,1) (128,1)
+  last   6 rows: (20,1) (128,1) (64,1) (20,1) (128,1) (127,254)
+  body rows 251, exact period of body = 3
+```
+
+Rows 4-254 are an **exact period-3 cycle** `($14,1) ($80,1) ($40,1)` -- the
+per-frame WFPRG arpeggio this page already names as SDI's signature. The driver's
+`$7F` row is a **jump to a row** (`lda WAVE+256,y` / `tay`, line 424), so that
+content is expressible in **8 rows**: 4 attack rows, the 3-row cycle, and one
+`$7F` jumping back to the cycle start. The builder spends **256** -- a 32x
+over-spend -- because `_rle_wave_impl` (`bin/build_mon_native_song.py:1103-1117`)
+collapses only *consecutive identical* frames and then appends a single `$7F` that
+loops to the **last run**, never to a repeating cycle. Compounding it, the
+per-note capture clamp is `min(dur_f, 256)` (`:1133`, and the same clamp at
+`:1504`) -- the clamp on ONE note equals the budget for the WHOLE table, so a
+single note is allowed to consume all of it. That clamp was raised from
+`WAVE_CAP=96` to 256 for MoN reasons, where RLE genuinely compresses; on SDI's
+every-frame arpeggios it compresses nothing.
+
+### VERDICT: merely unbuilt
+
+**The 14 are not permanently unbuildable, and their music does not need more than
+256 rows.** The ceiling is the driver's and is real, but on the measured file the
+overflowing part carries ~8 rows of information in 256 rows. The blocker is the
+builder's wave packing, not the driver's table and not the SF2 format.
+
+**Deliberately NOT fixed here.** `_rle_wave_impl` and `_wave_prog_for` live in
+`bin/build_mon_native_song.py` and are reached by nine builders through
+`RN.gen_includes_song`; a cycle-aware wave RLE would re-pack every corpus that
+routes through it. That is a re-plan, not a widening of this task.
+
+### What is NOT established, and the measurement that would settle it
+
+The per-instrument mechanism above is measured on **one** file (Sugarhill, variant
+C). `Rough_Boy` is confirmed to overflow (265) but its row breakdown was not
+dumped, and the other 12 are taken from the sweep's error map by name.
+The settling measurement is cheap and mechanical: for each of the 14, run the
+builder, and on the overflowing part dump the per-instrument row counts plus each
+long program's exact body period (the two read-only probes used above). If every
+one shows a single instrument at or near 256 rows whose body has a short exact
+period, then one cycle-aware RLE clears all 14 and the "unbuilt" verdict holds
+corpus-wide. If any file instead shows genuinely incompressible content summing
+past 256 across several instruments, that file -- and only that file -- is a real
+driver-ceiling case and needs the 16-bit-index driver change.
