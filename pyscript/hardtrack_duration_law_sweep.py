@@ -168,6 +168,39 @@ def songs():
     return out
 
 
+def aligned_fit(oo, po):
+    """THE LAW IS AN ALIGNMENT ARTIFACT, and this is the measurement that shows it.
+
+    siddump FORCE-DISPLAYS every register on its first row (`CLAUDE.md`'s standing
+    caveat), so frame 0 carries an "onset" that is not a note-on. The ORIGINAL
+    always shows it. OUR RENDER shows it only when its own first note does not
+    fire at frame ~1 -- a voice whose first note sits at tick 0 fires there and
+    MERGES with the force-display, costing our list one leading entry.
+
+    Compare the two lists index-by-index without accounting for that and the
+    whole voice reads one note late, which is exactly `shift`. Measured over the
+    settled set: 17 of 17 LAW files have their voice's first note at tick 0, and
+    0 of 6 CLEAN files do -- a complete, exceptionless split.
+
+    So: drop the original's frame-0 entry, then try our list BOTH ways and keep
+    the better constant-offset fit. Returns (pct, C, n, which) where `which` says
+    which hypothesis won -- "ours-real" (our first note merged with the phantom)
+    or "ours-phantom" (our render shows its own).
+    """
+    o = oo[1:] if oo and oo[0] <= 2 else list(oo)
+    best = (0.0, None, 0, None)
+    for which, p_ in (("ours-real", list(po)),
+                      ("ours-phantom", po[1:] if po and po[0] <= 2 else list(po))):
+        n = min(len(o), len(p_))
+        if n < MIN_N:
+            continue
+        for C in range(-16, 17):
+            h = sum(p_[k] == o[k] + C for k in range(n))
+            if 100.0 * h / n > best[0]:
+                best = (100.0 * h / n, C, n, which)
+    return best
+
+
 def measure(stem, orig, part, voice, tmpdir, kind="gate"):
     """One row. `span` is SECONDS -- the unit that has been misread twice."""
     secs = part_span(part)
@@ -194,11 +227,14 @@ def measure(stem, orig, part, voice, tmpdir, kind="gate"):
     sm, sn = agreement(gg, og[1:])          # THE LAW: ours i == original's i+1
     im, inn = agreement(gg, og)             # the control: ours i == original's i
     oc, oh, on = best_offset_c(po, oo, og)
+    ap, ac, an, aw = aligned_fit(oo, po)
     row = dict(song=stem, secs=int(secs), n=sn, counts=counts,
                shift=(100.0 * sm / sn if sn else None),
                identity=(100.0 * im / inn if inn else None),
                offset_c=oc, offset_law=(100.0 * oh / on if on else None),
-               distinct=len(set(og)))
+               distinct=len(set(og)),
+               aligned=(ap if aw else None), aligned_c=ac, aligned_n=an,
+               aligned_via=aw)
     # THE CROSS-CHECK, not a second opinion: the relations are equivalent by
     # telescoping (see `best_offset_c`), so a split verdict means the two runs
     # were not over the same series or the same window. Name it on the row
@@ -301,6 +337,31 @@ def main(argv=None):
              sum(r["status"] == "flat" for r in rows),
              sum(r["status"] in ("silent", "no-span") for r in rows)))
     ambig = [r for r in rows if r["status"] == "ambiguous"]
+    # ---------------------------------------------------------------------
+    # THE LAW IS REFUTED, and this block is what refutes it. `shift` below is
+    # retained because it is the historical figure every earlier record quotes,
+    # NOT because it measures a defect. See `aligned_fit`: the original always
+    # carries siddump's force-display onset at frame 0 and our render carries it
+    # only when its own first note does not fire at frame ~1, so an
+    # index-by-index comparison reads a whole voice one note late.
+    al = [r for r in rows if r.get("aligned") is not None]
+    ok = [r for r in al if r["aligned"] >= 99.0]
+    print()
+    print("ALIGNED  ours[j]==orig_real[j]+C once the frame-0 force-display is")
+    print("         accounted for: %d of %d rows at >=99%%%s"
+          % (len(ok), len(al),
+             ("  (C: " + ", ".join(sorted({str(r["aligned_c"]) for r in ok})) + ")")
+             if ok else ""))
+    if al:
+        via = {}
+        for r in al:
+            via[r["aligned_via"]] = via.get(r["aligned_via"], 0) + 1
+        print("         hypothesis chosen: %s"
+              % ", ".join("%s=%d" % kv for kv in sorted(via.items())))
+    print("         ^ a row that is 'LAW' under `shift` and >=99% here carries NO")
+    print("           duration defect -- the two numbers disagree because the")
+    print("           SERIES were misaligned, never because the player is late.")
+    print()
     print("LAW  gg[i]==og[i+1] at EXACTLY 100.0%%: %d   (discriminating rows only)"
           % len(law))
     print("AMBIGUOUS  shift AND identity both >=%.0f: %d  (%s)"

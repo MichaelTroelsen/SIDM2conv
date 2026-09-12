@@ -376,3 +376,47 @@ def test_the_crosscheck_result_is_REPORTED_even_when_it_is_zero():
     i = src.index("RELATIONS")
     assert "if split:" in src[i:], (
         "the explanatory text must be conditional, but the COUNT must not be")
+
+
+# ---------------------------------------------------------------------------
+# THE DURATION LAW IS AN ALIGNMENT ARTIFACT. siddump force-displays every
+# register on its first row, so the ORIGINAL always carries a frame-0 "onset"
+# that is not a note-on. OUR render carries one only when its own first note
+# does not fire at frame ~1 -- a voice whose first note sits at tick 0 fires
+# there and MERGES with the force-display, costing our list one leading entry.
+# Compared index-by-index, that reads the whole voice one note late, which is
+# exactly what `shift` reported. Measured over the settled set: 17 of 17 LAW
+# files have their voice's first note at tick 0 and 0 of 6 CLEAN files do.
+
+def test_a_voice_starting_at_tick_0_is_not_late_it_is_MISSING_THE_PHANTOM():
+    """The LAW shape: our first note merges with the force-display."""
+    import hardtrack_duration_law_sweep as M
+    # original: phantom at 0, then real notes every 25 frames
+    oo = [0, 4, 29, 54, 79, 104, 129, 154, 179, 204]
+    # ours: the SAME real notes at -3, with no separate phantom
+    po = [f - 3 for f in oo[1:]]
+    pct, C, n, which = M.aligned_fit(oo, po)
+    assert which == "ours-real", which
+    assert C == -3, C
+    assert pct == 100.0, pct
+    # and the NAIVE comparison is what manufactures the law
+    gg, og = M.gaps(po), M.gaps(oo)
+    m, k = M.agreement(gg, og[1:])
+    assert k and m == k, "the naive shift must read 100%% on this shape"
+
+
+def test_a_voice_starting_later_shows_its_own_phantom_and_reads_CLEAN():
+    import hardtrack_duration_law_sweep as M
+    oo = [0, 40, 65, 90, 115, 140, 165, 190, 215, 240]
+    po = [1] + [f - 3 for f in oo[1:]]      # our own phantom, then the real notes
+    pct, C, n, which = M.aligned_fit(oo, po)
+    assert which == "ours-phantom", which
+    assert C == -3 and pct == 100.0, (C, pct)
+
+
+def test_aligned_fit_declines_rather_than_scoring_too_few_notes():
+    """Below MIN_N it must return no hypothesis, not a confident 100% on 3 gaps."""
+    import hardtrack_duration_law_sweep as M
+    oo = [0, 4, 29, 54]
+    pct, C, n, which = M.aligned_fit(oo, [f - 3 for f in oo[1:]])
+    assert which is None, which

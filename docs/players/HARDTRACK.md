@@ -2659,3 +2659,68 @@ Six were already dead (`lateness = gap-5`; mis-ordered durations; rest-vs-tie; t
 `ctr` fetch/dispatch pipeline; player variant; tempo). This pass adds **the parser's
 note placement** and **the shim's row accumulation**, both at exactly 100.0% on
 LAW files. Do not re-propose any of the eight.
+
+## The duration "law" is REFUTED — it is a siddump alignment artifact, 2026-09-11
+
+Eight mechanisms were refuted in turn while hunting a one-note-early duration.
+There was no defect to find. The law is an artifact of how two onset lists were
+compared.
+
+### The mechanism
+
+`siddump` **force-displays every register on its first row** (`CLAUDE.md`'s
+standing caveat), so frame 0 carries an "onset" that is not a note-on.
+
+* The **original** always shows it.
+* **Our render** shows it only when its own first note does *not* fire at frame
+  ~1. A voice whose first note sits at **tick 0** fires there and **merges** with
+  the force-display, so our list is one entry shorter at the front.
+
+Compare the two index-by-index and the whole voice reads exactly one note late.
+That is `shift`, and it is measuring the missing leading entry, not the player.
+
+### The prediction, and its exceptionless test
+
+If that is the cause, a file reads LAW **iff** its voice's first note is at tick 0.
+
+```
+LAW    n=17   first-note-tick == 0 : 17 of 17
+CLEAN  n=6    first-note-tick == 0 :  0 of 6
+```
+
+A complete split with no exceptions. `Timsoft_Intro` and `Tribute_to_Laxity` —
+the two files earlier singled out as awkward — sit in the LAW column for this
+reason and nothing more.
+
+### With the alignment corrected, every file is right
+
+Drop the original's frame-0 entry, then take our list either way and keep the
+better constant-offset fit (`aligned_fit` in the tracked sweep):
+
+```
+Jazzloor      (LAW)    ours[j] == orig_real[j] - 3   48 of 48   100.0%
+Illmatic_end  (LAW)    ours[j] == orig_real[j] - 3   20 of 20   100.0%
+Griffin_Score (CLEAN)  ours[j] == orig[j]      - 3   71 of 71   100.0%
+Sling         (CLEAN)  ours[j] == orig[j]      - 3   73 of 73   100.0%
+```
+
+Corpus-wide: **27 of 30 scorable rows sit at ≥99% with a single constant
+C = −3** — the render offset this page already documents — across BOTH classes.
+The hypothesis split is `ours-real=23, ours-phantom=7`, which is the tick-0
+discriminator showing up in the fit itself.
+
+### What this retires
+
+**Do not hunt the one-note-early duration again.** `shift` is retained in the
+sweep because it is the figure every earlier record quotes, *not* because it
+measures a defect; the summary now prints the aligned figures beside it and says
+so. The eight refuted mechanisms were all refuted correctly — the search simply
+had no target.
+
+⚠️ **The cost of this was six cycles**, and the tell was visible from the start:
+a relation holding at *exactly* 100.0% on 17 files, with two independent
+formulations agreeing perfectly, is more often one measurement error than a
+real defect reproduced seventeen times. `relations_agree` cross-checked the two
+formulations against each other — but both consumed the same misaligned series,
+so agreement between them could never have caught this. **Two derivations of one
+number are not two measurements.**
