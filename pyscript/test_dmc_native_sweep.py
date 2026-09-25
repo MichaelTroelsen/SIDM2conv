@@ -236,6 +236,68 @@ def test_a_silent_build_failure_is_still_an_error():
     assert rec["error"] == "build failed with no output"
 
 
+def test_a_refusal_followed_by_a_table_does_not_scrape_the_table_border():
+    """REPRODUCES the defect: before the fix, `_classify_build_failure` read
+    `tail[-1]` for BOTH `error` and `refused`, so a builder that refuses and
+    then still prints a diagnostic siddump table (border last) recorded the
+    refusal's reason as the table's bottom border -- a result that LOOKED
+    diagnosed but wasn't. This is the same class the SDI sweep had one file
+    over, now hit via a `refused` path DMC has and SDI's own regression tests
+    (for the `error` path) do not exercise."""
+    text = (
+        "locating tables...\n"
+        "DMC tables not located (variant?) - cannot build\n"
+        "+-------+------+------+\n"
+        "| Frame | Freq | Wave |\n"
+        "+-------+------+------+\n"
+        "|     0 | 4096 |   65 |\n"
+        "+-------+------+------+\n"
+    )
+    rec = sw._classify_build_failure(text)
+    assert "refused" in rec and "error" not in rec
+    assert "not located" in rec["refused"]
+    assert "+" not in rec["refused"], "the table border must never be the reason"
+
+
+def test_an_error_followed_by_a_table_yields_the_exception_not_the_border():
+    """Same reproduction on the `error` path: an unrefused failure whose
+    output ends in a rendered table must not record the border as the cause."""
+    text = (
+        "Traceback (most recent call last):\n"
+        "  File \"build_dmc_native_song.py\", line 10, in <module>\n"
+        "    raise RuntimeError('WAVE overflow: 288 rows > 256')\n"
+        "RuntimeError: WAVE overflow: 288 rows > 256\n"
+        "+-------+------+------+\n"
+        "| Frame | Freq | Wave |\n"
+        "+-------+------+------+\n"
+        "|     0 | 4096 |   65 |\n"
+        "+-------+------+------+\n"
+    )
+    rec = sw._classify_build_failure(text, rc=1)
+    assert "error" in rec and "refused" not in rec
+    assert "WAVE overflow" in rec["error"]
+    assert "+" not in rec["error"]
+    assert not rec.get("unparsed")
+
+
+def test_output_with_no_readable_message_is_UNPARSED_not_a_scraped_fragment():
+    """A failure whose entire output is table decoration (no traceback, no
+    refusal phrase, nothing but borders/rows) must be recorded as UNPARSED --
+    distinguishable from a diagnosed failure -- rather than silently handed the
+    last border line as if it explained anything."""
+    text = (
+        "+-------+------+------+\n"
+        "| Frame | Freq | Wave |\n"
+        "+-------+------+------+\n"
+        "|     0 | 4096 |   65 |\n"
+        "+-------+------+------+\n"
+    )
+    rec = sw._classify_build_failure(text, rc=1)
+    assert "refused" not in rec
+    assert rec.get("unparsed") is True
+    assert rec["error"].startswith("UNPARSED:")
+
+
 def test_wave_overflow_is_a_builder_cap_not_a_crash():
     """`WAVE overflow: 288 rows > 256` is the same cap the SDI sweep hits on 16
     files. It is neither a designed refusal (the builder wanted to build this

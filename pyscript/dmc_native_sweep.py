@@ -65,11 +65,17 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from sidm2.fidelity_common import (  # noqa: E402
     freq_to_semi, fmt_pct, part_span, psid_wrap, score_pct,
     siddump_per_frame, underpowered)
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
+# Reused, not reimplemented: the SDI sweep hit this exact defect (a builder's
+# last output line scraped as both the error AND the refusal reason -- a
+# siddump table border once landed as a recorded refusal reason) one file
+# earlier and its fix belongs to one class, not one script.
+from sdi_native_sweep import extract_error  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_DIR = os.path.join(ROOT, "SID", "JohannesBjerregaard")
@@ -222,20 +228,35 @@ _REFUSALS = (
 )
 
 
-def _classify_build_failure(text):
+def _classify_build_failure(text, rc=1):
     """Builder refusal (a result) vs unexpected failure (a fault).
 
     The builder states its reason; anything matching one of the known refusal
-    phrases is recorded as `refused` with that reason rather than counted as an
-    error. Unknown failures stay errors -- a refusal list that swallows
-    everything would hide a real break.
+    phrases is recorded as `refused` with the LINE THAT ACTUALLY SAYS SO --
+    not the output's last line, which is exactly the bug the SDI sweep had one
+    file over: a builder whose refusal is followed by a rendered siddump table
+    recorded the table's bottom border, `+-------+`, as its refusal reason. The
+    reason must come from the line that matched, never from wherever output
+    happened to end.
+
+    Unknown failures stay errors and route through `extract_error` (mirrored
+    from `sdi_native_sweep.py`), which applies the same discipline on the
+    error side: a traceback's own exception line, or the last line that is not
+    table decoration -- and UNPARSED, not a scraped fragment, when neither is
+    found. A refusal list that swallows everything would hide a real break, so
+    unmatched output always stays an error.
     """
-    tail = [l for l in text.splitlines() if l.strip()]
-    last = tail[-1][:160] if tail else ""
     for phrase in _REFUSALS:
-        if phrase in text:
-            return {"refused": last or phrase}
-    return {"error": last or "build failed with no output"}
+        for line in text.splitlines():
+            if phrase in line:
+                return {"refused": line.strip()[:160] or phrase}
+    if not text.strip():
+        return {"error": "build failed with no output"}
+    msg, unparsed = extract_error(text, rc)
+    rec = {"error": msg}
+    if unparsed:
+        rec["unparsed"] = True
+    return rec
 
 
 def measure(name, secs, build=False, timeout=1800):
@@ -251,7 +272,7 @@ def measure(name, secs, build=False, timeout=1800):
             [sys.executable, os.path.join(ROOT, "bin", "build_dmc_native_song.py"),
              sid, "auto"], capture_output=True, text=True, cwd=ROOT, timeout=timeout)
         if r.returncode != 0:
-            return _classify_build_failure(r.stdout + r.stderr)
+            return _classify_build_failure(r.stdout + r.stderr, r.returncode)
         span = part1_span(r.stdout + r.stderr)
     parts = sorted(glob.glob(os.path.join(BUILD_DIR, f"{name}_part*.sf2")))
     if parts:

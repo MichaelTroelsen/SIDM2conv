@@ -391,3 +391,94 @@ def test_the_prescan_is_cheap_enough_to_run_before_every_sweep():
         "starts tracing, every sweep pays it twice" % elapsed)
     real = [s for s in spans.values() if s is not None]
     assert len(real) > 300, "positive control: only %d files decoded" % len(real)
+
+
+# --- A failing builder's error message ----------------------------------------
+# THE DEFECT, reproduced from a real run before it was fixed: a completed
+# 441-file sweep (sweep_after.json, 441 records) recorded one file's error as
+# the literal string `+-------+`. The scraper took the LAST non-blank line of
+# the builder's output, and that builder had died with a RuntimeError whose
+# message embedded siddump's own stdout -- which ends in a rendered register
+# table. The record then carried neither voices nor a refusal nor a real error,
+# so the file left every per-variant denominator while looking handled.
+#
+# The capture below is the REAL output of
+#   py -3 bin/build_sdi_native_song.py SID/Gallefoss_Glenn/Barbers_Adagio_64.sid auto
+# (rc=1), trimmed in the middle of the traceback only. Nothing here keys on the
+# file name: the class is "builder output ends in a table", and the second test
+# pins the other half -- output that cannot be read at all is UNPARSED, not
+# whatever string happened to be scraped.
+_BUILDER_FAIL_ENDING_IN_A_TABLE = """\
+Barbers_Adagio_64: la=$1000 variant=E init=$2740 play=$0000
+  tracing 261s...
+Traceback (most recent call last):
+  File "/repo/bin/build_sdi_native_song.py", line 647, in <module>
+    sys.exit(main())
+  File "/repo/sidm2/fidelity_common.py", line 314, in run_siddump
+    raise RuntimeError(
+RuntimeError: siddump failed (rc=1) on SID/Gallefoss_Glenn/Barbers_Adagio_64.sid with ['-a0', '-t261']: Load address: $1000 Init address: $2740 Play address: $0000
+Calling initroutine with subtune 0
+Warning: SID has play address 0, reading from interrupt vector instead
+New play address is $2708
+Calling playroutine for 13050 frames, starting from frame 0
+Middle C frequency is $1168
+
+| Frame | Freq Note/Abs WF ADSR Pul | FCut RC Typ V |
++-------+
+"""
+
+
+def test_a_failure_whose_output_ends_in_a_table_still_yields_the_exception():
+    msg, unparsed = S.extract_error(_BUILDER_FAIL_ENDING_IN_A_TABLE, 1)
+    assert not unparsed
+    assert msg.startswith("RuntimeError: siddump failed (rc=1)"), msg
+    # The exact string the pre-fix scraper produced, and every other fragment
+    # of the table, must not be the answer.
+    assert "+-------+" not in msg
+    assert not msg.lstrip().startswith("|")
+
+
+def test_the_last_exception_wins_when_exceptions_are_chained():
+    text = ("Traceback (most recent call last):\n"
+            "  File \"a.py\", line 1, in <module>\n"
+            "ValueError: the inner one\n"
+            "\nDuring handling of the above exception, another occurred:\n\n"
+            "Traceback (most recent call last):\n"
+            "  File \"b.py\", line 2, in <module>\n"
+            "RuntimeError: the one actually raised\n")
+    msg, unparsed = S.extract_error(text, 1)
+    assert msg == "RuntimeError: the one actually raised", msg
+    assert not unparsed
+
+
+def test_output_that_is_nothing_but_a_table_is_UNPARSED_not_a_scraped_row():
+    # The other half of the contract: an unreadable outcome must be
+    # DISTINGUISHABLE from a diagnosed one, not silently given a message.
+    text = ("| Frame | Freq Note/Abs WF ADSR Pul | FCut RC Typ V |\n"
+            "+-------+\n"
+            "+-------+\n")
+    msg, unparsed = S.extract_error(text, 1)
+    assert unparsed is True
+    assert msg.startswith("UNPARSED:"), msg
+    assert "+-------+" not in msg and "| Frame" not in msg
+
+
+def test_a_plain_error_line_is_still_taken_from_the_tail():
+    msg, unparsed = S.extract_error("building...\nfatal: no tables located\n", 1)
+    assert (msg, unparsed) == ("fatal: no tables located", False)
+
+
+def test_no_output_at_all_names_the_return_code():
+    msg, unparsed = S.extract_error("   \n\n", 3221225477)
+    assert msg == "no output (rc=3221225477)" and not unparsed
+
+
+def test_summarize_lists_unparsed_files_separately_from_diagnosed_ones():
+    s = S.summarize({
+        "diagnosed": {"error": "RuntimeError: boom", "voices": None,
+                      "refused": None},
+        "unreadable": {"error": "UNPARSED: ...", "unparsed": True,
+                       "voices": None, "refused": None},
+    })
+    assert s["errored"] == 2
+    assert s["unparsed_files"] == ["unreadable"]

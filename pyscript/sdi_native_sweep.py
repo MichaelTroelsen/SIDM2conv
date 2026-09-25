@@ -187,6 +187,59 @@ def parse_build_output(text):
     return rec
 
 
+# A FAILING BUILD'S MESSAGE IS NOT ITS LAST LINE OF OUTPUT. This used to be
+# `tail[-1]`, and a real 441-file sweep recorded one file's error as the literal
+# string `+-------+` -- the bottom border of a siddump register table that the
+# builder's own RuntimeError had embedded in its message. The record was then
+# neither a build nor a diagnosed failure: it left every per-variant denominator
+# while looking handled. The class, not the string, is the defect -- any builder
+# whose output ends in a rendered table hits it, so nothing here keys on a file
+# name or on that particular table.
+#
+# Two rules, in order:
+#   1. If the child died with a Python traceback, the message is the traceback's
+#      own exception line -- the first UNINDENTED line after the LAST
+#      `Traceback (most recent call last):` (last, so a chained exception yields
+#      the one actually raised). Frame lines are always indented, so this needs
+#      no list of exception type names.
+#   2. Otherwise scan the output BACKWARDS for a line that could be a message,
+#      skipping table rows and rules. If no line qualifies, the outcome is
+#      UNPARSED -- recorded as such rather than carrying whatever was scraped,
+#      because "I could not read the output" must be distinguishable from
+#      "this failed for reason X".
+_TB = "Traceback (most recent call last):"
+_DECOR = "|+-=_*#~. 	"
+
+
+def _is_decoration(line):
+    """A table border, a rule, or a table ROW -- never an error message."""
+    t = line.strip()
+    if not t:
+        return True
+    if t[0] in "|+":          # `+-------+`, `| Frame | Freq ... |`
+        return True
+    return len(t.strip(_DECOR)) < 3
+
+
+def extract_error(text, rc):
+    """(message, unparsed) for a build that produced neither voices nor a
+    refusal. `unparsed` is True when no line of the output could be read as a
+    message; the caller must keep that distinct from a diagnosed failure."""
+    lines = [l for l in text.strip().splitlines() if l.strip()]
+    if not lines:
+        return f"no output (rc={rc})", False
+    tb = [i for i, l in enumerate(lines) if l.strip() == _TB]
+    if tb:
+        for l in lines[tb[-1] + 1:]:
+            if not l[:1].isspace():
+                return l.strip()[:160], False
+    for l in reversed(lines):
+        if not _is_decoration(l):
+            return l.strip()[:160], False
+    return (f"UNPARSED: builder output carried no readable message "
+            f"(rc={rc}, {len(lines)} non-blank lines)", True)
+
+
 def build_one(name, timeout=1800):
     sid = os.path.join(CORPUS_DIR, f"{name}.sid")
     if not os.path.exists(sid):
@@ -200,8 +253,9 @@ def build_one(name, timeout=1800):
     rec = parse_build_output(r.stdout + r.stderr)
     rec["rc"] = r.returncode
     if rec["voices"] is None and rec["refused"] is None:
-        tail = [l for l in (r.stdout + r.stderr).strip().splitlines() if l.strip()]
-        rec["error"] = tail[-1][:160] if tail else f"no output (rc={r.returncode})"
+        rec["error"], unparsed = extract_error(r.stdout + r.stderr, r.returncode)
+        if unparsed:
+            rec["unparsed"] = True
         # The child never got far enough to have an opinion about this file.
         infra = launch_failure(r.returncode, r.stdout + r.stderr)
         if infra:
@@ -240,6 +294,9 @@ def summarize(results):
             "by_variant": rollup,
             "refusal_reasons": sorted({v["refused"] for v in refused.values()}),
             "errors": {k: v.get("error") for k, v in errored.items()},
+            # An outcome the sweep could not READ is not a diagnosed failure.
+            "unparsed_files": sorted(k for k, v in errored.items()
+                                     if v.get("unparsed")),
             "unmeasured_files": sorted(infra)}
 
 
@@ -476,6 +533,11 @@ def main(argv=None):
         print(f"!! {unmeasured} file(s) UNMEASURED (process-launch failure) -- "
               f"the figures below cover {len(results) - s['unmeasured']} files, "
               f"NOT {len(corpus)}. This is not a corpus result.")
+    if s["unparsed_files"]:
+        print(f"!! {len(s['unparsed_files'])} file(s) UNPARSED -- the builder "
+              f"failed and its output carried no readable message, so these "
+              f"are undiagnosed, not diagnosed: "
+              f"{', '.join(s['unparsed_files'])}")
     print(f"{'variant':>8s} {'voices':>7s} {'median':>7s} {'=100':>6s} {'<90':>5s}")
     for var, r in s["by_variant"].items():
         print(f"{var:>8s} {r['voices']:7d} {r['median']:7.1f} "
