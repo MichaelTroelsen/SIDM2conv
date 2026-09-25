@@ -387,3 +387,60 @@ class TestWithinFrameOnsetsAreOptInAtTheSdiCallSite(unittest.TestCase):
         sig = inspect.signature(mo)
         self.assertIs(sig.parameters["within_frame"].default, False,
                       "flipping the SHARED default re-times all nine builders")
+
+
+# --- the prune prefix must be the prefix the parts are written under --------
+# Parts were written as `<base>_native_partNN` while the prune was handed
+# `<base>`, so its `<prefix>_part*` glob matched nothing and every smaller
+# rebuild kept its old higher-numbered parts (12 songs on 2026-09-24, 3 more on
+# 2026-09-25). Run in a clean interpreter: importing the SDI builder rewrites
+# BM's filter defaults, which must not leak into the rest of the suite.
+
+_PRUNE_PROBE = (
+    "import sys, os, io, contextlib, tempfile\n"
+    "sys.path.insert(0, os.path.join(%r, 'bin'))\n"
+    "sys.path.insert(0, %r)\n"
+    "sys.path.insert(0, os.path.join(%r, 'pyscript'))\n"
+    "buf = io.StringIO()\n"
+    "with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):\n"
+    "    import build_sdi_native_song as S\n"
+    "import build_mon_native_song as BM\n"
+    "tmp = tempfile.mkdtemp()\n"
+    "S.ROOT = tmp\n"
+    "os.makedirs(os.path.join(tmp, 'out', 'sdi'))\n"
+    "for n in range(1, 6):\n"
+    "    for ext in ('.sf2', '.sf2.span', '.sf2.prov', '.sid'):\n"
+    "        open(S.part_prefix('Song') + '_part%%02d' %% n + ext, 'w').close()\n"
+    "open(os.path.join(tmp, 'out', 'sdi', 'Songbird_native_part09.sf2'), 'w').close()\n"
+    "with contextlib.redirect_stdout(buf):\n"
+    "    BM.prune_stale_parts(S.part_prefix('Song'), 3)\n"
+    "print(sorted(os.listdir(os.path.join(tmp, 'out', 'sdi'))))\n"
+) % (_ROOT, _ROOT, _ROOT)
+
+
+class PrunePrefixTests(unittest.TestCase):
+
+    def test_a_smaller_rebuild_prunes_its_stale_parts_and_every_sibling(self):
+        out = subprocess.run([sys.executable, "-c", _PRUNE_PROBE], cwd=_ROOT,
+                             capture_output=True, text=True, timeout=300)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        left = eval(out.stdout.strip().splitlines()[-1])
+        want = sorted(f"Song_native_part{n:02d}{ext}" for n in (1, 2, 3)
+                      for ext in (".sf2", ".sf2.span", ".sf2.prov", ".sid"))
+        want = sorted(want + ["Songbird_native_part09.sf2"])  # another song: untouched
+        self.assertEqual(left, want)
+
+    def test_every_part_path_and_prune_in_the_builder_goes_through_part_prefix(self):
+        """Structural pin for the drift itself: no hand-built `_native_part`
+        path and no prune call that bypasses `part_prefix`."""
+        src = open(_BUILDER, encoding="utf-8").read()
+        tree = ast.parse(src)
+        prunes = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                  and getattr(n.func, "attr", None) == "prune_stale_parts"]
+        self.assertGreaterEqual(len(prunes), 2)          # multi-part AND single-window
+        for c in prunes:
+            arg = c.args[0]
+            self.assertTrue(isinstance(arg, ast.Call)
+                            and getattr(arg.func, "id", None) == "part_prefix",
+                            ast.dump(arg))
+        self.assertNotIn('f"{base}_native_part', src)

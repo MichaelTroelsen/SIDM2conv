@@ -639,3 +639,152 @@ def test_the_screen_can_be_switched_off(monkeypatch, capsys):
     monkeypatch.setenv("MON_NO_VOICE_SCREEN", "1")
     mod._screen_voices("ignored.sf2", _frames([9, 9, 9]), 0, 200, 1, 3)
     assert capsys.readouterr().out == ""
+
+
+# --- FILT_ANCHOR must not anchor across a passband change -------------------
+# Commies drive 61: the frame before the onset is the PREVIOUS note's LP+HP
+# decay tail (1056), brighter than the new LP onset (8) at the same $D417, so
+# the anchor made row 0 a SET of the old passband and every LP return landed
+# one frame late. 7 of SDI's 8 passband failures had exactly that signature.
+
+def _anchor_ftr():
+    # pre-frame 1056 (tail), onset 8 then rising; ctrl constant 0xF1
+    return [(1056, 0xF1)] * 5 + [(8, 0xF1), (16, 0xF1), (24, 0xF1), (32, 0xF1)]
+
+
+def test_the_anchor_does_not_cross_a_passband_change(monkeypatch):
+    import build_mon_native_song as mod
+    monkeypatch.setattr(mod, "FILT_ANCHOR", 1)
+    pb = [5] * 5 + [1] * 4                       # LP+HP tail, LP from the onset
+    _flag, prog = mod.filter_program_for(_anchor_ftr(), 5, 4, pb)
+    passband = (prog[0][0] >> 4) & 0x07
+    cutoff_hi = prog[0][0] & 0x0F
+    assert prog[0][0] & 0x80, prog[0]            # row 0 is a SET row
+    assert passband == 1, f"row 0 replays the old passband: {prog[0]}"
+    assert cutoff_hi == 0, f"row 0 replays the old tail cutoff: {prog[0]}"
+
+
+def test_the_anchor_still_fires_on_the_same_passband(monkeypatch):
+    """The gain FILT_ANCHOR was adopted for must survive: an attack peak one
+    frame before the gate rise, on the SAME passband, is still captured."""
+    import build_mon_native_song as mod
+    monkeypatch.setattr(mod, "FILT_ANCHOR", 1)
+    pb = [1] * 9
+    _flag, prog = mod.filter_program_for(_anchor_ftr(), 5, 4, pb)
+    assert prog[0][0] & 0x0F == (1056 >> 3) >> 4, prog[0]
+
+
+def test_an_anchored_capture_keeps_every_later_frame_aligned(monkeypatch):
+    """The anchor substitutes the peak on the onset frame; it must NOT shift
+    the rest of the envelope. Zoophyte/Funk_Facet: a shifted capture played
+    every decay frame one frame late and moved the next $D418 switch with it."""
+    import build_mon_native_song as mod
+    monkeypatch.setattr(mod, "FILT_ANCHOR", 1)
+    monkeypatch.delenv("FILT_ANCHOR_SHIFT", raising=False)
+    # attack peak one frame BEFORE the onset (frame 4), then a steady decay
+    ftr = [(0, 0xF1)] * 4 + [(1920, 0xF1), (1672, 0xF1), (1424, 0xF1),
+                             (1176, 0xF1), (928, 0xF1)]
+    _flag, prog = mod.filter_program_for(ftr, 5, 4, [1] * 9)
+    assert prog[0][0] & 0x0F == (1920 >> 3) >> 4, prog[0]    # peak kept
+    # rebuild the per-frame $D416 the program produces and compare it with the
+    # original's own frames 6.. (onset+1 ..): they must line up one-for-one
+    cut = (((prog[0][0] & 0x0F) << 4) | (prog[0][1] >> 4))
+    out = [cut]
+    for b0, b1, cnt in prog[1:]:
+        if b0 == 0x7F:
+            break
+        if b0 & 0x80:
+            cut = ((b0 & 0x0F) << 4) | (b1 >> 4)
+            out.append(cut)
+            continue
+        d = ((b0 & 0x0F) << 8 | b1)
+        d = d - 0x1000 if d & 0x800 else d
+        for _ in range(cnt):
+            cut += d >> 4
+            out.append(cut)
+    assert out[1:4] == [f[0] >> 3 for f in ftr[6:9]], out
+
+
+# --- the cycle-aware wave jump is a GATED fallback, never the default --------
+# Unconditional at 7647380, reverted at 0314809 (worse on 13 of 28 variant-B
+# SDI files). It may only run once the table has already overflowed.
+
+def _walk(prog, n):
+    """Expand a wave program the way the driver walks it: (wf, count) rows,
+    a $7f row jumps to its (relative) target row."""
+    out, i, guard = [], 0, 0
+    while len(out) < n and guard < 10 * n + 100:
+        guard += 1
+        w, c = prog[i]
+        if w == 0x7F:
+            i = c
+            continue
+        out += [w] * c
+        i += 1
+    return out[:n]
+
+
+def test_a_cycle_packed_program_plays_the_same_frames_and_is_shorter():
+    import random
+    import build_mon_native_song as mod
+    rng = random.Random(3)
+    checked = 0
+    for _ in range(400):
+        head = [(rng.choice([0x09, 0x41, 0x81, 0x11]), rng.randint(1, 3))
+                for _ in range(rng.randint(0, 6))]
+        cyc = [(w, rng.randint(1, 3)) for w in rng.sample([0x41, 0x21, 0x11, 0x81],
+                                                          rng.randint(2, 4))]
+        wfs = []
+        for w, d in head + cyc * rng.randint(2, 12):
+            wfs += [w] * d
+        frozen = mod._rle_wave_impl(wfs)
+        packed = mod._cycle_packed(frozen)
+        assert _walk(frozen, len(wfs)) == wfs
+        if packed is None:
+            continue
+        checked += 1
+        assert len(packed) < len(frozen)
+        assert _walk(packed, len(wfs)) == wfs, (wfs, frozen, packed)
+    assert checked > 100
+
+
+def test_a_strict_ramp_is_never_cycle_packed():
+    import build_mon_native_song as mod
+    frozen = mod._rle_wave_impl([0x09, 0x41, 0x21, 0x11, 0x81, 0x40])
+    assert mod._cycle_packed(frozen) is None
+
+
+def test_the_gate_repacks_only_until_the_table_fits():
+    import build_mon_native_song as mod
+    big = mod._rle_wave_impl([0x09] + [0x41, 0x21, 0x11] * 30)   # packs well
+    mid = mod._rle_wave_impl([0x09] + [0x41, 0x81] * 10)         # packs less
+    ramp = mod._rle_wave_impl([0x09, 0x41, 0x21])                 # cannot pack
+    progs = [big, mid, ramp, big]
+    cap = len(big) + len(mid) + len(ramp) - 1                      # overflows by 1
+
+    def fits(wp):
+        return sum(len(p) for p in {tuple(p): p for p in wp}.values()) <= cap
+    assert not fits(progs)
+    new, n = mod._fit_wave_programs(progs, fits)
+    assert n == 1                               # ONE program was enough
+    assert new[1] == mid and new[2] == ramp     # untouched
+    assert new[0] == new[3] != big              # the largest saving, both copies
+    assert fits(new)
+    assert mod._fit_wave_programs([ramp], lambda wp: False) is None
+
+
+def test_emit_one_reaches_the_wave_fallback_only_from_the_overflow_handler():
+    """Structural pin for the gate: a build whose table fits must never reach
+    `_fit_wave_programs`. Its only call site in emit_one must sit inside an
+    `except` handler (the WAVE-overflow path)."""
+    import ast
+    import build_mon_native_song as mod
+    src = open(mod.__file__, encoding="utf-8").read()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "emit_one")
+    handlers = [h for h in ast.walk(fn) if isinstance(h, ast.ExceptHandler)]
+    inside = {id(c) for h in handlers for c in ast.walk(h)
+              if isinstance(c, ast.Call) and getattr(c.func, "id", None) == "_fit_wave_programs"}
+    every = [c for c in ast.walk(fn)
+             if isinstance(c, ast.Call) and getattr(c.func, "id", None) == "_fit_wave_programs"]
+    assert every and all(id(c) in inside for c in every)

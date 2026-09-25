@@ -335,6 +335,16 @@ def v_traces(d, la, mod_init, mod_play, mult, nframes):
     return per, filt, pb, onsets
 
 
+def part_prefix(base):
+    """The ONE prefix every SDI part artifact is written under -- and the one
+    `prune_stale_parts` must be given. They were built separately and drifted:
+    parts were written as `<base>_native_partNN` while the prune was handed
+    `<base>`, so its `<prefix>_part*` glob matched nothing and every smaller
+    rebuild left its old higher-numbered parts behind (12 songs on 2026-09-24,
+    3 more on 2026-09-25). Deriving both from here makes that impossible."""
+    return os.path.join(ROOT, "out", "sdi", f"{base}_native")
+
+
 def build_song(shim, base, traces, span):
     """Adaptive part-split so no window exceeds the caps (the 63-bundle warning
     on long songs). Copied from the DMC/SM builders. Returns [(file, t0, t1)].
@@ -406,12 +416,12 @@ def build_song(shim, base, traces, span):
         t0 = t1
     parts = []
     for part, (t0, t1) in enumerate(bounds, 1):
-        out = os.path.join(ROOT, "out", "sdi", f"{base}_native_part{part:02d}.sf2")
+        out = f"{part_prefix(base)}_part{part:02d}.sf2"
         br = BM.build_native_song(shim, SID, 0, {}, [], win=(t0, t1), traces=traces)
         BM.emit_one(shim, br, out, f"part {part}/{len(bounds)} "
                     f"({t0 // 50}-{t1 // 50}s) SDI Stage B")
         parts.append((out, t0, t1))
-    BM.prune_stale_parts(os.path.join(ROOT, "out", "sdi", base), len(bounds))
+    BM.prune_stale_parts(part_prefix(base), len(bounds))
     return parts
 
 
@@ -621,15 +631,43 @@ def main():
 
     if adaptive:
         span = min(len(traces[0]), dec_span)
-        parts = build_song(shim, base, traces, span)
+        try:
+            parts = build_song(shim, base, traces, span)
+        except ValueError as exc:
+            # THE WAVE-PACKING RETRY, per song and only after the ordinary build
+            # has already refused. Built exactly as before first, so every song
+            # that fits today takes the identical path and cannot move. On a WAVE
+            # overflow the staged parts are dropped and the song is re-split with
+            # the probe counting wave rows as emit_one's gated fallback would lay
+            # them out -- without that the splitter shrinks every window to the
+            # floor first (Rough_Boy 592 parts, Preview_Zax 1219) before the
+            # fallback in emit_one rescues each one.
+            if not str(exc).startswith("WAVE overflow") or BM.WAVE_PACK_COUNT:
+                raise
+            BM._discard_pending()
+            print(f"  {exc}: retrying with cycle-packed WAVE row counts")
+            BM.WAVE_PACK_COUNT = True
+            parts = build_song(shim, base, traces, span)
+        if BM.WAVE_GATE_FIRED and not BM.WAVE_PACK_COUNT:
+            # Built, but only because emit_one re-packed overflowing parts: the
+            # split was chosen against unpacked counts and is needlessly fine.
+            # Re-split once with packed counts; build_song's prune drops the
+            # surplus parts of the first pass.
+            print(f"  {BM.WAVE_GATE_FIRED} part(s) needed the WAVE fallback: "
+                  f"re-splitting with cycle-packed WAVE row counts")
+            BM.WAVE_PACK_COUNT = True
+            parts = build_song(shim, base, traces, span)
         print(f"  packed into {len(parts)} adaptive part(s)")
         per, ns = measure_parts(parts, traces[0])
         label = "all parts vs original"
     else:
         t1 = min(len(traces[0]), secs * 50)
         br = BM.build_native_song(shim, SID, 0, {}, [], win=(0, t1), traces=traces)
-        out = os.path.join(ROOT, "out", "sdi", f"{base}_native_part01.sf2")
+        out = f"{part_prefix(base)}_part01.sf2"
         BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s (SDI Stage B)")
+        # A single-window build is still a 1-part build: a song that used to
+        # split must not keep its old part02.. beside the new part01.
+        BM.prune_stale_parts(part_prefix(base), 1)
         print(f"  emitted -> {out}")
         _boff, per, ns = _fidelity(out, min(secs, t1 // 50))
         label = f"single window 0-{t1 // 50}s"

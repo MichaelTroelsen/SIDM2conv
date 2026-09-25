@@ -1856,3 +1856,111 @@ to the files that currently refuse and cannot move a passing corpus at all.
 ⚠️ `out/sdi` is MIXED as of this commit: the 28 variant-B files carry
 reverted-packer artifacts, the other ~265 built files still carry the
 cycle-aware build. **A full rebuild is owed before any SDI figure is quoted.**
+
+### 2026-09-24 — the corpus is rebuilt; `out/sdi` is one build again
+
+The full rebuild owed above ran (`py -3 pyscript/sdi_native_sweep.py --jobs 4
+--timeout 7200`, 2 h 36 min, `complete: true`). After it, **every one of the
+5,079 `.prov` stamps under `out/sdi` reads commit `09e5613`, tree `dirty`,
+flags `MON_BUILD_LOCK=1`** — the dirty tree is the uncommitted sweep
+error-scraper fix, which touches no builder. The sweep alone did NOT make the
+directory uniform: it never deletes artifacts, so 479 files from 25 songs were
+still left over from earlier builds — the 14 WAVE-overflow files' cycle-aware
+artifacts, extra high-numbered parts of songs that now build fewer parts
+(Bahbar, Moi_Funk, Survival, Tranedans, …), and `Short_Deel`, now refused.
+They were **moved, not deleted**, to `out/sdi/_stale_pre_2026-09-24_rebuild/`.
+Four `_d_*` debug SF2s without stamps were left alone.
+
+`built 280  refused 48  errored 113  of 441` — errored is 98 non-SDI rips, 14
+WAVE overflow, 1 siddump (`Barbers_Adagio_64`, PSID play=`$0000`); 0 UNPARSED.
+
+| variant | voices | median | =100 | <90 |
+|---|---|---|---|---|
+| A | 123 | 99.9 | 33 | 8 |
+| B | 84 | 99.9 | 18 | 9 |
+| C | 201 | 98.3 | 24 | 19 |
+| D | 54 | 99.6 | 24 | 8 |
+| DELTA | 21 | 99.9 | 4 | 0 |
+| E | 339 | 99.7 | 62 | 17 |
+| V | 18 | 97.8 | 0 | 2 |
+
+**Variant B's median is back at 99.9 (n=84)**, the reverted-packer figure, as
+the revert predicted. **WAVE overflow is 14, not the 16 predicted** — 14 is the
+pre-packer ceiling count, so the prediction was wrong, not the corpus.
+
+## The 8 passband failures are FIXED -- the filter anchor, not the dispatch (2026-09-25, task `sdi-gate-anchored-late-d418-dispatch`)
+
+After the 2026-09-24 rebuild `passband_check.py --player sdi` still failed the same
+eight (`Commies` `Curse` `Eastbottom` `Everytime` `Funk_Facet` `Painful` `Virtual`
+`Zoophyte`). Pairing each original `$D418` transition with ours gave ONE signature:
+one direction of switch lands **exactly +1 frame late, every time**, the other on
+time. The cause was not the drive detector (SDI already runs `FILT_LEAD=64`) but
+`FILT_ANCHOR=1` in `filter_program_for`, in two ways:
+
+1. **It anchored across a passband change.** Its gate was "the frame before the onset
+   is brighter at the same `$D417`" -- and the previous note's decay tail often is.
+   `Commies` drive 61: pre `(1056, LP+HP)`, onset `(8, LP)` -> row 0 `SET $D8`, the OLD
+   passband, so every LP return arrived a frame late. Now the passband must match too.
+   Census over the five songs the anchor was adopted for (Funk_Facet, Hardcore,
+   Guaranteed, Koke_Stek, Bouncing): **0** of their anchors cross a passband change,
+   so the gain is untouched. (A stricter "pre must be an attack jump" gate was rejected:
+   it drops 224/229 of Hardcore's anchors.)
+2. **It shifted the whole envelope, not just the peak.** Capturing `pre, onset,
+   onset+1, ...` put every later frame one frame late too, and the program's last frame
+   then missed the switch SDI makes one frame before the next gate (`Zoophyte`: ours
+   1432 vs 1408 on every decay frame). Now frame 0 is the peak and frames 1.. are the
+   original's own. `FILT_ANCHOR_SHIFT=1` restores the old shift for an A/B.
+
+**Measured, full corpus rebuild (2 h 30 min) against the 2026-09-24 one:**
+
+| | before | after |
+|---|---:|---:|
+| select the original's passband | 266 of 280 | **274 of 280** |
+| FAILED | 8 | **0** |
+| not counted (never filtered) | 6 | 6 |
+| voices changed (of 840) | -- | 3 up, 1 down (`Everytime` v0 98.4 -> 98.3) |
+
+Build outcomes unchanged (280/48/113); per-variant medians unchanged. Per-frame CUTOFF
+agreement, which no column above scores, rose on 11 of 17 sampled files and fell on
+none -- Hardcore 17.7 -> 91.4%, Funk_Facet 28.1 -> 95.1, Guaranteed 37.8 -> 91.7,
+Commies 43.0 -> 97.3, Zoophyte 51.0 -> 88.7.
+
+**Other players are untouched by construction:** only `build_sdi_native_song.py` sets
+`FILT_ANCHOR`; a differential test of HEAD's `filter_program_for` against this one over
+20,000 random inputs is identical on all 20,000 at `FILT_ANCHOR=0` (and differs on 2,728
+at `=1`, so the probe can fail). Part counts moved on 5 files (Opening 4->2, Praiser
+6->7, Rar_Takt 8->7, Sharkie 5->4, Velomatrix 5->6); the orphaned parts were moved to
+`out/sdi/_stale_pre_2026-09-25_anchor_rebuild/`.
+
+## The WAVE-overflow files build again -- the cycle-aware jump, GATED (2026-09-25, task `cycle-aware-wave-rle-gated-to-overflowing-programs-only`)
+
+The unconditional cycle-aware `$7f` jump (7647380) was reverted at 0314809 because it
+re-packed passing songs and made 13 of 28 variant-B files worse. It is back as a
+**fallback only**, in two gated layers:
+
+1. **`emit_one`** lays the WAVE table exactly as before. Only if `gen_includes_song`
+   raises `WAVE overflow` does `_fit_wave_programs` cycle-pack programs, one distinct
+   program at a time, largest saving first, stopping the moment the table fits.
+   A structural test pins that its only call site is inside the overflow handler.
+2. **The SDI builder** builds every song exactly as before. Only if that build needed
+   the fallback (or raised) does it re-split the song once with the window probe
+   counting packed rows (`BM.WAVE_PACK_COUNT`). Without this second layer the
+   splitter had already shrunk every window to the floor: Rough_Boy 592 parts,
+   Preview_Zax 1,219.
+
+| file | before | after |
+|---|---|---|
+| Rough_Boy | WAVE overflow 265 | 13 parts, 99.1/98.9/100.0 |
+| Sugarhill | WAVE overflow 323 | 3 parts, 91.0/98.1/79.9 |
+| Preview_Zax | WAVE overflow 267 | 4 parts, 99.9/96.9/99.3 |
+| Lederhosen | WAVE overflow 264 | 13 parts, 100.0/100.0/97.6 |
+| Phneumatic | WAVE overflow 260 | 6 parts, 100.0/99.8/99.8 |
+| Destruction, Dorull, Effect_Freak, Hithouse, Pervers, Reggie, Suburbia, Wavetrip | WAVE overflow 257-266 | build, 2-9 parts each |
+| RNA_Reset_Now_Asshole | WAVE overflow 263 | **still refused** (265) -- no repeating tail, the driver ceiling |
+
+**13 of 14 now build.** Neutrality, measured OLD vs NEW rather than as a same-code
+rebuild: 12 already-building SDI files -- including Zoophyte, Hyperfool, Velomatrix and
+Sad_Toob, four the reverted version changed -- are **byte-identical on all 71 parts**,
+part counts unchanged. The other eight builders reach only layer 1, and only on a build
+that previously raised, so no build they ship today can change; their corpora were not
+rebuilt. Per-file medians/variant tables need a full sweep to restate.

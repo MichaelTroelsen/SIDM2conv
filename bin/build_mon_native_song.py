@@ -757,14 +757,18 @@ def prune_stale_parts(prefix, nparts):
     # spans (`fidelity_common` derives each from a known build path), which is
     # exactly why it survived: the only symptom is the phantom-file inventory
     # this function exists to prevent.
+    # The per-part `.sid` goes with it too: SDI's `measure_parts` writes one
+    # PSID beside every part it scores, so a pruned part left its `.sid` behind
+    # (every stale SDI part quarantined on 2026-09-24/25 carried one).
     removed = 0
     for f in (glob.glob(f"{prefix}_part*.sf2")
               + glob.glob(f"{prefix}_part*.sf2.span")
-              + glob.glob(f"{prefix}_part*.sf2.prov")):
-        mm = re.search(r"_part(\d+)\.sf2(\.span|\.prov)?$", f)
+              + glob.glob(f"{prefix}_part*.sf2.prov")
+              + glob.glob(f"{prefix}_part*.sid")):
+        mm = re.search(r"_part(\d+)\.(?:sf2(?:\.span|\.prov)?|sid)$", f)
         if mm and int(mm.group(1)) > nparts:
             os.remove(f)
-            removed += 1 if not mm.group(2) else 0
+            removed += 1 if f.endswith(".sf2") else 0
     if removed:
         print(f"  pruned {removed} stale part files beyond part{nparts:02d}")
 
@@ -1054,13 +1058,40 @@ def filter_program_for(ftr, onset, span, pbtr=None):
     # does sit before the gate rise. Without that test the anchor would also
     # swallow the previous note's tail on every ordinary note, which is exactly
     # how F10/F11 moved 26 DMC voices down.
+    #
+    # THE PASSBAND IS PART OF "THE SAME STATE", exactly as it is in the canonical
+    # key and in `_filt_exact`. A brighter earlier frame at the same $D417 can be
+    # the PREVIOUS note's decay tail rather than this note's attack peak, and
+    # when the passband differs it certainly is: SDI switches $D418 on the note
+    # frame, so a pre-frame on the other passband belongs to the envelope being
+    # replaced. Anchoring there made row 0 replay that tail -- the old passband
+    # and cutoff -- and the real restart landed one frame late. Commies drive 61:
+    # pre (1056, LP+HP), onset (8, LP) -> row 0 SET $D8 (LP+HP), so every LP
+    # return in the song arrived +1 frame late; 7 of SDI's 8 passband failures
+    # have that one signature. The five songs FILT_ANCHOR was adopted for anchor
+    # 0 frames across a passband change, so their gain is untouched.
     start = onset
     if FILT_ANCHOR > 0:
         pre = onset - FILT_ANCHOR
-        if pre >= 0 and ftr[pre][1] == ftr[onset][1] and ftr[pre][0] > ftr[onset][0]:
+        if (pre >= 0 and ftr[pre][1] == ftr[onset][1] and ftr[pre][0] > ftr[onset][0]
+                and (not pbtr or pbtr[min(pre, len(pbtr) - 1)]
+                     == pbtr[min(onset, len(pbtr) - 1)])):
             start = pre
     cap = max(2, min(span, 220))
-    seq = [ftr[start + k] if start + k < n else ftr[-1] for k in range(cap)]
+    # AN ANCHORED CAPTURE SUBSTITUTES THE PEAK, IT DOES NOT SHIFT THE ENVELOPE.
+    # Capturing `pre, onset, onset+1, ...` put the peak on the note frame but
+    # played every LATER frame one frame late too, for the whole program -- and
+    # its last frame, the one before the next drive, then showed the original's
+    # second-to-last value, so the next restart's $D418 switch (which SDI makes
+    # one frame BEFORE the gate) landed one frame late. Zoophyte: ours 1432 vs
+    # 1408 at every frame of the decay, and every LP+BP -> LP return +1 frame.
+    # Frame 0 is the peak; frames 1.. are the original's own frames 1...
+    # FILT_ANCHOR_SHIFT=1 restores the whole-envelope shift for an A/B.
+    if start != onset and os.environ.get("FILT_ANCHOR_SHIFT") != "1":
+        idx = [start] + [onset + k for k in range(1, cap)]
+    else:
+        idx = [start + k for k in range(cap)]
+    seq = [ftr[i] if i < n else ftr[-1] for i in idx]
     cut = [c >> 3 for c, _ in seq]                    # $D416 (8-bit) per frame
     ctl = [ct for _, ct in seq]
     # $D418 passband per frame. Defaults to low-pass when no trace is supplied,
@@ -1069,8 +1100,7 @@ def filter_program_for(ftr, onset, span, pbtr=None):
     if pbtr is None:
         pbd = [1] * len(seq)
     else:
-        pbd = [pbtr[min(start + k, len(pbtr) - 1)] if pbtr else 1
-               for k in range(len(seq))]
+        pbd = [pbtr[min(i, len(pbtr) - 1)] if pbtr else 1 for i in idx]
     prog = [_filt_set_row(seq[0][0], seq[0][1], pbd[0])]
     k = 1
     while k < len(seq):
@@ -1116,6 +1146,82 @@ def _rle_wave_impl(wfs):
     rows = [(w & 0xFF, c) for w, c in runs]
     rows.append((0x7F, len(rows) - 1))          # loop to the settled run
     return rows
+
+
+def _wave_loop_target(rows):
+    """Where a CYCLE-AWARE closing $7f would jump: the first row of the shortest
+    period that repeats at least twice at the tail, with the repetitions deleted
+    from `rows` in place; `len(rows)-1` (the historical freeze) when the tail
+    does not repeat. Restored from 7647380 -- but it is NO LONGER the default:
+    see `_fit_wave_programs`, the only caller."""
+    n = len(rows)
+    if n < 4:
+        return n - 1
+    for p in range(2, n // 2 + 1):
+        if rows[n - p:] != rows[n - 2 * p:n - p]:
+            continue
+        start = n - 2 * p
+        while start - 1 >= 0 and rows[start - 1] == rows[start - 1 + p]:
+            start -= 1
+        del rows[start + p:]
+        return start
+    return n - 1
+
+
+def _cycle_packed(prog):
+    """`prog` re-packed with a cycle-aware closing jump, or None when that saves
+    nothing. Only a program that ends in the historical FREEZE (a $7f aimed at
+    its own last run) is a candidate -- any other jump already encodes a loop
+    the encoder chose on purpose."""
+    if len(prog) < 2 or prog[-1][0] != 0x7F or prog[-1][1] != len(prog) - 2:
+        return None
+    body = list(prog[:-1])
+    target = _wave_loop_target(body)
+    new = body + [(0x7F, target)]
+    return new if len(new) < len(prog) else None
+
+
+# Set by a builder's per-song RETRY only (see build_sdi_native_song.main): the
+# song already failed with 'WAVE overflow' when built exactly as before, so the
+# window-packing probe may count wave rows the way the gated fallback in
+# emit_one would lay them out. Off, count_only is exactly what it always was,
+# so no song that builds today can have its part boundaries moved by this.
+WAVE_PACK_COUNT = False
+WAVE_ROWS_CAP = 256
+# How many parts this process rescued with the gated fallback. A builder reads
+# it to tell "fits as before" (0) from "only fits because emit_one re-packed"
+# -- the latter is the signal to re-split with WAVE_PACK_COUNT.
+WAVE_GATE_FIRED = 0
+
+
+def _fit_wave_programs(wave_programs, fits):
+    """THE GATE. The cycle-aware jump was shipped UNCONDITIONALLY at 7647380 and
+    reverted at 0314809: it made 14 of 28 variant-B SDI files differ and was
+    WORSE on 13 (Zoophyte -7.9, Hyperfool -5.4, Velomatrix -5.1). It still
+    rescues the WAVE-overflow files (Sugarhill 323 rows, Rough_Boy 265), which
+    otherwise refuse to build at all.
+
+    So it runs ONLY when `fits(wave_programs)` has already failed, and then
+    re-packs programs one distinct program at a time, largest saving first,
+    stopping the moment the table fits. A build whose table already fits never
+    reaches this function and is byte-identical to before BY CONSTRUCTION, not
+    by measurement. Returns (programs, n_repacked), or None if even packing
+    every candidate does not fit -- the caller then re-raises the original
+    overflow unchanged."""
+    cands = {}
+    for prog in wave_programs:
+        key = tuple(prog)
+        if key not in cands:
+            new = _cycle_packed(prog)
+            if new is not None:
+                cands[key] = new
+    order = sorted(cands, key=lambda k: len(k) - len(cands[k]), reverse=True)
+    progs = list(wave_programs)
+    for n, key in enumerate(order, 1):
+        progs = [cands[key] if tuple(p) == key else p for p in progs]
+        if fits(progs):
+            return progs, n
+    return None
 
 
 def _wave_prog_for(frames, v, onset, dur_f):
@@ -2333,16 +2439,24 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # driver's seq-pointer table holds 128 — overflow corrupts the LAST voice, osc3).
     if count_only:
         wkeys, wrows, fkeys, frows = set(), 0, set(), 0
+        wprogs = []
         for _ad, _sr, _raw, waveprog, _flag, filt, _src, _rw in exi:
             wk = tuple(waveprog)
             if wk not in wkeys:
                 wkeys.add(wk)
+                wprogs.append(waveprog)
                 wrows += len(waveprog)
             if filt:
                 fk = tuple(filt)
                 if fk not in fkeys:
                     fkeys.add(fk)
                     frows += len(filt)
+        if WAVE_PACK_COUNT and wrows > WAVE_ROWS_CAP:
+            def _rows(wp):
+                return sum(len(p) for p in {tuple(p): p for p in wp}.values())
+            _packed = _fit_wave_programs(wprogs, lambda wp: _rows(wp) <= WAVE_ROWS_CAP)
+            if _packed is not None:
+                wrows = _rows(_packed[0])
         # mirror pass-2's row build (raw indices — exact while under the cluster caps,
         # where the cluster map is the identity) to count sequences accurately.
         nseg = 0
@@ -2659,10 +2773,36 @@ def emit_one(m, br, out_path, label):
     # corruption this guards. Everything expensive -- tracing, parsing, packing
     # -- is outside it, so a parallel sweep still gets most of the win.
     with _build_lock():
-        gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
-                                                    pulse_programs, bundles=bundles,
-                                                    instr_flags=instr_flags,
-                                                    filter_programs=filter_programs)
+        def _gen(wp):
+            return RN.gen_includes_song(segs, instrs, wp, pulse_programs,
+                                        bundles=bundles, instr_flags=instr_flags,
+                                        filter_programs=filter_programs)
+        try:
+            gen, edit, mdp, seq0 = _gen(wave_programs)
+        except ValueError as exc:
+            # WAVE overflow ONLY, and only as a fallback -- see _fit_wave_programs.
+            # `fits` re-runs the in-memory layout; gen_includes_song raises the
+            # overflow before it writes layout.inc, so a failed probe writes nothing.
+            if not str(exc).startswith("WAVE overflow"):
+                raise
+
+            def _fits(wp):
+                try:
+                    _gen(wp)
+                    return True
+                except ValueError as e2:
+                    if not str(e2).startswith("WAVE overflow"):
+                        raise
+                    return False
+            fitted = _fit_wave_programs(wave_programs, _fits)
+            if fitted is None:
+                raise
+            wave_programs, _nrep = fitted
+            global WAVE_GATE_FIRED
+            WAVE_GATE_FIRED += 1
+            print(f"  WAVE table overflowed; cycle-packed {_nrep} program(s) to fit "
+                  f"({exc})")
+            gen, edit, mdp, seq0 = _gen(wave_programs)
         shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"),
                         os.path.join(MON_DIR, "layout.inc"))
         # Appended AFTER the copy and BEFORE B.wrap assembles: the .inc writer
