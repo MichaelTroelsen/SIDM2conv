@@ -1786,6 +1786,16 @@ def effective_bundle_count(items, counts, tol, cap=63):
     return len(active)
 
 
+def init_fmode_for(pbtr, w0):
+    """INIT_FMODE for a window starting at original frame `w0`: the passband
+    the original holds on the window's FIRST PLAYED frame, as $D418 mode bits.
+    Row `w0 + 1`, because siddump force-displays row 0 with the pre-init bus
+    state and passband_check aligns a part's first frame with row `t0 + 1`.
+    Deliberately not the mode of a longer span -- see the INIT_PASSBAND block
+    in build_native_song for the file that made the difference audible."""
+    return (pbtr[min(w0 + 1, len(pbtr) - 1)] & 0x07) << 4
+
+
 def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                       count_only=False):
     """Walk the MoN song -> per-voice packed sequences. Each note carries:
@@ -1841,11 +1851,18 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # and switching this on by default would move every one of their corpora at
     # once, unmeasured. Off, `_init_fmode` is never set and the emitted driver
     # is byte-identical. Adopting it as a default is dmc-driver-init-passband-default.
+    #
+    # THE FIRST FRAME, NOT THE MODE -- which is what the paragraph above always
+    # said. The code took the most common passband over the first 50 frames,
+    # and SDI `Oh_Boy_VE-2x` is why that is wrong: the original holds 'off' for
+    # its first 2 frames and then LP, so the mode seeded LP from frame 0 and
+    # cost one audible frame (the refusal recorded for
+    # passband-default-needs-the-other-five-players). Index `w0 + 1`, not `w0`:
+    # siddump force-displays row 0 with the pre-init bus state, and the scoring
+    # (passband_check) aligns a part's first played frame with original row
+    # `t0 + 1` for the same reason.
     if os.environ.get("INIT_PASSBAND") and pbtr:
-        _w0 = win[0] if win else 0
-        _i0 = min(_w0, len(pbtr) - 1)
-        _seg = pbtr[_i0:_i0 + 50] or [pbtr[_i0]]
-        m._init_fmode = (max(set(_seg), key=_seg.count) & 0x07) << 4
+        m._init_fmode = init_fmode_for(pbtr, win[0] if win else 0)
     # A trace with NO FRAMES is the no-notes failure one layer down, and it is the
     # one that guard cannot see: the notes decoded fine, so the build proceeds and
     # derives every per-note (FM, pulse) bundle from an empty series, shipping held

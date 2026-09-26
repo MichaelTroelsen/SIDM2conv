@@ -223,9 +223,13 @@ def test_init_passband_seeds_from_the_opening_run_not_frame_zero():
         "frame 0 and the opening run agree here, so this file no longer "
         "exercises the transient -- find another before deleting this test")
 
-    src = inspect.getsource(B.build_native_song)
-    assert "_seg" in src and "count" in src, (
-        "the seed no longer looks like a modal-over-a-run rule")
+    # Pinned by BEHAVIOUR since 2026-09-26, when the modal rule was replaced by
+    # the first PLAYED frame (row w0 + 1): the modal rule fixed this file but
+    # seeded LP on SDI Oh_Boy_VE-2x, whose first two played frames are 'off'.
+    # Row 1 skips exactly the force-displayed row-0 transient this test is about.
+    assert B.init_fmode_for(pbtr, 0) == 0x30, hex(B.init_fmode_for(pbtr, 0))
+    assert B.init_fmode_for(pbtr, 0) != (pbtr[0] & 0x07) << 4
+    assert "init_fmode_for(pbtr" in inspect.getsource(B.build_native_song)
 
 
 # ---------------------------------------------------------------------------
@@ -788,3 +792,17 @@ def test_emit_one_reaches_the_wave_fallback_only_from_the_overflow_handler():
     every = [c for c in ast.walk(fn)
              if isinstance(c, ast.Call) and getattr(c.func, "id", None) == "_fit_wave_programs"]
     assert every and all(id(c) in inside for c in every)
+
+
+# --- INIT_PASSBAND seeds the FIRST played frame's passband, not the mode -------
+# SDI Oh_Boy_VE-2x holds 'off' for its first two frames and then LP; the modal
+# rule seeded LP from frame 0 and cost one audible frame.
+
+def test_init_fmode_is_the_first_played_frame_not_the_mode():
+    import build_mon_native_song as mod
+    # row 0 = siddump's force-display (ignored); rows 1-2 off; then LP for 60
+    pbtr = [5, 0, 0] + [1] * 60
+    assert mod.init_fmode_for(pbtr, 0) == 0x00          # the mode would be LP ($10)
+    assert mod.init_fmode_for([0, 3] + [1] * 60, 0) == 0x30
+    # a later window reads its own first played frame, row w0 + 1
+    assert mod.init_fmode_for([1] * 10 + [4] * 5, 9) == 0x40
