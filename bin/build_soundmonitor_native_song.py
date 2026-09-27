@@ -358,6 +358,16 @@ class SMShim:
                 'wave_prog': 0, 'flags': 0, 'raw': list(rec)}
 
 
+def probe_name(kind, base):
+    """Output prefix for a legato A/B probe build ("g" gate, "l" legato).
+
+    PER SONG, never a constant -- the DMC builder shares this scheme and af84612
+    measured what a constant `_abg` / `_abl` costs there under a parallel sweep:
+    one song's prune deleted another's staging file, and a song scored another
+    song's probe and chose a different split."""
+    return f"_ab{kind}_{base}"
+
+
 def build_song(shim, base_name, traces, span, emit=True):
     """Adaptive part-split + build, identical policy to the DMC builder."""
     def fits(t0, t1):
@@ -580,13 +590,18 @@ def main():
             ab_span = min(span, 90 * 50)
             print(f"  legato A/B: candidates {sorted(cands)} "
                   f"— building both configs over {ab_span // 50}s...")
-            pg = build_song(SMShim(m, streams, span, **sk), "_abg", traces,
+            gname, lname = probe_name("g", base), probe_name("l", base)
+            pg = build_song(SMShim(m, streams, span, **sk), gname, traces,
                             ab_span)
             fg = measure_song_voices(pg, traces)
             pl = build_song(SMShim(m, streams, span,
                                    legato_set=frozenset(cands), **sk),
-                            "_abl", traces, ab_span)
+                            lname, traces, ab_span)
             fl = measure_song_voices(pl, traces)
+            # The probes are measured, not shipped: drop them so they neither sit
+            # in the corpus as songs with no original nor outlive this process.
+            for n in (gname, lname):
+                BM.prune_stale_parts(os.path.join(ROOT, "out", "soundmonitor", n), 0)
             # A voice with no comparable frames scores None on BOTH sides: the
             # A/B is INCONCLUSIVE for it, so it keeps the default (gate). Same
             # outcome as before, but now it is a decision rather than an artifact
