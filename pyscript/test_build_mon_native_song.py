@@ -806,3 +806,12 @@ def test_init_fmode_is_the_first_played_frame_not_the_mode():
     assert mod.init_fmode_for([0, 3] + [1] * 60, 0) == 0x30
     # a later window reads its own first played frame, row w0 + 1
     assert mod.init_fmode_for([1] * 10 + [4] * 5, 9) == 0x40
+
+
+def test_init_passband_defaults_on_and_only_zero_disables_it():
+    # Flipped on 2026-09-26 after the first-frame rule moved no part the wrong
+    # way on SDI, MoN, Myth, Matt Gray, DMC or HardTrack.
+    import build_mon_native_song as mod
+    assert mod.init_passband_enabled({}) is True
+    assert mod.init_passband_enabled({"INIT_PASSBAND": "1"}) is True
+    assert mod.init_passband_enabled({"INIT_PASSBAND": "0"}) is False

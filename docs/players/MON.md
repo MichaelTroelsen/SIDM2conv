@@ -66,7 +66,9 @@ Three reasons the artifact goes and the builder stays:
 3. **Making `emit_one` refuse is a nine-player change to catch one file.** That
    function is shared by DMC, MoN, Sound Monitor, FC, HardTrack, SDI, Hubbard
    and Matt Gray; the builder's own comment warns that touching it moves every
-   corpus at once — the same trap that keeps `INIT_PASSBAND` opt-in.
+   corpus at once — the same trap that kept `INIT_PASSBAND` opt-in until it was
+   A/B'd across all six builders that pass a passband trace and defaulted ON,
+   2026-09-26 (see the dated note below).
 
 **THE 84.6% IS NOT A STALE ARTIFACT, and that is now settled by the checker's
 own test rather than by argument.** Its message says to rebuild a failing file
@@ -101,7 +103,8 @@ the correction, in full:
 
 The driver zeroes `F_MODE` at init, so a build opens with `$D418`'s mode bits
 OFF and declares the real passband only when its first filter program runs —
-here about **215 frames** in. `INIT_PASSBAND` (opt-in) exists to seed that
+here about **215 frames** in. `INIT_PASSBAND` (opt-in at the time of this
+diagnosis; **default ON since 2026-09-26**, see below) exists to seed that
 opening value from the original. It was seeding from `pbtr[win[0]]`, i.e. **frame
 0 alone**, and on this tune frame 0 is `$01` = **LP** while every frame after it
 is `$03` = LP+BP (1440 of 1500 frames). So the flag swapped a wrong `off` for a
@@ -127,9 +130,22 @@ Two scope facts, because neither is guessable:
   carries over unchanged.
 - **It is NOT a no-op on MoN: 12 of 24 songs seed differently.** `Hawkeye`
   sub2/sub3 read `LP+BP+HP` at frame 0 where the song holds `LP`; `Ice_Age`,
-  `M_A_C_C`, `Sample`, `Wizzy` and others read `off`. None of that reaches a
-  shipped artifact today, because **`INIT_PASSBAND` is off by default** — but a
-  MoN corpus A/B must be run under the modal rule, not the frame-0 one.
+  `M_A_C_C`, `Sample`, `Wizzy` and others read `off`. At the time of this
+  diagnosis none of that reached a shipped artifact, because `INIT_PASSBAND`
+  was off by default — but a MoN corpus A/B had to be run under the modal
+  rule, not the frame-0 one, to be representative of what turning it on would do.
+
+**2026-09-26 — `INIT_PASSBAND` now defaults ON, and it seeds from the window's
+first PLAYED frame, not the 50-frame mode described above.** The modal rule
+was itself superseded (`4a03a60`) after `Oh_Boy_VE-2x` showed the mode over 50
+frames can cost an audible frame the first-frame rule does not. The flip to
+default-on was A/B'd across all six builders that pass a passband trace (SDI,
+MoN, Myth, Matt Gray, DMC, HardTrack) and moved no part the wrong way;
+`INIT_PASSBAND=0` still turns it off. HardTrack's `Sling` opening-gap case
+(`docs/players/HARDTRACK.md`, "Sling is a second instance") and
+`pyscript/test_hardtrack_native_rebuild.py::TestSlingOpeningPassbandGap` were
+re-measured against the default-on build the same day: the gap is now CLOSED
+(mode agrees on every compared frame), not merely inaudible.
 
 ⚠️ **That artifact now lives in `out/mon/_quarantine/`, not `out/mon/`.** It is
 the 84.6% flag-off build and is kept, not deleted, because it is the evidence

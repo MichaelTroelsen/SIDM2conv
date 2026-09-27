@@ -1796,6 +1796,13 @@ def init_fmode_for(pbtr, w0):
     return (pbtr[min(w0 + 1, len(pbtr) - 1)] & 0x07) << 4
 
 
+def init_passband_enabled(environ=None):
+    """INIT_PASSBAND defaults ON; only an explicit INIT_PASSBAND=0 disables it.
+    (The old opt-in read `os.environ.get(...)` for truth, so "0" turned it ON.)"""
+    env = os.environ if environ is None else environ
+    return env.get("INIT_PASSBAND", "1") != "0"
+
+
 def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                       count_only=False):
     """Walk the MoN song -> per-voice packed sequences. Each note carries:
@@ -1835,7 +1842,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
         ftr = filter_trace(sid, sub, secs)
         pbtr = passband_trace(sid, sub, secs)
-    # INIT_PASSBAND (opt-in): the passband the ORIGINAL already holds at this
+    # INIT_PASSBAND (default ON, see below): the passband the ORIGINAL already holds at this
     # window's FIRST frame. The driver zeroes F_MODE at init ("filter program
     # idle until a flag-$40 note"), so every build opens with $D418's mode bits
     # OFF and only declares the real passband when its first filter program
@@ -1861,7 +1868,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # siddump force-displays row 0 with the pre-init bus state, and the scoring
     # (passband_check) aligns a part's first played frame with original row
     # `t0 + 1` for the same reason.
-    if os.environ.get("INIT_PASSBAND") and pbtr:
+    # ON BY DEFAULT since 2026-09-26: the first-frame rule was A/B'd on all six
+    # builders that pass a passband trace (SDI, MoN, Myth, Matt Gray, DMC,
+    # HardTrack) and moved no part the wrong way. INIT_PASSBAND=0 turns it off.
+    if init_passband_enabled() and pbtr:
         m._init_fmode = init_fmode_for(pbtr, win[0] if win else 0)
     # A trace with NO FRAMES is the no-notes failure one layer down, and it is the
     # one that guard cannot see: the notes decoded fine, so the build proceeds and

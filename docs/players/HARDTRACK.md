@@ -1685,6 +1685,17 @@ note arrives late.
 So the passband on this player is **correct on all 33 builds**; what remains is
 under a second of missing filter state at the start of one file.
 
+**2026-09-26 — `Sling`'s gap is now CLOSED, not merely inaudible.** `INIT_PASSBAND`
+(`bin/build_mon_native_song.py`) now defaults ON and seeds the opening `$D418`
+mode from the window's first PLAYED frame, so our mode frame 0 reads `LP` the
+same as the original's instead of `off`. Re-measured against the default-on
+`out/hardtrack_native/Sling_part01.sid` build: mode agrees with the original
+on every one of the 1,300 compared frames (the earlier 14-frame table above
+described the flag-off build and is kept for that history). Routing itself is
+unchanged — the original still first routes at frame 17, ours at 14, offset
+−3 as before. Pinned by
+`pyscript/test_hardtrack_native_rebuild.py::TestSlingOpeningPassbandGap`.
+
 `passband_check` reports a multi-part failure as **UNCONFIRMED** unless
 `--seconds` is asserted, because over-running can only manufacture disagreement
 — which also means the **passes are unaffected**: a file that matched across a
