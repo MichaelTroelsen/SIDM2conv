@@ -324,6 +324,20 @@ def legato_candidates(m, phase, onsets, voices0):
     return cands
 
 
+def probe_name(kind, base):
+    """Output prefix for a legato A/B probe build ("g" gate, "l" legato).
+
+    PER SONG, never a constant. The probes were written as `_abg` / `_abl` for
+    every song, and a sweep under --jobs N runs N songs' probes at once in
+    separate processes over that ONE prefix: `prune_stale_parts` deletes every
+    `<prefix>_part*.staging`, so one song removed another's in-flight staging
+    file (Thunder_Force: FileNotFoundError renaming `_abl_part01.sf2.staging`),
+    and `measure_song_voices` re-reads the probe parts from disk, so a song
+    could score ANOTHER song's probe and pick a different legato set -- Dreaming_2
+    shipped 2 parts in a -j4 sweep where every serial build gives 23."""
+    return f"_ab{kind}_{base}"
+
+
 def build_song(shim, base_name, traces, span, emit=True):
     """Adaptive part-split the song for `shim` and (emit) build each part. Returns
     [(part_file, t0, t1)] — the same splitting the real build uses, so each config's
@@ -519,13 +533,18 @@ def main():
             ab_span = min(span, 90 * 50)
             print(f"  legato A/B: candidates {sorted(cands)} "
                   f"— building both configs over {ab_span // 50}s...")
+            gname, lname = probe_name("g", base), probe_name("l", base)
             pg = build_song(DMCShim(m, phase, budget_ticks=span_ticks + 8, **sk),
-                            "_abg", traces, ab_span)
+                            gname, traces, ab_span)
             fg = measure_song_voices(pg, traces)
             pl = build_song(
                 DMCShim(m, phase, budget_ticks=span_ticks + 8,
-                        legato_set=frozenset(cands), **sk), "_abl", traces, ab_span)
+                        legato_set=frozenset(cands), **sk), lname, traces, ab_span)
             fl = measure_song_voices(pl, traces)
+            # The probes are measured, not shipped: drop them so they neither sit
+            # in the corpus as songs with no original nor outlive this process.
+            for n in (gname, lname):
+                BM.prune_stale_parts(os.path.join(ROOT, "out", "dmc", n), 0)
             # A voice with no comparable frames scores None on BOTH sides: the
             # A/B is INCONCLUSIVE for it, so it keeps the default (gate). Same
             # outcome as before, but now it is a decision rather than an artifact
