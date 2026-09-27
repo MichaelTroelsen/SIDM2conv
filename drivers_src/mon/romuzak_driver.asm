@@ -1,5 +1,13 @@
 ; ==========================================================================
-; Galway SF2 driver — B2/B3: 3-voice sequencer with orderlist chaining
+; MoN-family native SF2 driver -- the engine for the ten builders that import
+; bin/build_mon_native_song.py (MoN, Myth, DMC, FC, HardTrack, Hubbard, Matt
+; Gray, SDI, Sound Monitor). Forked from the Galway engine; Galway and ROMUZAK
+; now share drivers_src/common/sf2_native_driver.asm, and folding this file's
+; feature families into that one is ROADMAP A1's remaining work. The file keeps
+; the name romuzak_driver.asm because build_romuzak_driver_full.py assembles
+; <dir>/romuzak_driver.asm and MoN repoints that module's directory here.
+;
+; Original header: Galway SF2 driver -- B2/B3: 3-voice sequencer with orderlist chaining
 ; ==========================================================================
 ; Native SID Factory II driver (descriptor type 0x00). Three voices, each
 ; walking its own ORDERLIST (a list of pattern indices + transpose) -> the

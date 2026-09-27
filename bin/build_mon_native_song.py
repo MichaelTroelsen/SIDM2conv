@@ -594,10 +594,14 @@ def _own_pending(op):
     PUBLISHING IS PROCESS-GLOBAL, and that is a contract rather than an accident.
     `_PENDING` is a module global and `commit_parts` publishes ALL of it, so two
     songs staged concurrently in ONE process cross-publish: whichever finishes
-    first commits the other's half-written parts under its own name. That was
-    measured once, on a -j8 DMC sweep where `Spacegame_Music` tried to commit
-    `_abl_part01.sf2.staging`, and it did NOT reproduce -- which is exactly what
-    makes it dangerous rather than merely broken.
+    first commits the other's half-written parts under its own name.
+
+    NOT the cause of the -j8 DMC observation once cited here (`Spacegame_Music`
+    committing `_abl_part01.sf2.staging`): sweeps run builds as separate
+    processes, so no two songs share a `_PENDING`. That was the DMC legato A/B
+    writing every song's probe under ONE on-disk prefix (`_abl`), fixed in
+    af84612 with per-song probe names. The in-process hazard below is real but
+    has never been observed.
 
     IT IS NOT REACHABLE FROM TRACKED CODE TODAY, checked rather than assumed:
     every `bin/build_*_native_song.py` is a one-song CLI reading `sys.argv[1]`,
@@ -1853,11 +1857,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # Windowed builds take the value at their OWN start, not frame 0 -- part 7
     # of a song opens on whatever the original held entering part 7.
     #
-    # OPT-IN because emit_one is shared by eight players: DMC, MoN, Sound
-    # Monitor, FC, HardTrack, SDI, Hubbard and Matt Gray all route through it,
-    # and switching this on by default would move every one of their corpora at
-    # once, unmeasured. Off, `_init_fmode` is never set and the emitted driver
-    # is byte-identical. Adopting it as a default is dmc-driver-init-passband-default.
+    # WAS OPT-IN because emit_one is shared by every player that passes a
+    # passband trace, and a default would move all their corpora at once. It
+    # became the DEFAULT on 2026-09-26 (9f5f40b) only after each of them -- SDI,
+    # MoN, Myth, Matt Gray, DMC, HardTrack -- was A/B'd flag off vs on and none
+    # regressed; FC, Hubbard and Sound Monitor pass no passband trace and are
+    # untouched. INIT_PASSBAND=0 still turns it off (init_passband_enabled).
     #
     # THE FIRST FRAME, NOT THE MODE -- which is what the paragraph above always
     # said. The code took the most common passband over the first 50 frames,

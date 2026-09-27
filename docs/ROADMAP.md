@@ -20,9 +20,21 @@ The Stage-A path is already factored right — `sidm2/galway_driver11_emitter.py
 - **Payoff**: a driver bug fixed once fixes all players (the SF2II CMP-carry class of bug currently needs three patches); a new player becomes a flag set + a freqtable, not a fork.
 - **Guard**: byte-compare each flag combination's output against the current three drivers before switching (the assemble() state-region and edit-area guards already exist).
 
+> **STATUS 2026-09-27 (measured at f9f87cf, supersedes the figures above):** Galway and ROMUZAK
+> are already merged -- `drivers_src/{galway,romuzak}/*_driver.asm` are 23-line feature stubs that
+> `.include` `drivers_src/common/sf2_native_driver.asm` (1,426 lines; flags `FEAT_DRUM_ROWS`,
+> `FEAT_SEEK_PULSE`, `FEAT_INSTR_PULSE`). The fork left is `drivers_src/mon/romuzak_driver.asm`
+> (2,103 lines) with 15 feature families common lacks (`DIGI_HYBRID/RLE/SPIKE/SWEEP`, `FMSCALE_ON`,
+> `HARD_RESTART`, `HP_ENGINE`, `INIT_FMODE`, `NOTE_PREAMBLE`, `PULSE_LOOP`, `PULSE_TIE`, `RELEASE_WF`,
+> `SR_PREKILL`, `TEMPO_SCHED`, `TEMPO_SWALLOW`), and it is the engine for the ten builders that import
+> `bin/build_mon_native_song.py`. The "CRLF endings" were a checkout artifact: the index stores LF.
+> The two dead `build.py` copies under `drivers_src/{mon,romuzak}/` (byte-identical to Galway's, and
+> unable to run -- each assembles a `galway_driver.asm` its directory does not have) were removed.
+
 ### A2. Shared native-build library (`sidm2/native_build/`)
 - `gen_includes_song` is the top copy-paste hotspot (~180-line identical skeleton in the Galway and ROMUZAK builders; MoN imports ROMUZAK's). Extract: header/Block-2 state pinning, vstream orderlists, sequence-slot writes, wave-program dedup, FM/PULSE row-major layout with 16-bit pointers, `layout.inc` writer — with per-player hooks for instrument flags and extra tables.
 - `build_galway_driver_full.py` vs `build_romuzak_driver_full.py`: 353 lines, **12 differ** (all name substitutions). Parameterize (`player=`), delete one.
+  - **STALE (measured 2026-09-27):** they are now 373 and 382 lines and `diff` reports 755 differing lines -- they have diverged, so this is no longer a mechanical parameterisation. `sidm2/sf2_caps.py` already exists (the caps bullet below is partly done); `sidm2/native_build.py` holds `make_native_gen` / `lay_out_sequences` / `program_jump_col` but is not imported by `build_mon_native_song.py`; `gen_includes_song` still exists three times (Blackbird, Galway, ROMUZAK); no `pack_adaptive_windows` exists.
 - The adaptive-window `fits()` loop (caps probe → window split) is duplicated between the MoN and Myth mains → shared `pack_adaptive_windows()`.
 - Move the SF2II cap constants (63 bundles / 32 instruments / 256 rows / 120 sequences / 960 events / $D000 wall) into **one** `sidm2/sf2_caps.py` consumed everywhere they are currently re-declared.
 
